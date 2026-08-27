@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="color-scheme" content="dark"/>
+<title>AI 自動化測試框架</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 1.9 27.7 8.6v14.8L16 30.1 4.3 23.4V8.6z' fill='none' stroke='%237fbbf0' stroke-width='2'/%3E%3Cpath d='M9.4 10.6h13.2v8.6h-6.9l-4 3.4v-3.4H9.4z' fill='none' stroke='%237fbbf0' stroke-width='1.8'/%3E%3C/svg%3E"/>
+<style>
+/* 與使用手冊／平台同一組視覺語彙（字型檔就在隔壁的 fonts/，不做任何外部連線）。
+   ⚠️ 這一頁是**講給人聽**的，所以版型刻意與手冊不同：沒有側欄目錄、每節先給一句結論。 */
+@font-face { font-family: "Inter"; src: url("fonts/Inter-var.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Sora"; src: url("fonts/Sora-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+
+:root {
+  --bg: #020a14; --panel-top: rgba(10,25,41,.66); --panel-bot: rgba(4,13,23,.74);
+  --frame: rgba(93,149,216,.42); --frame-on: rgba(127,187,240,.8);
+  --text: #d0e0f5; --muted: #97abc4; --title: #adc2dc; --faint: #5f7594;
+  --accent: #7fbbf0; --accent-2: #297de0; --accent-faint: rgba(127,187,240,.09);
+  --amber: #f0b429; --danger: #ff5a5f; --success: #4ade80;
+  --code-bg: #081420; --border: #1b2b40; --border-strong: #27446a;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --sans: "Inter", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --display: "Sora", var(--sans);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--sans); font-size: 15.5px; line-height: 1.78; letter-spacing: .01em;
+  background-image:
+    radial-gradient(ellipse 1000px 560px at 20% -8%, rgba(41,125,224,.17), transparent 70%),
+    linear-gradient(rgba(127,187,240,.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(127,187,240,.026) 1px, transparent 1px);
+  background-size: auto, 46px 46px, 46px 46px;
+  background-attachment: fixed;
+}
+.wrap { max-width: 1000px; margin: 0 auto; padding: 0 26px 100px; }
+p { max-width: 74ch; }
+a { color: var(--accent); }
+a:focus-visible, .lnk:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+code { font-family: var(--mono); font-size: .86em; background: var(--code-bg); border: 1px solid var(--border);
+  padding: 1px 5px; border-radius: 3px; color: #b9d4ee; }
+b { color: var(--title); }
+
+/* ── 版頭：一句話講完這是什麼 ── */
+header { padding: 66px 0 8px; }
+header .brand { display: flex; align-items: center; gap: 11px; margin-bottom: 34px; }
+header .brand b { font-family: var(--display); font-size: .95rem; letter-spacing: .1em; color: var(--accent); }
+header .brand small { display: block; font-size: .64rem; letter-spacing: .17em; color: var(--faint); text-transform: uppercase; }
+header .eyebrow { font-family: var(--mono); font-size: .68rem; letter-spacing: .3em; color: var(--accent-2); text-transform: uppercase; }
+header h1 { font-family: var(--display); font-weight: 600; font-size: clamp(2rem, 4.4vw, 2.75rem);
+  line-height: 1.2; margin: 14px 0 16px; letter-spacing: .01em; text-wrap: balance; }
+header .lede { font-size: 1.08rem; color: var(--title); max-width: 60ch; margin: 0; }
+
+/* 三個事實：不是裝飾，是「這套東西由什麼構成」的量體 */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px;
+  margin: 38px 0 8px; background: var(--border); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+/* ⚠️ 必須是 `> div`：寫成 `.facts div` 會連裡面的數字與說明一起套上底色與內距，
+   每格中間會多出一個看不出所以然的方框（2026-08-25 實際踩到）。 */
+.facts > div { background: linear-gradient(180deg, var(--panel-top), var(--panel-bot)); padding: 15px 17px 16px; }
+.facts .v { font-family: var(--display); font-size: 1.5rem; color: var(--accent); line-height: 1.2;
+  font-variant-numeric: tabular-nums; }
+.facts .k { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+
+/* ── 區塊：每一節先給一句結論 ── */
+section { padding-top: 62px; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 1.42rem; margin: 0 0 10px;
+  letter-spacing: .02em; text-wrap: balance; }
+.claim { font-size: 1.02rem; color: var(--title); border-left: 3px solid var(--accent-2);
+  padding: 2px 0 2px 15px; margin: 0 0 22px; max-width: 68ch; }
+.claim b { color: var(--accent); }
+h3 { font-family: var(--display); font-weight: 600; font-size: 1rem; margin: 30px 0 8px;
+  color: var(--title); letter-spacing: .03em; }
+
+/* ── 三張並排的卡（痛點 / 分工）── */
+.trio { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 20px 0; }
+.trio .c { border: 1px solid var(--frame); border-radius: 4px; padding: 15px 17px;
+  background: linear-gradient(180deg, var(--panel-top), var(--panel-bot));
+  box-shadow: 0 0 26px -8px rgba(41,125,224,.28), inset 0 1px 0 rgba(127,187,240,.06); }
+.trio .k { font-family: var(--mono); font-size: .65rem; letter-spacing: .18em; color: var(--accent-2); text-transform: uppercase; }
+.trio .t { font-family: var(--display); font-size: 1.02rem; color: var(--accent); margin: 7px 0 6px; }
+.trio .d { font-size: .87rem; color: var(--muted); line-height: 1.68; }
+.trio .d b { color: var(--text); }
+
+/* ── 四層圖：整套東西的骨架 ── */
+.layers { display: grid; gap: 10px; margin: 22px 0 6px; }
+.lay { display: grid; grid-template-columns: 132px minmax(0,1fr); gap: 18px; align-items: start;
+  border: 1px solid var(--frame); border-left-width: 3px; border-radius: 4px; padding: 14px 18px;
+  background: linear-gradient(180deg, var(--panel-top), var(--panel-bot)); }
+.lay .n { font-family: var(--display); font-size: .98rem; color: var(--accent); }
+.lay .n span { display: block; font-family: var(--mono); font-size: .64rem; letter-spacing: .15em;
+  color: var(--faint); text-transform: uppercase; margin-top: 3px; }
+.lay .b { font-size: .88rem; color: var(--muted); line-height: 1.7; }
+.lay .b b { color: var(--text); }
+.lay .b code { font-size: .8em; }
+.lay.l1 { border-left-color: var(--accent); }
+.lay.l2 { border-left-color: var(--accent-2); }
+.lay.l3 { border-left-color: var(--success); }
+.lay.l4 { border-left-color: var(--amber); }
+
+/* ── 生命週期：這一節是本頁的論點，所以給它一條真的軌道 ── */
+.loop { margin: 24px 0 8px; border-left: 1px solid var(--border-strong); padding-left: 0; }
+.stop-row { display: grid; grid-template-columns: 30px minmax(0,1fr); gap: 0; }
+.stop-row .dot { position: relative; }
+.stop-row .dot i { position: absolute; left: -6px; top: 18px; width: 11px; height: 11px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--accent-2); display: block; }
+.stop-row.now .dot i { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(127,187,240,.12); }
+.stop-row .body { padding: 12px 0 18px 6px; }
+.stop-row .h { display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap; }
+.stop-row .h .num { font-family: var(--mono); font-size: .7rem; letter-spacing: .12em; color: var(--accent-2); }
+.stop-row .h .t { font-family: var(--display); font-size: 1.04rem; color: var(--accent); }
+.stop-row .h .sk { font-family: var(--mono); font-size: .68rem; color: var(--muted); }
+.stop-row .g { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 4px 20px; margin-top: 8px; }
+.stop-row .g > div { font-size: .85rem; line-height: 1.66; }
+.stop-row .g .lbl { font-family: var(--mono); font-size: .63rem; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--faint); display: block; }
+.stop-row .g .you { color: var(--text); }
+.stop-row .g .ai { color: var(--muted); }
+.stop-row .g .file { color: var(--muted); }
+.stop-row .g .file code { color: var(--success); border-color: rgba(74,222,128,.3); }
+.back { display: flex; align-items: center; gap: 10px; margin: 2px 0 0 -1px; padding-left: 30px;
+  font-size: .84rem; color: var(--muted); }
+.back b { color: var(--accent); }
+
+/* ── 表格 ── */
+table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: .87rem; display: block; overflow-x: auto; }
+thead th { text-align: left; font-weight: 500; font-size: .66rem; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--accent); border-bottom: 1px solid var(--border-strong); padding: 8px 12px 8px 0; white-space: nowrap; }
+tbody td { border-bottom: 1px solid var(--border); padding: 9px 12px 9px 0; vertical-align: top; }
+tbody tr:hover td { background: var(--accent-faint); }
+tbody td:first-child { color: var(--title); }
+td.nw, th.nw { white-space: nowrap; }
+
+/* ── 提示條 ── */
+.note, .warn, .stop { border-left: 3px solid; border-radius: 3px; padding: 13px 17px; margin: 18px 0;
+  font-size: .9rem; max-width: 78ch; }
+.note { border-color: var(--accent-2); background: rgba(41,125,224,.08); }
+.warn { border-color: var(--amber); background: rgba(240,180,41,.07); }
+.stop { border-color: var(--danger); background: rgba(255,90,95,.07); }
+.stop b { color: #ff9ea1; }
+
+/* ── 實拍畫面 ── */
+figure { margin: 24px 0 10px; }
+figure > a { display: block; border: 1px solid var(--frame); border-radius: 4px; overflow: hidden;
+  background: var(--code-bg); box-shadow: 0 0 26px -8px rgba(41,125,224,.35);
+  transition: border-color .16s, box-shadow .16s; }
+figure > a:hover { border-color: var(--frame-on); box-shadow: 0 0 32px -6px rgba(127,187,240,.42); }
+figure img { display: block; width: 100%; height: auto; }
+figcaption { margin-top: 10px; font-size: .82rem; line-height: 1.68; color: var(--muted); max-width: 74ch; }
+figcaption b.fig { font-family: var(--mono); font-size: .7rem; letter-spacing: .1em; color: var(--accent-2);
+  margin-right: 8px; font-weight: 400; }
+
+ul { max-width: 74ch; padding-left: 1.3em; }
+li { margin: 6px 0; }
+li::marker { color: var(--accent-2); }
+
+.pill { display: inline-block; font-size: .67rem; font-family: var(--mono); padding: 1px 7px; border-radius: 2px;
+  border: 1px solid var(--border-strong); color: var(--muted); white-space: nowrap; }
+.pill.ok { border-color: rgba(74,222,128,.5); color: var(--success); }
+.pill.no { border-color: var(--danger); color: #ff9ea1; }
+
+footer { margin-top: 76px; padding-top: 22px; border-top: 1px solid var(--border);
+  color: var(--muted); font-size: .8rem; }
+
+@media (max-width: 700px) {
+  .lay { grid-template-columns: 1fr; gap: 8px; }
+  .stop-row { grid-template-columns: 20px minmax(0,1fr); }
+  .back { padding-left: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+@media print {
+  body { background: #fff; color: #111; background-image: none; }
+  .trio .c, .lay, .facts div { background: none; border-color: #bbb; box-shadow: none; }
+  h1, h2, .trio .t, .lay .n, .stop-row .h .t { color: #000; }
+  a { color: #000; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand">
+    <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+      <path d="M16 1.9 27.7 8.6v14.8L16 30.1 4.3 23.4V8.6z" fill="rgba(127,187,240,.07)" stroke="#7fbbf0" stroke-width="1.35" stroke-linejoin="round"/>
+      <path d="M9.4 10.6h13.2v8.6h-6.9l-4 3.4v-3.4H9.4z" fill="none" stroke="#7fbbf0" stroke-width="1.25" stroke-linejoin="round"/>
+      <circle cx="13.1" cy="14.9" r="1.05" fill="#7fbbf0"/><circle cx="16" cy="14.9" r="1.05" fill="#7fbbf0"/><circle cx="18.9" cy="14.9" r="1.05" fill="#7fbbf0"/>
+    </svg>
+    <span><b>AI 自動化測試框架</b><small>Framework Overview</small></span>
+  </div>
+
+  <div class="eyebrow">給要一起用這套東西的人</div>
+  <h1>測試的記憶，寫在檔案裡</h1>
+  <p class="lede">
+    一個 QA 用 Claude，快的是<b>當下那一次</b>。這套框架要解決的是<b>下一次</b>——
+    讓每次探索、每條案例、每張單、每個沒驗完的尾巴，都<b>自動落回純文字檔</b>；
+    <b>下一次</b>（下週的你，或下一個新開的 Claude）就從那些檔案接著做。
+  </p>
+
+  <div class="facts">
+    <div><div class="v">9</div><div class="k">流程 skill<br><span style="color:var(--faint)">方法論，不靠手感</span></div></div>
+    <div><div class="v">25</div><div class="k">治理腳本<br><span style="color:var(--faint)">紀律變成會執行的指令</span></div></div>
+    <div><div class="v">1</div><div class="k">測試助手平台<br><span style="color:var(--faint)">狀態與入口</span></div></div>
+    <div><div class="v">0</div><div class="k">資料庫<br><span style="color:var(--faint)">全部是打得開的純文字檔</span></div></div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="why">
+  <h2>先講它解決什麼</h2>
+  <p class="claim">同一個團隊裡，<b>每個人的 Claude 都很聰明，但彼此的做法與口徑對不起來</b> ——
+  這套東西處理的是「對不起來」的那一半，不是「聰不聰明」那一半。</p>
+
+  <div class="trio">
+    <div class="c">
+      <div class="k">痛點一</div>
+      <div class="t">每次都要重講一遍</div>
+      <div class="d">產品規則、環境、上次驗到哪，<b>每開一個對話就要重講</b>。講漏一句，它就用錯的前提做完一整輪。</div>
+    </div>
+    <div class="c">
+      <div class="k">痛點二</div>
+      <div class="t">沒有人記得狀態</div>
+      <div class="d">哪張單還沒開、哪個尾巴沒驗完、哪批測試資料還不能清 —— <b>這些單一次對話看不到</b>，
+      而上一次的對話關掉就沒了。</div>
+    </div>
+    <div class="c">
+      <div class="k">痛點三</div>
+      <div class="t">口徑各走各的</div>
+      <div class="d">你說「這條驗到 L3」，對方理解成別的意思；他的覆蓋率 68% 和你的 68% <b>不是同一件事</b>。</div>
+    </div>
+  </div>
+
+  <div class="note"><b>所以框架做的是三件事：</b>
+  把<b>方法論寫成 skill</b>（該驗什麼、驗多深、期望值哪裡來）、
+  把<b>紀律寫成會執行的指令</b>（靠自律的規範一定會漂掉，所以做成 lint 與配號腳本）、
+  把<b>狀態寫回固定的檔案</b>（交接活文件、Bug 單、覆蓋矩陣）。</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="what">
+  <h2>整套東西由四層組成</h2>
+  <p class="claim">由下往上：<b>規範 → 知識 → 執行 → 介面</b>。
+  上面三層都可以單獨用；<b>介面層（測試助手）是選配</b>，不開它，其餘照樣運作。</p>
+
+  <div class="layers">
+    <div class="lay l1">
+      <div class="n">規範層<span>Rules</span></div>
+      <div class="b"><b><code>CLAUDE.md</code> ＋ 9 支流程 skill</b> —— Claude 一進來就讀的規則書，
+      以及「開工／探索／寫案例／開單／驗修復／壓測／收尾／回寫／提交」各自的作法。
+      <b>每個產品另有一支 skill</b>，裝該產品的不變量與「我要做 X → 讀哪一份」的意圖對照表。</div>
+    </div>
+    <div class="lay l2">
+      <div class="n">知識層<span>Knowledge</span></div>
+      <div class="b"><b><code>docs/</code> ＋ 交接活文件 ＋ memory</b> —— 機制、公式、操作程序寫在 <code>docs/</code>；
+      「做完了／卡住了／哪批資料動過」寫在交接活文件；<b>反直覺的坑</b>放 memory（會主動浮現的那一種）。
+      三層各有職責，落錯地方就等於沒寫。</div>
+    </div>
+    <div class="lay l3">
+      <div class="n">執行層<span>Execution</span></div>
+      <div class="b"><b>pytest ＋ Playwright ＋ Allure</b>，加上 <code>scripts/</code> 的 25 支治理腳本
+      （<code>lint_docs</code> 體檢、<code>gen_bug_index</code> 配號、<code>coverage_matrix</code> 算覆蓋、
+      <code>analyze_run</code> 把失敗分成真失敗／前置未備／環境問題…）。
+      <b>這一層不需要 AI 也能跑</b>，終端機直接用。</div>
+    </div>
+    <div class="lay l4">
+      <div class="n">介面層<span>Assistant</span></div>
+      <div class="b"><b>測試助手</b>（本機服務，各自跑一份、綁自己的 Claude 帳號）——
+      把上面三層的東西<b>收成看得到的清單</b>：案例、Bug、待辦、執行紀錄、知識地圖；
+      再把常做的事做成<b>按鈕</b>：按下去就開一個已經載好規範、已經知道產品狀況的 Claude。</div>
+    </div>
+  </div>
+
+  <figure>
+    <a href="manual/overview.jpg" target="_blank" title="點開看原尺寸">
+      <img src="manual/overview.jpg" width="1440" height="900" loading="lazy" alt="測試助手總覽：頂部數字列、任務按鈕、產品柱、右側待辦與最近報告"/>
+    </a>
+    <figcaption><b class="fig">圖 1</b>介面層長這樣。數字（案例、活躍 Bug、未完成待辦）都是<b>掃真的檔案</b>算出來的，
+    不是另外維護的一份紀錄 —— 所以它<b>不可能和檔案對不上</b>。</figcaption>
+  </figure>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="loop">
+  <h2>一件事怎麼從頭跑到尾</h2>
+  <p class="claim">七站，<b>每一站都有固定的產出、固定的落點</b>。
+  最後一站把狀態寫回去，<b>下一次的第一站就從那裡讀</b> —— 這個圈就是整套框架的重點。</p>
+
+  <div class="loop">
+    <div class="stop-row now">
+      <div class="dot"><i></i></div>
+      <div class="body">
+        <div class="h"><span class="num">01</span><span class="t">開工接手</span><span class="sk">handoff</span></div>
+        <div class="g">
+          <div class="you"><span class="lbl">你</span>按「開工接手」，或直接問「今天該做什麼」</div>
+          <div class="ai"><span class="lbl">AI</span>讀交接檔的 blocker 與測試資料現況，列出可立即動手的事</div>
+          <div class="file"><span class="lbl">留下什麼</span>不寫檔 —— 這一站是<b>讀</b></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stop-row">
+      <div class="dot"><i></i></div>
+      <div class="body">
+        <div class="h"><span class="num">02</span><span class="t">探索新功能</span><span class="sk">testcase-design ＋ browser-ops</span></div>
+        <div class="g">
+          <div class="you"><span class="lbl">你</span>指定功能區塊與安全邊界（唯讀？可以下注？）</div>
+          <div class="ai"><span class="lbl">AI</span>開瀏覽器實際走一遍，五個來源交叉盤點，標風險推深度</div>
+          <div class="file"><span class="lbl">留下什麼</span><code>docs/&lt;產品&gt;/</code> 的機制文件與<b>覆蓋矩陣</b></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stop-row">
+      <div class="dot"><i></i></div>
+      <div class="body">
+        <div class="h"><span class="num">03</span><span class="t">撰寫案例</span><span class="sk">ui-test</span></div>
+        <div class="g">
+          <div class="you"><span class="lbl">你</span>從覆蓋矩陣挑要轉成自動化的功能點</div>
+          <div class="ai"><span class="lbl">AI</span>照矩陣產 pytest，落檔後<b>當場 collect 驗證跑得起來</b></div>
+          <div class="file"><span class="lbl">留下什麼</span><code>tests/&lt;產品&gt;/test_*.py</code>（終端機也跑得動）</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stop-row">
+      <div class="dot"><i></i></div>
+      <div class="body">
+        <div class="h"><span class="num">04</span><span class="t">執行</span><span class="sk">pytest ＋ Allure</span></div>
+        <div class="g">
+          <div class="you"><span class="lbl">你</span>勾要跑的案例、選環境，按執行</div>
+          <div class="ai"><span class="lbl">AI</span>不參與 —— 這一站是<b>純機器</b>，跑完自動分類失敗原因</div>
+          <div class="file"><span class="lbl">留下什麼</span>每一輪一個獨立目錄：輸出、Allure 報告、失敗分類</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stop-row">
+      <div class="dot"><i></i></div>
+      <div class="body">
+        <div class="h"><span class="num">05</span><span class="t">開 Bug 單</span><span class="sk">bug-report</span></div>
+        <div class="g">
+          <div class="you"><span class="lbl">你</span>在產品頁的 Bug 分頁<b>檢視它開了什麼</b>，成立就轉給 RD、把 JIRA 單號<b>回填</b></div>
+          <div class="ai"><span class="lbl">AI</span>走<b>開單前三問</b>（是規格還是缺陷／是不是已經有單／樣本有沒有鑑別力）後<b>直接開單</b>，寫重現步驟與佐證</div>
+          <div class="file"><span class="lbl">留下什麼</span><code>docs/&lt;產品&gt;/bugs/&lt;ID&gt;.md</code>，<b>寫檔那一刻才配號</b>（不回收、不撞號）</div>
+        </div>
+        <div class="note" style="margin:10px 0 0;font-size:.84rem">
+          <b>⛔ 只有一種情況要你先按：測試跑失敗生出來的草稿。</b>
+          因為<b>測試失敗不等於有缺陷</b> —— 同樣那幾條會反覆失敗，自動開單只會洗出一堆假單。
+          <b>它自己判定的缺陷則直接開</b>，那是有走過判斷的；
+          要你一筆筆核准未完成的判斷，等於把工作量還給你。</div>
+      </div>
+    </div>
+
+    <div class="stop-row">
+      <div class="dot"><i></i></div>
+      <div class="body">
+        <div class="h"><span class="num">06</span><span class="t">驗 JIRA 修復</span><span class="sk">jira-verify</span></div>
+        <div class="g">
+          <div class="you"><span class="lbl">你</span>給單號（一次可以給一批）</div>
+          <div class="ai"><span class="lbl">AI</span>逐張重現、比對實際值與期望值，判 PASS／FAIL 並留算式明細</div>
+          <div class="file"><span class="lbl">留下什麼</span>驗證報告 ＋ <b>side effect 待驗清單</b>（沒驗完的不會消失）</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stop-row">
+      <div class="dot"><i></i></div>
+      <div class="body">
+        <div class="h"><span class="num">07</span><span class="t">收尾</span><span class="sk">handoff ＋ writeback</span></div>
+        <div class="g">
+          <div class="you"><span class="lbl">你</span>按「收尾體檢」，看它抓到什麼漏做的</div>
+          <div class="ai"><span class="lbl">AI</span>把學到的知識分流落位、把狀態寫回交接檔，最後跑一次體檢</div>
+          <div class="file"><span class="lbl">留下什麼</span>交接活文件的<b>待辦、blocker、測試資料現況</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="back">↻&nbsp; <b>回到 01</b> —— 下次開工時（不論是你自己，還是新開的一個 Claude）讀到的，就是第 07 站寫下的東西。</div>
+
+  <div class="note"><b>不必七站都走。</b>只驗一張 JIRA 就走 01 → 06 → 07；
+  只跑回歸就走 01 → 04 → 07。<b>頭尾兩站是固定的</b>，因為那是「接得上」的唯一保證。</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="who">
+  <h2>誰做什麼</h2>
+  <p class="claim">分界線只有一條：<b>需要判斷的事是你的，需要記得與重複的事是它的。</b></p>
+
+  <div class="trio">
+    <div class="c">
+      <div class="k">你</div>
+      <div class="t">做判斷</div>
+      <div class="d">開出來的單成不成立、要不要轉給 RD、這批資料能不能清、什麼時候可以發版。
+      <b>框架不替你決定這些</b> —— 但也<b>不會拿未完成的判斷來煩你</b>：
+      該它判的它判完才給你看，你檢視的是<b>結果</b>，不是半成品。</div>
+    </div>
+    <div class="c">
+      <div class="k">Claude</div>
+      <div class="t">做事與寫下來</div>
+      <div class="d">實際去點、去算、去比對、去寫案例與報告，並<b>把結果落回檔案</b>。
+      它被規範綁著走：載哪支 skill、能碰哪些工具、寫入哪些路徑，都是宣告好的。
+      連 <b>commit 也能請它代勞</b> —— 但<b>要不要提交由你點頭</b>。</div>
+    </div>
+    <div class="c">
+      <div class="k">平台</div>
+      <div class="t">記得與開頭</div>
+      <div class="d">掃檔案算出現況、把常做的事變成按鈕、開對話時<b>先把前因後果講清楚</b>。
+      它不自己實作邏輯 —— 底下跑的是同一批腳本與同一份 skill。</div>
+    </div>
+  </div>
+
+  <h3>東西都落在哪</h3>
+  <table>
+    <thead><tr><th class="nw">畫面上的</th><th class="nw">實際是什麼檔</th><th>為什麼重要</th></tr></thead>
+    <tbody>
+      <tr><td class="nw">Bug 清單</td><td class="nw"><code>docs/&lt;產品&gt;/bugs/*.md</code></td>
+        <td>一張單一個檔，開頭那段就是狀態的<b>單一事實來源</b>。⛔ 整層<b>不進版控</b>（裡面有測試站帳密）</td></tr>
+      <tr><td class="nw">待辦與交接</td><td class="nw"><code>docs/&lt;產品&gt;/&lt;產品&gt;_驗證交接.md</code></td>
+        <td>每條產品線一份的<b>活文件</b> —— 收尾寫的就是它，開工讀的也是它</td></tr>
+      <tr><td class="nw">測試案例</td><td class="nw"><code>tests/&lt;產品&gt;/test_*.py</code></td><td>就是 pytest，不綁平台</td></tr>
+      <tr><td class="nw">產品定義</td><td class="nw"><code>config/products.json</code></td><td><b>單一來源</b> —— 腳本與平台都讀它</td></tr>
+      <tr><td class="nw">執行紀錄</td><td class="nw">每一輪一個獨立目錄</td><td>輸出、Allure、失敗分類都留著，可回頭比對</td></tr>
+    </tbody>
+  </table>
+  <p><b>沒有資料庫。</b>全部是打得開、改得動的純文字檔，用什麼編輯器都看得到 ——
+  <b>平台關掉，東西還在</b>；出問題時你可以直接改那個檔，不必透過任何介面。</p>
+  <div class="warn"><b>⚠️ 但別把它當備份。</b>
+  <code>docs/&lt;產品&gt;/bugs/</code>（Bug 單、驗證報告）<b>整層刻意不進版控</b> —— 裡面有測試站帳密。
+  也就是說<b>這些東西只活在你自己這台機器上</b>，換一台就不見了。
+  <b>對外的正式流通管道是 JIRA</b>，本機那份是工作底稿。</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="rules">
+  <h2>不能破的四條</h2>
+  <p class="claim">這四條不是提醒，是<b>寫進規範、而且大多有程式在擋</b>的東西。</p>
+
+  <table>
+    <thead><tr><th class="nw">邊界</th><th>怎麼守</th></tr></thead>
+    <tbody>
+      <tr><td class="nw"><span class="pill no">⛔</span> 正式環境不碰</td>
+        <td>測試站可以自由寫入（下注、建帳號、改設定都是測試的常態）；<b>正式環境一律不碰</b>，
+        客戶在用的 STG 每次都要另外授權。</td></tr>
+      <tr><td class="nw"><span class="pill no">⛔</span> 資料庫只讀</td>
+        <td>查詢、對帳隨便跑；<b>改值一律走畫面或 API</b>。直接改 DB 會繞過所有應用層邏輯，
+        改出來的狀態未必是系統真的產生得出來的 —— <b>那樣驗到的結論不成立</b>。</td></tr>
+      <tr><td class="nw"><span class="pill no">⛔</span> git 等你點頭</td>
+        <td><b>不是不能提交 —— 是不能自己決定要不要提交。</b>
+        你在終端機用的那個 Claude <b>會幫你在本機 commit</b>（訊息也它寫），
+        但<b>一定先把改了哪些檔攤給你看、你說可以才動手</b>；在那之前連暫存都不做，
+        而且只送出自己動到的路徑。<br>
+        <b>平台開的任務 session 也能跑腳本、能寫檔</b>（不然它照不了規範做事）——
+        但 <b>git 的寫入操作被擋下來</b>：索引是整個工作目錄共用的，而它身邊沒有人可以點頭。
+        它改完檔，<b>平台會在那一輪結束時列出「動了哪些檔」</b>，由你決定要不要提交。</td></tr>
+      <tr><td class="nw"><span class="pill no">⛔</span> JIRA 只讀</td>
+        <td>單子要不要開、怎麼寫，是你跟 RD 的事。框架只把 JIRA 的狀態<b>讀進來比對</b>。</td></tr>
+    </tbody>
+  </table>
+
+  <div class="warn"><b>還有一條最容易被忽略的：實測與文件不符時，先問「有沒有人說要改」。</b>
+  找得到人為的變更聲明（RD 的留言、PM 改需求）→ 更新文件；
+  <b>只有「我量到不一樣」→ 那是缺陷，要開單，文件原句不動。</b>
+  把缺陷改寫成規格，等於用測試者的手把 bug 合法化 —— 而且之後<b>再也不會有人去驗它</b>。</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="start">
+  <h2>怎麼開始用</h2>
+  <p class="claim">拿到範本之後<b>三個指令</b>，就有一個接好自己產品、可以開始跑的工作區。</p>
+
+  <table>
+    <thead><tr><th class="nw">步驟</th><th>做什麼</th></tr></thead>
+    <tbody>
+      <tr><td class="nw">先裝兩個</td><td><b>Python 3.11+</b> 與 <b>Node.js 18+</b> —— 兩個都是必裝。
+        少了 Node，瀏覽器起不來，而探索、重現、JIRA 重驗全都要瀏覽器
+        （症狀還很難查：它會安靜地少掉那幾個能力，然後交一份只驗得到讀取面的報告）。</td></tr>
+      <tr><td class="nw">① 建環境</td><td><code>scripts\setup_test_env.ps1</code> —— 冪等，可重複跑</td></tr>
+      <tr><td class="nw">② 裝通用 memory</td><td><code>python scripts\bootstrap_workspace.py</code> —— 把通用的 QA 教訓裝進本機</td></tr>
+      <tr><td class="nw">③ 接自己的產品</td><td><code>python scripts\new_product.py --id ...</code> —— 一次建好目錄、產品 skill、交接檔並註冊。
+        <b>⛔ 不要手動建</b>，漏一步就不會被體檢檢查到</td></tr>
+      <tr><td class="nw">④ 第一次探索</td><td>跟 Claude 說「載入 <code>/testcase-design</code>，我要探索某個功能區塊」，照它走。
+        <b>這一步的產物就是你的知識起點。</b></td></tr>
+    </tbody>
+  </table>
+  <p>不想用指令的話，這幾步在測試助手裡都是<b>按鈕</b>（設定 → 工作區）。</p>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="custom">
+  <h2>它是範本，不是成品</h2>
+  <p class="claim">你一定會長出自己的流程 —— <b>那是預期中的</b>。範本只保證<b>起步一致</b>。</p>
+
+  <p>畫面上的東西幾乎都是<b>宣告出來的</b>，不是寫死在程式裡：
+  一支工具是一份 <code>*.tool.json</code>、一顆任務按鈕是一份 <code>tasks/*.json</code>、
+  一個產品是 <code>config/products.json</code> 的一列。<b>改這幾份檔就會改變畫面與流程，不必動平台程式。</b>
+  用不到的刪掉、缺的自己加、整條動線換成你們現在的做法都可以。</p>
+
+  <div class="stop"><b>⛔ 但有一小塊必須保持共用，否則團隊價值就沒了。</b>
+  <b>共同語言那二十來個名詞</b> —— 深度分級、風險對應深度、期望值來源分級、覆蓋矩陣的欄位、
+  Bug 狀態值、驗證結論五值。這些分岔了，<b>大家就看不懂彼此的報告</b>：
+  你說「驗到 L3」對方理解成別的意思，他的覆蓋率 68% 和你的 68% 不是同一件事。
+  要改可以，<b>但要一起改</b>。</div>
+
+  <div class="note"><b>想動手看細節？</b>
+  平台的<b>使用手冊</b>（<code>/static/manual.html</code>）有每一頁、每一顆按鈕的實拍畫面與四段說明；
+  工作區根目錄的 <code>README.md</code> 是上手五步與治理腳本表；
+  <code>CLAUDE.md</code> 是給 Claude 讀的規則書 —— <b>你不必先讀完它</b>。</div>
+</section>
+
+<footer>
+  AI 自動化測試框架 · 總覽　|　這一頁講的是<b>整套怎麼運作</b>；操作細節見平台的使用手冊<br>
+  規則書：<code>CLAUDE.md</code>　·　上手：<code>README.md</code>　·　方法論：<code>.claude/skills/</code>
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "★ 產品定義的單一來源。所有腳本都讀這裡，不要在別處再存一份。",
+    "",
+    "欄位說明：",
+    "  handovers      該產品的交接活文件（lint_docs D6 檢查它們有沒有跟上進度）",
+    "  handover_scope 每份交接檔「負責哪些路徑」。未列者退回 docs/<docs_dir>。",
+    "                 ⚠️ 功能線與壓測線要各自切開，否則兩份會互相誤報 D6。",
+    "  extra_paths    該產品擁有、但不在 docs/tests/tools/skills 標準四處的路徑",
+    "                 （壓測工具、探索腳本…）。reset_workspace 與 export_template 靠它判斷歸屬。",
+    "",
+    "新增產品請用：python scripts\\new_product.py --id <ID> --docs-dir <目錄名> --bug-prefix <前綴>"
+  ],
+  "products": [
+    {
+      "id": "新綜合",
+      "label": "新綜合",
+      "docs_dir": "新綜合",
+      "bug_prefix": "XINZONGHE",
+      "aliases": [
+        "xzh"
+      ],
+      "tests_dir": "xzh",
+      "qa_tools_dir": "xzh_qa",
+      "skill": "xzh",
+      "jira_key": null,
+      "handovers": [
+        "docs/新綜合/新綜合_驗證交接.md"
+      ]
+    }
+  ],
+  "common_handovers": [
+    "docs/共通_工作區維護交接.md"
+  ]
+}

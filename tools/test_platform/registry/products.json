@@ -1,0 +1,15 @@
+{
+  "products": [
+    {
+      "id": "xzh",
+      "wordmark": "新綜合",
+      "hero_pillar": true,
+      "label": "新綜合",
+      "short": "新綜合",
+      "subtitle": "",
+      "color": "#4fa9ff",
+      "env_badge": "QAT",
+      "order": 1
+    }
+  ]
+}

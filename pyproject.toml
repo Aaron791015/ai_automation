@@ -1,0 +1,9 @@
+# 本檔僅放 pytest 設定；相依套件見 requirements.txt
+[tool.pytest.ini_options]
+pythonpath = ["tools", "."]
+testpaths = ["tests"]
+addopts = "--alluredir=reports/allure-results"
+markers = [
+    "smoke: 冒煙測試（不寫入資料）",
+    "write_action: 會實際寫入測試環境資料的測試（執行前需確認）",
+]

@@ -1,0 +1,122 @@
+# 敏感設定（絕不版控）
+config/config.local.json
+config/*.local.json
+.env
+.env.*
+!.env.example
+
+# 機密與憑證
+*.key
+*.pem
+secrets/
+
+# 系統/工具暫存
+.DS_Store
+Thumbs.db
+.~lock.*
+*.tmp
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# docs — 保留 .md/.txt 摘要與說明；排除大型來源檔（PDF/Office/壓縮/圖）與含帳密 xlsx、原始攔截資料
+# Bug 回報文件與截圖為對外提交產物（含測試站帳密），不進版控（見 CLAUDE.md §6 Bug 回報格式）
+# 2026-08-04 起 Bug 檔改置於 docs/<專案>/bugs/（Bug 單＋shots/＋BUG清單.md＋_deliver/ 全不版控）
+docs/**/bugs/
+# 探索過程截圖（非 bug 佐證，時間戳/一次性用途）
+docs/**/探索截圖/
+# 以下為 2026-08-04 重整前的舊路徑，保留規則以防舊檔回流
+docs/**/Bug回報_*.md
+docs/**/bug截圖/
+# 對外提交用的打包副本資料夾（如 docs/CRUX/bug回報_0728/），含 Bug 單、截圖與彙整數據
+docs/**/bug回報_*/
+docs/**/*.pdf
+docs/**/*.xlsx
+docs/**/*.docx
+docs/**/*.pptx
+docs/**/*.zip
+docs/**/*.7z
+docs/**/*.rar
+docs/**/*.png
+docs/CRUX/CRUX_bet_demo/
+# 需求驗證資料夾：存放需求方提供的原文、以及對外交接／打包用的副本
+# （副本會與工作區原始檔漂移，且常含測試站帳密），一律不版控
+docs/**/需求驗證/
+
+# data — 排除分析截圖（binary）
+data/profitRate/
+
+# 測試報告與 playwright 產物
+reports/allure-results/
+reports/allure-report/
+test-results/
+# created_accounts manifest 為 run 產物、含 QAT 帳密/token，不版控；
+# 流水號避重的權威來源是線上搜尋（見 account_naming.py），非此檔。保留目錄以 .gitkeep。
+reports/created_accounts/*.json
+
+# Playwright MCP 探索暫存（page snapshot / console log，時間戳命名會持續累積）
+.playwright-mcp/
+
+# CRUX_Performance 壓測工具的 run 產物（console.log、每會員錢包檢核、Locust/總監/API 報告）
+# 工具本體與 config/（測試站設定與帳密）刻意版控，僅排除執行產物
+tools/CRUX_Performance/logs/
+# 建庫時的 ParseBetString 回應快取（13MB+ 且會持續累積，可用 build_bet_text_library.py 重建）
+# 文本庫本身（manifest.json + 各群組檔）刻意版控，重建需連線 QAT
+tools/CRUX_Performance/config/bet_texts/_parse_cache.json
+# 前置檢查的環境指紋與上次結果（隨環境變動，屬 run 產物；重跑 preflight_check.py 即重建）
+tools/CRUX_Performance/config/preflight_state.json
+
+# wbot_Performance 壓測工具的 run 產物（console.log、統計分片、RTT/事件 CSV、效能報告）
+# 工具本體與 config/（測試站設定與帳密、下注文本 profile）刻意版控，僅排除執行產物
+tools/wbot_Performance/logs/
+# 前置檢查的環境指紋與上次結果（隨環境變動，屬 run 產物；重跑 preflight_check.py 即重建）
+tools/wbot_Performance/config/preflight_state.json
+
+# 競品快譯驗證工具的 run 產物（loguru 以時間戳命名，會持續累積）
+tools/CRUX_bet_demo_all/logs/
+# Node 橋接載入 bundle 所需的相依（由 npm install 重建）
+tools/CRUX_bet_demo_all/node_modules/
+# 驗證失敗明細為 run 產物，重跑 verify_psresult_vs_demo.py 即重建
+tools/CRUX_bet_demo_all/verify_f21_30_failures.json
+
+# 本機設定
+.claude/settings.local.json
+
+# Claude Code 排程/背景任務的執行期鎖檔（含 session id/pid，機器與 session 相關，非專案內容）
+.claude/scheduled_tasks.lock
+
+# 對同事分享工具的打包副本（內容皆為版控中檔案的複本，重打包即可重建）
+_share/
+
+# qixing_Performance（七星）壓測工具的 run 產物（console.log、Locust／總監／跨期報告）
+# 工具本體與 config/（測試站設定與帳密、會員清單、號碼池）刻意版控，僅排除執行產物與大型生成資料
+tools/qixing_Performance/logs/
+# 下注資料 JSON（每彩種 100~530MB，由 scripts/build_bet_data.py 依號碼池重建；號碼池 NumberList/txtNumberList 仍版控）
+tools/qixing_Performance/config/bet_data/*/case6_*.json
+# 前置檢查的環境指紋與上次結果（隨環境變動，屬 run 產物）
+tools/qixing_Performance/config/preflight_state.json
+
+# 測試平台（tools/test_platform）的 run 產物與快取（2026-08-19 建立）
+# 平台本體、registry/ 與 profiles/（具名執行設定，刻意分享）皆版控，僅排除執行產物
+tools/test_platform/logs/
+tools/test_platform/cache/
+tools/test_platform/config/platform_config.local.json
+# ⛔ 平台 config 目錄下的**任何** *.local.json 一律不版控。
+#    原本只擋了 platform_config.local.json 這一個檔名 —— 2026-08-23 發現該目錄下
+#    另有一份 config.local.json（含 JIRA 帳密與 session cookie）**沒被擋住**，
+#    任何人一個 `git add -A` 就會把憑證送進版控。
+#    憑證的權威位置是 repo root 的 config/config.local.json（credentials.py 只讀寫那份）。
+tools/test_platform/config/*.local.json
+# 檔案是真的寫出來的（要「模擬到位」），但屬 run 產物，不進版控
+# 若在 tools/test_platform 目錄下誤跑 pytest，pyproject 的 addopts 會相對 cwd 建出這個目錄
+tools/test_platform/reports/
+
+# 乾淨範本鏡像的位置（每台機器不同；lint 的 D13 靠它判斷鏡像有沒有跟上）
+.template-mirror

@@ -1,0 +1,9 @@
+# ⚠️ 本檔已停止使用，相依一律列在**工作區根目錄的 `requirements.txt`**。
+#
+# 為什麼收斂成一份（2026-08-23）：
+#   `scripts/setup_test_env.ps1` 只安裝根目錄那份。平台的 flask／psutil／requests
+#   原本只列在這裡，本機因為壓測工具裝過所以沒事 ——
+#   但**匯出給同事的範本，平台開不起來**，而且錯誤訊息是 `ModuleNotFoundError: flask`，
+#   看不出是環境建置漏裝。
+#
+# 新增平台相依 → 加到根目錄的 requirements.txt 的「統一測試平台」區塊。

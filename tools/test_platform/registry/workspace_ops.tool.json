@@ -1,0 +1,511 @@
+{
+  "$schema": "./_schema.json",
+  "spec_version": 1,
+  "id": "workspace_ops",
+  "product": "common",
+  "name": "工作區治理腳本",
+  "subtitle": "體檢 · 盤點 · 打包 · 歸檔 —— 拿現有的工作區做一件事",
+  "kind": "cli",
+  "owner": "共通",
+  "tags": [
+    "治理",
+    "本機",
+    "唯讀為主"
+  ],
+  "order": 1,
+  "docs": [
+    "README.md"
+  ],
+  "danger": {
+    "level": "low",
+    "confirm_text": "本工具只操作本機工作區的檔案，不碰任何測試站。個別命令另有各自的危險等級。"
+  },
+  "runtime": {
+    "cwd": ".",
+    "env": {
+      "PYTHONUTF8": "1",
+      "PYTHONIOENCODING": "utf-8"
+    },
+    "requires": {
+      "python_modules": []
+    }
+  },
+  "_為什麼從 setup 拆出來": [
+    "2026-08-24 使用者：「設定頁面的工作區分頁中，有很多非必要的設定操作，",
+    "保留必要的即可」。判準是**這件事是「設定／初始化」還是「做一件事」**：",
+    "  · 改變工作區怎麼組成的（接產品／裝 memory／匯出範本／清空產品）→ 設定頁",
+    "  · 拿現有的工作區做一件事（體檢／盤點／打包／歸檔）→ 工具頁",
+    "⚠️ 這不牴觸「設定功能不要出現在工具頁」那條裁示 —— 治理腳本不是設定功能。"
+  ],
+  "commands": [
+    {
+      "id": "health",
+      "label": "工作區體檢",
+      "mode": "sync",
+      "primary": true,
+      "description": "跑 lint_docs 的跨檔一致性檢查（D8 skill 章節指標／D9 交接檔編號重複／D10 積壓／D11 範本白名單）。純唯讀。",
+      "argv": [
+        "scripts/lint_docs.py"
+      ],
+      "timeout_sec": 120,
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": []
+      }
+    },
+    {
+      "id": "lint_product",
+      "label": "收尾體檢（單一產品）",
+      "mode": "sync",
+      "description": "跑 lint_docs.py --product <產品>：D1／D5 斷連結、D6 交接檔過期、D7 規格行被刪改。⭐ handoff skill 明訂收尾一律要跑這支 —— D6 是「收尾漏做」的訊號，只改日期等於把警告關掉。純唯讀。",
+      "argv": [
+        "scripts/lint_docs.py"
+      ],
+      "timeout_sec": 180,
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "product",
+            "type": "select",
+            "label": "產品",
+            "required": true,
+            "arg": "--product",
+            "emit": "opt",
+            "options_from": {
+              "source": "products",
+              "value": "product_id"
+            },
+            "help": "用 config/products.json 的產品 id（中文），不是英文代號"
+          }
+        ]
+      },
+      "next": [
+        {
+          "label": "看該產品的待辦",
+          "href": "#/product/{product}",
+          "primary": true
+        }
+      ]
+    },
+    {
+      "id": "template_audit",
+      "label": "範本白名單稽核",
+      "mode": "sync",
+      "description": "檢查 export_template 的白名單是否仍涵蓋整個 repo。漏分類的通用檔會無聲地不再匯出，漏分類的產品檔會被夾帶出去。",
+      "argv": [
+        "scripts/export_template.py",
+        "--audit"
+      ],
+      "timeout_sec": 60,
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": []
+      },
+      "next": [
+        {
+          "label": "匯出一份範本",
+          "href": "#/tool/setup",
+          "when": "ok"
+        }
+      ]
+    },
+    {
+      "id": "compare",
+      "label": "比對某份既有的匯出",
+      "mode": "sync",
+      "description": "三方比較，分辨「同事改的」與「範本更新的」。共同語言層的差異會單獨標紅 —— 那一層分岔了，大家就看不懂彼此的報告。只報告，不覆蓋任何檔案。",
+      "argv": [
+        "scripts/export_template.py"
+      ],
+      "timeout_sec": 120,
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "compare",
+            "type": "text",
+            "label": "要比對的目錄",
+            "required": true,
+            "arg": "--compare",
+            "emit": "opt",
+            "placeholder": "例：D:\\QA-Template"
+          }
+        ]
+      }
+    },
+    {
+      "id": "jira_match",
+      "label": "JIRA 配對盤點",
+      "mode": "sync",
+      "description": "跑 jira_match_bugs.py：把本地 Bug 單與 JIRA 單配對，列出「該重驗」「該關單」「本地有但 JIRA 沒開」。⭐ `handoff` skill 的開工清單：**要用的前一刻才跑** —— 靜態清單會隨 JIRA 狀態變動而失準。預設純唯讀（不回填）。",
+      "argv": [
+        "scripts/jira_match_bugs.py"
+      ],
+      "timeout_sec": 300,
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "product",
+            "type": "select",
+            "label": "產品",
+            "required": true,
+            "arg": "--product",
+            "emit": "opt",
+            "options_from": {
+              "source": "products",
+              "value": "product_id"
+            },
+            "help": "用 config/products.json 的產品 id（中文），不是英文代號"
+          },
+          {
+            "key": "recheck",
+            "type": "boolean",
+            "label": "只列待重驗",
+            "arg": "--recheck",
+            "emit": "flag_when_true",
+            "default": false,
+            "help": "RD 說修好了、我方還沒重驗的那些"
+          }
+        ]
+      },
+      "next": [
+        {
+          "label": "看 Bug 現況",
+          "href": "#/product/{product}",
+          "primary": true
+        }
+      ]
+    },
+    {
+      "id": "coverage",
+      "label": "覆蓋率盤點",
+      "mode": "sync",
+      "description": "跑 coverage_matrix.py：某份驗證項目清單「盤到了幾項、驗到什麼深度、差距最大的是哪些」。方法論見 `testcase-design` skill。純唯讀。",
+      "argv": [
+        "scripts/coverage_matrix.py"
+      ],
+      "timeout_sec": 180,
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "file",
+            "type": "path_picker",
+            "label": "驗證項目清單",
+            "required": true,
+            "arg": "--file",
+            "emit": "opt",
+            "placeholder": "docs/<產品>/<...>_驗證項目清單.md",
+            "help": "覆蓋矩陣那份 markdown"
+          },
+          {
+            "key": "gaps",
+            "type": "boolean",
+            "label": "只列差距最大的",
+            "arg": "--gaps",
+            "emit": "flag_when_true",
+            "default": false
+          },
+          {
+            "key": "lint",
+            "type": "boolean",
+            "label": "順便檢查格式完整性",
+            "arg": "--lint",
+            "emit": "flag_when_true",
+            "default": false,
+            "help": "缺欄位／缺標記"
+          }
+        ]
+      },
+      "next": [
+        {
+          "label": "看案例瀏覽器",
+          "href": "#/cases",
+          "primary": true
+        }
+      ]
+    },
+    {
+      "id": "bug_assets",
+      "label": "Bug 單與截圖體檢",
+      "mode": "sync",
+      "description": "跑 lint_bug_assets.py：截圖有沒有被引用／有沒有標注、以及 **W8**（Reproduce Steps 超過 5 步、正文有成因推導、缺 Test Environment）。收尾前跑一次。純唯讀（不加 --quarantine）。",
+      "argv": [
+        "scripts/lint_bug_assets.py"
+      ],
+      "timeout_sec": 180,
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "product",
+            "type": "select",
+            "label": "產品",
+            "required": false,
+            "arg": "--product",
+            "emit": "opt",
+            "options_from": {
+              "source": "products",
+              "value": "product_id"
+            },
+            "help": "留空＝檢查全部產品"
+          },
+          {
+            "key": "verbose",
+            "type": "boolean",
+            "label": "連已豁免的也列出",
+            "arg": "--verbose",
+            "emit": "flag_when_true",
+            "default": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "pack_report",
+      "label": "打包 Bug 回報給 RD",
+      "mode": "sync",
+      "description": "跑 pack_bug_report.py：把幾張 Bug 單複製成對外版本（**移除 frontmatter 與內部註記**）＋ 它們引用到的截圖，放進 `bugs/_deliver/<名稱>/`。⚠️ 產出含測試站資訊，交付前自己再看一眼。",
+      "argv": [
+        "scripts/pack_bug_report.py"
+      ],
+      "timeout_sec": 180,
+      "danger": {
+        "level": "low",
+        "note": "只寫進 bugs/_deliver/，不動原始單"
+      },
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "product",
+            "type": "select",
+            "label": "產品",
+            "required": true,
+            "arg": "--product",
+            "emit": "opt",
+            "options_from": {
+              "source": "products",
+              "value": "product_id"
+            },
+            "help": "用 config/products.json 的產品 id（中文），不是英文代號"
+          },
+          {
+            "key": "name",
+            "type": "text",
+            "label": "這一批的名稱",
+            "required": true,
+            "arg": "--name",
+            "emit": "opt",
+            "placeholder": "2026-08-23_賠率變動設置",
+            "help": "會變成 _deliver/ 底下的資料夾名"
+          },
+          {
+            "key": "ids",
+            "type": "text",
+            "label": "要打包的單號",
+            "required": true,
+            "arg": "--ids",
+            "emit": "join",
+            "placeholder": "CRUX-019 CRUX-020",
+            "help": "空白分隔"
+          }
+        ]
+      },
+      "next": [
+        {
+          "label": "看報告中心",
+          "href": "#/reports",
+          "when": "ok",
+          "primary": true
+        }
+      ]
+    },
+    {
+      "id": "archive",
+      "label": "歸檔已結案的單",
+      "mode": "sync",
+      "description": "跑 archive_bugs.py：把 `fixed`／`rejected`／`superseded` 的單搬進 `bugs/old/`，並自動重跑 `gen_bug_index`。⚠️ **ID 永不回收** —— 歸檔只是搬位置，號碼不會被重用。預設是**預演**（不動檔案），要真的搬請勾下面那個。",
+      "argv": [
+        "scripts/archive_bugs.py"
+      ],
+      "timeout_sec": 300,
+      "danger": {
+        "level": "medium",
+        "note": "會搬動 bugs/ 底下的檔案（bugs/ 不版控，搬錯只能手動搬回）"
+      },
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "product",
+            "type": "select",
+            "label": "產品",
+            "required": true,
+            "arg": "--product",
+            "emit": "opt",
+            "options_from": {
+              "source": "products",
+              "value": "product_id"
+            },
+            "help": "用 config/products.json 的產品 id（中文），不是英文代號"
+          },
+          {
+            "key": "status",
+            "type": "select",
+            "label": "只歸檔某個狀態",
+            "arg": "--status",
+            "emit": "opt",
+            "options": [
+              {
+                "value": "",
+                "label": "全部已結案的"
+              },
+              {
+                "value": "fixed",
+                "label": "fixed"
+              },
+              {
+                "value": "rejected",
+                "label": "rejected"
+              },
+              {
+                "value": "superseded",
+                "label": "superseded"
+              }
+            ],
+            "default": ""
+          },
+          {
+            "key": "yes",
+            "type": "boolean",
+            "label": "真的搬（不勾＝預演）",
+            "arg": "--yes",
+            "emit": "flag_when_true",
+            "default": false
+          }
+        ]
+      },
+      "next": [
+        {
+          "label": "看 Bug 現況",
+          "href": "#/product/{product}",
+          "when": "ok"
+        }
+      ]
+    },
+    {
+      "id": "report_html",
+      "label": "報告轉 HTML",
+      "mode": "sync",
+      "description": "跑 md_to_html_report.py：把 markdown 報告轉成單檔 HTML，給不看 markdown 的人（RD／PM）。⚠️ 產出與來源同目錄 —— `bugs/` 底下的報告轉出來一樣不版控。",
+      "argv": [
+        "scripts/md_to_html_report.py"
+      ],
+      "timeout_sec": 120,
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "src",
+            "type": "path_picker",
+            "label": "報告檔",
+            "required": true,
+            "emit": "positional",
+            "placeholder": "docs/<產品>/bugs/_reports/需求驗證報告_….md"
+          }
+        ]
+      }
+    },
+    {
+      "id": "trace_value",
+      "label": "追一個值散在哪些檔",
+      "mode": "sync",
+      "description": "跑 trace_value.py：某個規格值／公式／日期出現在哪些檔（**含 memory**）。⭐ `writeback` §5 的紀律：**改規格值之前跑一次**（看它散在哪）、**改完再跑一次**（確認歸零）—— 更新時只加不刪是既有矛盾的頭號成因。",
+      "argv": [
+        "scripts/trace_value.py"
+      ],
+      "timeout_sec": 180,
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "value",
+            "type": "text",
+            "label": "要追的值",
+            "required": true,
+            "arg": "--value",
+            "emit": "opt",
+            "placeholder": "2025-01-02 / 16.7 / 某個舊公式"
+          },
+          {
+            "key": "quiet",
+            "type": "boolean",
+            "label": "只印統計",
+            "arg": "--quiet",
+            "emit": "flag_when_true",
+            "default": false,
+            "help": "收尾自檢時用"
+          }
+        ]
+      }
+    },
+    {
+      "id": "verify_platform",
+      "label": "平台自我驗收",
+      "mode": "sync",
+      "description": "跑 verify_platform.py：對**正在跑的這個平台**做端到端體檢（索引／草稿／落檔／任務／設定十餘個區塊）。預設寫入型動線只預覽、不真的寫。改平台之後跑一次。",
+      "argv": [
+        "scripts/verify_platform.py"
+      ],
+      "timeout_sec": 600,
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "write",
+            "type": "boolean",
+            "label": "連寫入型動線也真的寫",
+            "arg": "--write",
+            "emit": "flag_when_true",
+            "default": false,
+            "help": "會自己清乾淨；不確定就別勾"
+          }
+        ]
+      },
+      "next": [
+        {
+          "label": "看執行紀錄",
+          "href": "#/reports",
+          "primary": true
+        }
+      ]
+    }
+  ]
+}

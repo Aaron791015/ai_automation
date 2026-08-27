@@ -1,0 +1,275 @@
+{
+  "$schema": "./_schema.json",
+  "spec_version": 1,
+  "id": "setup",
+  "scope": "workspace",
+  "name": "工作區設定",
+  "subtitle": "接產品 · 裝通用 memory · 匯出範本給同事",
+  "kind": "cli",
+  "owner": "共通",
+  "tags": [
+    "範本",
+    "初始化",
+    "工作區"
+  ],
+  "order": 0,
+  "docs": [
+    "README.md"
+  ],
+  "danger": {
+    "level": "low",
+    "confirm_text": "本工具只操作本機工作區的檔案，不碰任何測試站。個別命令另有各自的危險等級。"
+  },
+  "runtime": {
+    "cwd": ".",
+    "env": {
+      "PYTHONUTF8": "1",
+      "PYTHONIOENCODING": "utf-8"
+    },
+    "requires": {
+      "python_modules": []
+    }
+  },
+  "commands": [
+    {
+      "id": "new_product",
+      "label": "接一個產品",
+      "mode": "sync",
+      "description": "建目錄、產品 skill 骨架、交接檔，並註冊到 config/products.json（產品定義的單一來源）。⛔ 不要手動建 —— 漏一步就不會被 lint 檢查到。",
+      "argv": [
+        "scripts/new_product.py"
+      ],
+      "timeout_sec": 60,
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "id",
+            "type": "text",
+            "label": "產品名",
+            "required": true,
+            "arg": "--id",
+            "emit": "opt",
+            "placeholder": "例：樂透",
+            "help": "會用在 --product 參數與 Bug 單的 product 欄；可用中文"
+          },
+          {
+            "key": "docs_dir",
+            "type": "text",
+            "label": "文件目錄名",
+            "required": true,
+            "arg": "--docs-dir",
+            "emit": "opt",
+            "placeholder": "例：Lotto",
+            "help": "docs/ 底下的目錄名。建議用英文，路徑好打"
+          },
+          {
+            "key": "bug_prefix",
+            "type": "text",
+            "label": "Bug 單前綴",
+            "required": true,
+            "arg": "--bug-prefix",
+            "emit": "opt",
+            "placeholder": "例：LOTTO",
+            "pattern": "^[A-Z][A-Z0-9]*$",
+            "help": "大寫英數。⛔ ID 配發後永不回收，前綴選定就不要再改"
+          },
+          {
+            "key": "alias",
+            "type": "text",
+            "label": "英文代號（slug）",
+            "required": true,
+            "arg": "--alias",
+            "emit": "opt",
+            "placeholder": "例：lotto",
+            "pattern": "^[a-z][a-z0-9_-]*$",
+            "help": "小寫英數。同時是 skill 名、測試助手的產品 slug 與網址（#/product/<slug>）"
+          },
+          {
+            "key": "wordmark",
+            "type": "text",
+            "label": "主視覺字樣",
+            "required": false,
+            "arg": "--wordmark",
+            "emit": "opt",
+            "placeholder": "留空＝自動",
+            "help": "儀表板全息投影的字。中英皆可；留空時產品名夠短就用產品名，否則用英文代號大寫。太長會撐不進基座間距（原型：CRUX／Seven／ChatBot／共通）"
+          },
+          {
+            "key": "jira_key",
+            "type": "text",
+            "label": "JIRA project key",
+            "required": false,
+            "arg": "--jira-key",
+            "emit": "opt",
+            "placeholder": "選填，例：LOT",
+            "help": "沒有 JIRA 就留空 —— Bug 面板會顯示「未設定」而不是報錯"
+          },
+          {
+            "key": "dry_run",
+            "type": "boolean",
+            "label": "只試算不寫檔",
+            "default": true,
+            "arg": "--dry-run",
+            "emit": "flag_when_true",
+            "help": "★ 先勾著跑一次看它會建什麼，確認無誤再取消勾選"
+          }
+        ]
+      },
+      "primary": true,
+      "next": [
+        {
+          "label": "看看你的產品頁",
+          "href": "#/product/{alias}",
+          "when": "ok",
+          "primary": true
+        },
+        {
+          "label": "檢查文件一致性",
+          "href": "#/tool/workspace_ops"
+        }
+      ]
+    },
+    {
+      "id": "bootstrap",
+      "label": "裝通用 memory",
+      "mode": "sync",
+      "description": "把 .claude/memory-seed/ 的通用 QA 教訓裝進本機 memory 並補進索引。memory 存在 repo 外面且以路徑當 key，clone 帶不過來，所以要跑這一步。",
+      "argv": [
+        "scripts/bootstrap_workspace.py"
+      ],
+      "timeout_sec": 60,
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "dry_run",
+            "type": "boolean",
+            "label": "只試算不寫檔",
+            "default": false,
+            "arg": "--dry-run",
+            "emit": "flag_when_true"
+          },
+          {
+            "key": "force",
+            "type": "boolean",
+            "label": "覆蓋已存在的",
+            "default": false,
+            "arg": "--force",
+            "emit": "flag_when_true",
+            "help": "⚠️ 預設「已存在就跳過」—— 你可能已經按自己的情況改過那則。真的要拿範本版本蓋掉才勾"
+          }
+        ]
+      },
+      "next": [
+        {
+          "label": "回總覽",
+          "href": "#/",
+          "when": "ok"
+        }
+      ]
+    },
+    {
+      "id": "reset",
+      "label": "清空範本原型的產品",
+      "mode": "sync",
+      "description": "清掉 docs/<產品>/、產品 skill、tools/<產品>_*、tests/<產品>/ 並自 config/products.json 移除。只有「clone 原型 repo」的人需要；拿到匯出範本的人不必。",
+      "argv": [
+        "scripts/reset_workspace.py"
+      ],
+      "timeout_sec": 120,
+      "danger": {
+        "level": "high",
+        "confirm_text": "⛔ 不可逆：docs/<產品>/bugs/ 整層不版控，刪掉沒有 git 可以救。確定要清除？",
+        "require_typed_confirm": true
+      },
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "product",
+            "type": "select",
+            "label": "只清這一個產品",
+            "required": false,
+            "arg": "--product",
+            "emit": "opt",
+            "options_from": {
+              "source": "products",
+              "value": "product_id"
+            },
+            "help": "留空 ＝ 清除全部產品"
+          },
+          {
+            "key": "apply",
+            "type": "boolean",
+            "label": "真的執行",
+            "default": false,
+            "arg": "--apply",
+            "emit": "flag_when_true",
+            "help": "★ 不勾 ＝ dry-run，只列出會刪什麼。確認清單無誤再勾"
+          }
+        ]
+      },
+      "next": [
+        {
+          "label": "接一個自己的產品",
+          "href": "#/tool/setup",
+          "when": "ok",
+          "primary": true
+        }
+      ]
+    },
+    {
+      "id": "export",
+      "label": "匯出範本給同事",
+      "mode": "sync",
+      "description": "白名單匯出（git 追蹤 ∩ 白名單）＋ 四條自我驗收。⛔ 給同事一律走這支，不要複製資料夾 —— 資料夾複製會帶走 config.local.json、bugs/ 的測試站帳密、created_accounts/ 的數百組帳號。",
+      "argv": [
+        "scripts/export_template.py"
+      ],
+      "timeout_sec": 300,
+      "danger": {
+        "level": "high",
+        "confirm_text": "匯出前會清空目標目錄（只清「本工具上次的匯出」，不認得的非空目錄一律拒絕）。確定目標路徑正確？",
+        "require_typed_confirm": true
+      },
+      "result": {
+        "kind": "text"
+      },
+      "params": {
+        "fields": [
+          {
+            "key": "out",
+            "type": "text",
+            "label": "匯出目標目錄",
+            "required": true,
+            "arg": "--out",
+            "emit": "opt",
+            "placeholder": "例：D:\\QA-Template",
+            "help": "⛔ 不可指向工作區內部。空目錄／不存在／上次的匯出才會被接受"
+          },
+          {
+            "key": "dry_run",
+            "type": "boolean",
+            "label": "只列出會複製什麼",
+            "default": true,
+            "arg": "--dry-run",
+            "emit": "flag_when_true"
+          }
+        ]
+      },
+      "next": [
+        {
+          "label": "比對這份匯出與現在的差異",
+          "href": "#/tool/workspace_ops"
+        }
+      ]
+    }
+  ]
+}

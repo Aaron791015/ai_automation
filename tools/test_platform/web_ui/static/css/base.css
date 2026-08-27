@@ -1,0 +1,488 @@
+/* 基礎：reset、殼（左 rail ＋ 細 header）、背景場、單屏／內捲版面模式、通用工具類 */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.45;
+  font-size: 13px;
+  overflow: hidden;                 /* 殼不捲；捲動由各頁內容區負責 */
+}
+/* 連結用 `--accent`（8.6:1）而不是 `--accent-2`（4.3:1）——
+   後者旋到藍之後亮度掉太多，當內文連結會讀不清楚。`--accent-2` 保留給線條與填色。 */
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: #a9d0f7; text-decoration: none; }
+code, .mono { font-family: var(--mono); font-size: .92em; }
+.num { font-variant-numeric: tabular-nums; }
+button { font-family: inherit; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ── 背景場：中央的一團青色輝光 ＋ 補光 ＋ 細網格 ──
+   ★ 2026-08-21 依參考圖 IMG_5256 重做：輝光**在中央偏下**（參考圖裡是地球那一帶），
+     面板是半透明的暗片、疊在這團光上 —— 所以這一層就是全站「氛圍」的來源，
+     不是可有可無的裝飾。調暗它，整個畫面就會回到死平。
+   ⚠️ 先前是「左上主光 ＋ 右下補光」的前打光配置，配的是實體浮雕卡片；
+      面板改成背光之後那組配置就不成立了，不要改回去。 */
+body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(1250px 780px at 50% 74%, rgba(45, 128, 225, .30), transparent 66%),     /* 主輝光：中央偏下 */
+    radial-gradient(1500px 700px at 50% 26%, rgba(70, 145, 240, .13), transparent 70%),     /* 上半的寬淡暈，接住上排面板 */
+    radial-gradient(800px 800px at 4% 6%, rgba(41, 125, 224, .09), transparent 62%),        /* 左上一點冷光，避免死角 */
+    radial-gradient(800px 800px at 98% 96%, rgba(41, 125, 224, .07), transparent 62%),      /* 右下同理 */
+    linear-gradient(180deg, rgba(30, 91, 170, .05), rgba(30, 91, 170, .09) 60%, rgba(30, 91, 170, .04)),  /* 全域青霧：參考圖整張圖都罩著一層 */
+    repeating-linear-gradient(0deg, var(--grid-line) 0 1px, transparent 1px 34px),
+    repeating-linear-gradient(90deg, var(--grid-line) 0 1px, transparent 1px 34px);
+}
+/* 暈影：四邊壓暗，讓視線收束到中央，也讓「有打光」這件事成立。
+   ⚠️ 這裡原本是**四角 L 框** —— 那是第三版已在全站拿掉的軍事 HUD 語彙，
+   開機畫面與此處是最後兩個殘留，一併汰除（2026-08-20）。 */
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(115% 96% at 50% 62%, transparent 34%, rgba(0, 0, 0, .68) 100%);
+}
+
+/* ⭐ 浮層（modal／指令列／對話視窗）開著時，**凍結背後所有迴圈動畫**。
+ *
+ * 📝 **2026-08-24 更正這一段的理由**（原本寫的是「背後在動 → 模糊要每幀重算」，
+ *    而全螢幕模糊已於同日整個移除，那個說法已不成立）。
+ *
+ * 現在的理由是**量出來的**：浮層開著、使用者在裡面捲動時，背後那些無限迴圈動畫
+ * （rail 旋轉環、AI 燈呼吸、入口訊號點、掃描線）**仍然每幀讓合成器動一次**，
+ * 而它們早就被遮罩蓋住、根本看不見。
+ * 實測（30 幀捲動，各三次取中位數，全螢幕模糊已移除的前提下）：
+ *     背後凍結 ····· 588ms
+ *     背後照跑 ····· 675ms   ← 白花 15%
+ * ⚠️ 這裡只停「看不見的迴圈動畫」，不停浮層自己的進場動畫。 */
+body.overlay-open .rail .logo::before,
+body.overlay-open .rail .ai-orb::after,
+body.overlay-open .portal-glyph .sig,
+body.overlay-open .scanline { animation: none !important; }
+
+/* ── 殼 ── */
+#shell { position: relative; z-index: 1; display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); height: 100dvh; min-height: 0; overflow: hidden; }
+
+/* 左側 icon 導覽欄 */
+.rail {
+  display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+  padding: 8px 0; border-right: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(7, 19, 32, .95), rgba(3, 9, 17, .96));
+  /* ⛔ **不要在這裡放 `backdrop-filter`。** 實測它一支就吃掉 **11ms/幀**
+     （總覽 27.3ms → 15.6ms，等於 37fps → 64fps）：rail 是 64×1080 的長條，
+     只要主視覺有任何動畫在跑，它每一幀都要把背後重新模糊一次。
+     而背後只有一層平滑的漸層 —— **模糊一片平滑漸層，視覺上完全看不出差別**，
+     等於花 11ms 買 0。玻璃效果只留給**真正壓在內容之上**的浮層（modal／指令列／dock／toast）。 */
+  border-right-color: var(--frame);   /* 殼的分界也走同一條框線語彙 */
+  box-shadow: var(--edge-lit);
+}
+.rail .logo-wrap { display: grid; place-items: center; padding: 4px 0 12px; }
+.rail .logo {
+  width: 32px; height: 32px; border-radius: 50%; position: relative;
+  border: 1px solid var(--accent); box-shadow: var(--glow-accent), inset 0 0 10px rgba(127, 187, 240, .25);
+  display: grid; place-items: center;
+}
+.rail .logo::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: var(--glow-accent); }
+.rail .logo::before {
+  content: ""; position: absolute; inset: -5px; border-radius: 50%;
+  border: 1px solid var(--accent-dim); border-top-color: transparent; border-bottom-color: transparent;
+  animation: rail-spin 12s linear infinite;
+}
+@keyframes rail-spin { to { transform: rotate(360deg); } }
+html[data-motion="0"] .rail .logo::before { animation: none; }
+
+.rail a.nav {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 9px 2px; color: var(--text-muted); position: relative; cursor: pointer;
+  border-left: 2px solid transparent; transition: color .15s, background .15s;
+}
+.rail a.nav .ic { width: 20px; height: 20px; display: block; }
+.rail a.nav .ic svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.rail a.nav .lb { font-size: 9.5px; letter-spacing: .12em; white-space: nowrap; }
+.rail a.nav:hover { color: var(--text); background: var(--blue-faint); text-decoration: none; }
+/* 作用中：參考圖是一整塊被點亮的面板（左緣一條實線 ＋ 面本身泛青），不是只有一條線 */
+.rail a.nav.active { color: var(--accent); border-left-color: var(--accent);
+  background: linear-gradient(90deg, rgba(127, 187, 240, .26), rgba(127, 187, 240, .08));
+  box-shadow: inset 0 1px 0 rgba(127, 187, 240, .2), inset 0 -1px 0 rgba(127, 187, 240, .2),
+              inset -14px 0 26px -20px rgba(127, 187, 240, .9); }
+.rail a.nav.active .ic { filter: drop-shadow(var(--glow-accent)); }
+.rail .spacer { flex: 1; }
+.rail .ai-status {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 2px 4px;
+  border-top: 1px solid var(--border); cursor: pointer; color: var(--text-muted);
+}
+.rail .ai-status:hover { color: var(--text); }
+.rail .ai-orb {
+  width: 30px; height: 30px; border-radius: 50%; position: relative;
+  border: 1px solid var(--accent-dim); display: grid; place-items: center;
+}
+/* ⭐ 2026-08-24：這裡是**唯一的常駐對話入口**（右下浮動按鈕已移除），
+   所以要看得出來它可以點。三層：光暈環擴散 ＋ 呼吸加深 ＋ 未讀轉琥珀。
+   ⚠️ 動畫只掛在兩個偽元素上（各一個圓）—— `VISUAL.md` 效能節：
+      迴圈動畫要壓在極少的節點上，別讓它每幀重畫一整片 rail。 */
+.rail .ai-orb::after {
+  content: ""; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--accent); box-shadow: var(--glow-accent);
+  animation: orb-breath 2.6s ease-in-out infinite;
+}
+/* 光暈環：由內往外擴散 —— 擴散是餘光最容易捕捉到的動態 */
+.rail .ai-orb::before {
+  content: ""; position: absolute; inset: -1px; border-radius: 50%;
+  border: 1px solid var(--accent); opacity: 0;
+  animation: orb-ripple 2.6s ease-out infinite;
+}
+.rail .ai-status:hover .ai-orb::before { animation-duration: 1.3s; }
+
+.rail .ai-status.off .ai-orb { border-color: var(--border-strong); }
+.rail .ai-status.off .ai-orb::after { background: var(--border-strong); box-shadow: none; animation: none; }
+/* ⛔ 離線時整組停掉 —— 那時它不是入口，是狀態顯示 */
+.rail .ai-status.off .ai-orb::before { animation: none; opacity: 0; }
+
+/* ⭐ 未讀：轉琥珀並加快 —— 「現在有事要看」要與平時待機分得出來 */
+.rail .ai-status.has-unread .ai-orb { border-color: var(--accent-amber); }
+.rail .ai-status.has-unread .ai-orb::after {
+  background: var(--accent-amber); box-shadow: var(--glow-amber);
+  animation-duration: 1.1s;
+}
+.rail .ai-status.has-unread .ai-orb::before { border-color: var(--accent-amber); animation-duration: 1.1s; }
+.rail .ai-status .unread { display: none; }   /* 整顆燈就是徽章，不必再點一顆 */
+
+@keyframes orb-breath {
+  0%, 100% { opacity: .45; transform: scale(.86); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+@keyframes orb-ripple {
+  0% { opacity: .75; transform: scale(.7); }
+  70% { opacity: 0; transform: scale(1.5); }
+  100% { opacity: 0; transform: scale(1.5); }
+}
+html[data-motion="0"] .rail .ai-orb::after,
+html[data-motion="0"] .rail .ai-orb::before { animation: none; }
+html[data-motion="0"] .rail .ai-orb::before { opacity: .4; }
+.rail .ai-status .lb { font-size: 8.5px; letter-spacing: .1em; }
+.rail .ai-status .st { font-size: 8.5px; letter-spacing: .1em; color: var(--accent); }
+.rail .ai-status.off .st { color: var(--text-muted); }
+
+/* 右側：header ＋ main */
+#stage { display: grid; grid-template-rows: var(--header-h) minmax(0, 1fr); min-width: 0; min-height: 0; }
+.top-hud {
+  display: flex; align-items: center; gap: 14px; padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(7, 19, 32, .95), rgba(3, 9, 17, .82));
+  /* ⛔ 同上：這裡原本也有 backdrop-filter，一併移除（見 .rail 的說明）。 */
+  border-bottom-color: var(--frame);
+  box-shadow: var(--edge-lit);
+}
+/* ⛔ `.top-hud h1`（「測試助手」）已於 2026-08-24 移除 —— 使用者：
+   身分由 rail 最上方的 logo 負責，同一件事不必在 header 再講一次。
+   中間那格改放**工作區識別**（`#ws-badge`），見 `main.js`。 */
+/* 副標：參考圖是置中、青色、字距很開的一行（"AI POWERED PORTFOLIO INTELLIGENCE"）*/
+.top-hud .sub { font-size: .62rem; color: var(--accent); letter-spacing: .3em; text-transform: uppercase; white-space: nowrap;
+  text-shadow: 0 0 12px rgba(41, 125, 224, .45); }
+.top-hud .grow { flex: 1; }
+/* ⭐ 平台斷線（2026-08-24 走查盲點 ⑦）—— 先前輪詢失敗是**完全靜默**的，
+   畫面停在最後一次的資料、一切看起來正常。
+   ⚠️ 只讓 header 變色，不遮住內容：畫面上的舊資料仍然有參考價值。 */
+body.is-offline .top-hud {
+  border-bottom-color: var(--danger);
+  box-shadow: inset 0 -1px 0 var(--danger);
+}
+body.is-offline .top-hud .sub {
+  color: var(--danger); letter-spacing: .08em; text-transform: none;
+}
+body.is-offline .top-hud .sub::before {
+  content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--danger); margin-right: 6px; vertical-align: middle;
+  animation: offline-blink 1.4s ease-in-out infinite;
+}
+@keyframes offline-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+html[data-motion="0"] body.is-offline .top-hud .sub::before { animation: none; }
+/* 時鐘停了也是線索之一 —— 它本來就是伺服器時間 */
+body.is-offline .clock { opacity: .4; }
+.clock { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--accent); font-size: .82rem; letter-spacing: .08em; text-shadow: 0 0 8px rgba(127, 187, 240, .3); }
+.env-badge, .demo-badge {
+  font-size: .66rem; padding: 2px 9px; letter-spacing: .04em; white-space: nowrap;
+  border-radius: var(--radius);
+}
+.env-badge { background: rgba(138, 107, 20, .18); border: 1px solid var(--warn-border); color: #f0c674; }
+.demo-badge { background: rgba(255, 182, 72, .1); border: 1px solid var(--accent-amber); color: var(--accent-amber); }
+/* 內容區本身也是一個受光面：上亮下暗的極淡衰減，讓長頁面不會整片死平 */
+main.view { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column;
+  /* ⚠️ 內容區**不自己打光** —— 氛圍統一由 body::before 那團輝光提供，
+     面板是半透明的、疊在它上面。這裡再加一層會讓面板的透光被洗掉。 */
+  background: none; }
+main.view > * { flex: 1; min-height: 0; }
+
+/* ── view 容器：一頁一個 pane，重的頁面切走時留在文件裡 ──────────────────
+   `content-visibility: hidden` 會**保留算好的排版狀態**，切回來幾乎不用重排 ——
+   實測總覽（5,347 個 SVG 節點）：重建 86ms／搬節點 58ms／display 38ms／
+   visibility 27ms／**content-visibility 8–12ms**。詳見 js/router.js 檔頭。
+   ⚠️ pane 是絕對定位，`main.view` 必須 position: relative（見上方）。 */
+.view-pane { position: absolute; inset: 0; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.view-pane > * { flex: 1; min-height: 0; }
+.view-pane.pane-off { content-visibility: hidden; pointer-events: none; }
+/* ⚠️ content-visibility: hidden 會跳過渲染，**但不會停掉 CSS 動畫**——
+   實測離開總覽後仍有 44 個動畫在看不見的 pane 上跑（getAnimations({subtree:true})），
+   那也是主控台唯一那則重複警告的來源。暫停而非移除，切回來時狀態還在。 */
+.view-pane.pane-off,
+.view-pane.pane-off * { animation-play-state: paused !important; }
+
+/* ── 換頁轉場：一道光帶掃過，暗幕跟著退場 ──────────────────────────────
+   兩層各司其職：`view-veil` 是一道由左掃到右的青色光帶（＝畫面被「掃過」），
+   `view-wipe` 是內容區上緣同步掃過的青光（＝告訴眼睛換的是這一塊，不是整個殼在閃）。
+   光帶寬 33% 畫面、1s 掃過（2026-08-20 使用者兩次指定：縮小 25%、放慢到 1s）；
+   上緣光線 .45s，在光帶掃到約中段時收尾。
+
+   ⚠️ **光帶要窄**：實測（換頁到總覽的平均每幀，headless）
+      全幅暗幕 36.9ms ／ 只留上緣光帶 30.3ms ／ **窄光帶掃過 28.5ms** ／ 完全不做動畫 29.5ms
+      —— 窄光帶已經與「不做動畫」同一水準，全幅半透明遮罩則要每幀把整個畫面重新混色。
+      要改效果時請維持「**動的面積小**」這條線，不要再鋪滿整個內容區。
+
+   ⚠️ **為什麼不動內容本身**（2026-08-20 第二次改）：
+      原本是讓 view 的根節點做 opacity ＋ translateY 進場。問題是總覽主視覺有 5,347 個
+      SVG 節點、案例／報告頁是數百列的表格 —— 對這種子樹做動畫，瀏覽器得把整層重新光柵化，
+      實測換頁的平均每幀由 23ms 升到 39ms，正是「切換不夠滑順」的來源。
+      改成只動**兩個 pseudo element**（一片漸層、一條光帶）之後，動的東西恆定是兩層純色，
+      跟頁面多重都無關。要加轉場效果時請守住這條線：**動蓋在上面的東西，不要動內容**。
+   ⚠️ ::before/::after 在 flex 容器裡本來會變成 flex item —— 一定要 absolute 出流，
+      否則會被當成額外的欄把版面撐開。 */
+main.view { position: relative; }
+main.view.view-enter::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -33%; width: 33%; z-index: 4; pointer-events: none;
+  background: linear-gradient(96deg, rgba(127, 187, 240, 0) 0 14%, rgba(127, 187, 240, .10) 50%,
+                                     rgba(127, 187, 240, .24) 84%, rgba(200, 231, 255, .46) 96%, rgba(127, 187, 240, 0));
+  /* 緩動要**接近等速**：曲線一旦前重，光帶就會在前 1/3 的時間掃完、剩下的時間在畫面外空轉
+     —— 那時把 duration 調長也不會變慢，只是空轉更久（2026-08-20 實測到這件事）。
+     現在用 `linear` —— 掃描光本來就該等速；亮邊約在 770ms 掃出右緣，
+     其餘 230ms 是尾巴收乾淨，1s 幾乎全用在看得見的行程上。
+     ⚠️ 改光帶寬度時 `view-veil` 的位移量要跟著改：**位移量 ＝ (100% + 光帶寬) ÷ 光帶寬**
+     （寬 33% → 403%，取 400%），少算的話光帶還沒離開畫面動畫就結束、會直接消失。 */
+  animation: view-veil 1s linear both;
+}
+main.view.view-enter::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; z-index: 5; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent) 55%, rgba(127, 187, 240, .12) 78%, transparent);
+  box-shadow: 0 0 14px rgba(127, 187, 240, .75), 0 6px 26px -6px rgba(127, 187, 240, .5);
+  animation: view-wipe .45s cubic-bezier(.3, .7, .3, 1) both;
+}
+@keyframes view-veil { from { transform: translateX(0); } to { transform: translateX(400%); } }
+@keyframes view-wipe {
+  0%   { opacity: 0; transform: scaleX(0); transform-origin: left; }
+  22%  { opacity: 1; }
+  100% { opacity: 0; transform: scaleX(1); transform-origin: left; }
+}
+/* 「降低動態」：轉場整組停掉（內容本來就沒被動到，不必寫回終點狀態） */
+html[data-motion="0"] main.view.view-enter::before,
+html[data-motion="0"] main.view.view-enter::after { display: none; }
+
+/* ── 版面模式 ── */
+/* A. 單屏（總覽）：填滿、不捲 */
+.screen { height: 100%; padding: 12px 14px; display: grid; gap: 10px; overflow: hidden; }
+/* B. 框架固定＋內容內捲（其餘頁） */
+/* ⭐ 2026-08-24：這裡原本有三處「替右下角浮動對話鈕讓位」的保留 ——
+   整頁 `padding-bottom: 66px`、`.page-foot` 右緣 `--dock-clear`、
+   捲動尾端 12px 留白。那顆按鈕已於同日移除（見 `hud.css` 的說明），
+   讓位卻留著：每一頁底部多出一條 66px 空白帶，內容還被切掉
+   （使用者回報並附圖：設定頁的「原始輸出」只露出半行）。
+   ⛔ **移除浮動元素時要連同它的讓位一起移除** —— 否則就是把可視範圍
+      讓給一個不存在的東西，而且沒有任何錯誤訊息會提醒你。 */
+.page { height: 100%; display: flex; flex-direction: column; padding: 12px 16px 14px; min-height: 0; }
+.page > .page-head, .page > .page-bar, .page > .page-foot { flex-shrink: 0; }
+.page > .page-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 4px; }
+.page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.page-head h2 { margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: .04em; display: flex; align-items: center; gap: 10px; }
+.page-head .crumb { font-size: .72rem; color: var(--text-muted); letter-spacing: .1em; text-transform: uppercase; }
+.page-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.fill { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.fill > .scroll { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* 小螢幕：解鎖捲動（硬塞單屏會不可讀） */
+@media (max-width: 1279px), (max-height: 759px) {
+  body { overflow: auto; }
+  #shell { height: auto; min-height: 100dvh; }
+  main.view { overflow: visible; }
+  /* 窄螢幕解鎖頁捲：pane 若維持絕對定位，main.view 就沒有內在高度、整頁撐不開 */
+  .view-pane { position: relative; inset: auto; }
+  .view-pane.pane-off { display: none; }
+  .screen { height: auto; overflow: visible; }
+  .page { height: auto; }
+  .page > .page-body { overflow: visible; }
+}
+@media (max-width: 860px) {
+  :root { --rail-w: 52px; }
+  .rail a.nav .lb { display: none; }
+}
+
+/* ── 通用 ── */
+.hidden { display: none !important; }
+.muted { color: var(--text-muted); }
+.small { font-size: .8rem; }
+.tiny { font-size: .7rem; }
+.right { text-align: right; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.row.between { justify-content: space-between; }
+.row.nowrap { flex-wrap: nowrap; }
+.stack { display: flex; flex-direction: column; gap: 8px; }
+.grid { display: grid; gap: 10px; }
+.grid.auto { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.grid.two { grid-template-columns: 1fr 1fr; }
+.grid.three { grid-template-columns: repeat(3, 1fr); }
+.grid.four { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1200px) { .grid.two, .grid.three, .grid.four { grid-template-columns: 1fr; } }
+.sep { height: 1px; background: var(--border); margin: 8px 0; }
+h2.section {
+  font-size: .68rem; letter-spacing: .2em; text-transform: uppercase; color: var(--accent);
+  margin: 12px 0 6px; display: flex; align-items: center; gap: 10px;
+}
+h2.section::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--accent-dim), transparent); }
+h2.section .cnt { font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: .72rem; letter-spacing: 0; }
+.empty { padding: 18px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border); font-size: .82rem; }
+.kbd { font-family: var(--mono); font-size: .68rem; padding: 1px 5px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 3px; color: var(--text-muted); }
+
+/* 產品色 helper */
+.pc-crux { color: var(--p-crux); } .pc-qixing { color: var(--p-qixing); } .pc-wbot { color: var(--p-wbot); } .pc-common { color: var(--p-common); }
+.pb-crux { background: var(--p-crux); } .pb-qixing { background: var(--p-qixing); } .pb-wbot { background: var(--p-wbot); } .pb-common { background: var(--p-common); }
+
+/* ── 開機序列：三幕的全息成形 ────────────────────────────────────────
+ * 概念：**這個平台的宇宙正在上電**。用的是主視覺同一組語彙（星塵、透視地板、
+ * 基座鏡面、光錐、掃描帶、取樣點、發射核心），但加上時間軸與能量匯聚，
+ * 讓它是一場「成形」而不是一張靜態圖。
+ *
+ * 三幕（一次性序列全長 **1.82s**，finishBoot 留 2600ms ＝ 跑完再停約 0.78s）：
+ *   ① 空間展開 0.00–0.75s  星塵浮現 → 地平線由中央裂開 → 地板放射線與環擴散
+ *   ② 匯聚點火 0.30–1.15s  22 顆粒子由畫面外飛向核心 → 核心爆閃 → 三道衝擊環擴散
+ *   ③ 掃描成形 0.95–1.82s  鏡面逐圈描出 → 光錐亮起 → 亮帶上掃，字樣隨掃過而顯影
+ *   持續：掃描弧繞行鏡面（＝還在忙的訊號）、核心脈動、取樣點上升、省略號輪跳
+ *
+ * ⚠️ 「全長」要算**最晚結束的那一條**（delay + duration × iterations），不是最後一幕的起點。
+ *    先前寫 1.55s 是錯的：實際最晚的是**第三道衝擊環**（1.10s + 0.72s），
+ *    不是最後一幕的字樣。憑「最後一幕的起點」估會少算，finishBoot 的停頓就被吃光。
+ *    改動時間軸後請用 getAnimations() 重算，並同步 main.js 的 delay。
+ *
+ * ⚠️ 三個踩過的坑，改動時務必記得：
+ *   ① SVG 元素的 transform-origin 預設是**使用者座標原點**，不是元素中心 ——
+ *      要 scale 一律先加 transform-box: fill-box（否則元素會被推離定位）。
+ *   ② 橢圓一律用 pathLength 正規化長度；手算周長會有誤差，描邊會留下缺口。
+ *   ③ 「降低動態」時只寫 animation:none 不夠 —— 從 opacity:0 起跑的元素會停在起點，
+ *      整個畫面是空的。每個動畫的**終點狀態都要明確寫回去**（見本節末）。
+ */
+.boot-overlay { position: fixed; inset: 0; z-index: 200; background: var(--bg); display: grid; place-items: center;
+  transition: opacity .45s ease; overflow: hidden; }
+.boot-overlay.done { opacity: 0; pointer-events: none; }
+.boot-stage { position: relative; width: 620px; height: 388px; }   /* viewBox 480×300 等比放大 */
+.boot-scene { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+
+/* ── 幕一：空間展開 ── */
+.boot-scene .bt-stars circle { fill: var(--accent); opacity: 0;
+  animation: bt-star .5s ease var(--d, 0s) forwards, bt-twinkle 3.4s ease-in-out calc(var(--d, 0s) + 1.6s) infinite; }
+.boot-scene .bt-horizon { stroke: var(--accent); stroke-width: 1; opacity: .5;
+  transform: scaleX(0); transform-origin: center; animation: bt-split .55s cubic-bezier(.2,.8,.3,1) .05s forwards; }
+.boot-scene .bt-floor line { stroke: var(--accent); stroke-width: 1; stroke-opacity: .14;
+  stroke-dasharray: 300; stroke-dashoffset: 300; animation: bt-draw300 .6s ease var(--d, 0s) forwards; }
+.boot-scene .bt-fring { fill: none; stroke: var(--accent); stroke-opacity: .16; stroke-width: 1;
+  stroke-dasharray: 100; stroke-dashoffset: 100; animation: bt-draw .8s ease forwards; }
+.boot-scene .bt-fring.f1 { animation-delay: .34s; }
+.boot-scene .bt-fring.f2 { animation-delay: .26s; }
+
+/* ── 幕二：匯聚點火 ── */
+/* 粒子由畫面外沿直線飛進核心。--dx/--dy 是起點的偏移量，由產生器寫在 style 上。 */
+.boot-scene .bt-influx circle { fill: var(--accent); opacity: 0;
+  filter: drop-shadow(0 0 3px var(--accent)); animation: bt-influx .62s cubic-bezier(.5,0,.85,.4) var(--d, .3s) forwards; }
+.boot-scene .bt-shock ellipse { fill: none; stroke: var(--accent); stroke-width: 2; opacity: 0;
+  transform-box: fill-box; transform-origin: center; animation: bt-shock .72s cubic-bezier(.1,.7,.3,1) .90s forwards; }
+.boot-scene .bt-shock ellipse:nth-child(2) { animation-delay: 1.00s; }
+.boot-scene .bt-shock ellipse:nth-child(3) { animation-delay: 1.10s; }
+.boot-scene .bt-flash { fill: #f2faff; opacity: 0; transform-box: fill-box; transform-origin: center;
+  filter: drop-shadow(0 0 26px var(--accent)); animation: bt-flash .5s ease-out .9s forwards; }
+
+/* ── 幕三：掃描成形 ── */
+.boot-scene .bt-cone { fill: var(--accent); fill-opacity: .045; stroke: var(--accent); stroke-opacity: .16;
+  stroke-width: 1; opacity: 0; animation: bt-in .45s ease 1.05s forwards; }
+.boot-scene .bt-bands line { stroke: var(--accent); stroke-width: 1; stroke-opacity: .18; }
+.boot-scene .bt-bands { opacity: 0; animation: bt-in .5s ease 1.12s forwards; }
+/* 上掃的亮帶：掃到哪裡，字樣就顯影到哪裡 */
+.boot-scene .bt-scanbar { fill: var(--accent); opacity: 0;
+  filter: drop-shadow(0 0 10px var(--accent)); animation: bt-scan .58s cubic-bezier(.3,.7,.4,1) .98s forwards; }
+.boot-scene .bt-rim { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 100; stroke-dashoffset: 100;
+  filter: drop-shadow(0 0 5px var(--accent-dim)); animation: bt-draw .5s ease .95s forwards; }
+.boot-scene .bt-rim.r2 { stroke-opacity: .6; animation-delay: 1.03s; }
+.boot-scene .bt-rim.r3 { stroke-opacity: .35; animation-delay: 1.11s; }
+.boot-scene .bt-sweep { fill: none; stroke: var(--accent); stroke-width: 2.6; stroke-linecap: round;
+  stroke-dasharray: 12 88; opacity: 0; filter: drop-shadow(0 0 7px var(--accent));
+  animation: bt-in .35s ease 1.4s forwards, bt-orbit 1.8s linear 1.4s infinite; }
+.boot-scene .bt-core { fill: #f2faff; opacity: 0; transform-box: fill-box; transform-origin: center;
+  filter: drop-shadow(0 0 9px var(--accent)); animation: bt-in .3s ease 1.0s forwards, bt-pulse 1.6s ease-in-out 1.4s infinite; }
+.boot-scene .bt-motes circle { fill: var(--accent); opacity: 0; animation: bt-mote 2.4s ease-out 1.3s infinite; }
+.boot-scene .bt-motes circle:nth-child(2) { animation-delay: 1.55s; }
+.boot-scene .bt-motes circle:nth-child(3) { animation-delay: 1.8s; }
+.boot-scene .bt-motes circle:nth-child(4) { animation-delay: 2.05s; }
+.boot-scene .bt-motes circle:nth-child(5) { animation-delay: 2.3s; }
+.boot-scene .bt-motes circle:nth-child(6) { animation-delay: 2.55s; }
+.boot-scene .bt-motes circle:nth-child(7) { animation-delay: 2.8s; }
+.boot-scene .bt-motes circle:nth-child(8) { animation-delay: 3.05s; }
+.boot-scene .bt-motes circle:nth-child(9) { animation-delay: 3.3s; }
+
+/* 字樣：由下往上顯影（跟著亮帶），收尾一次極短的訊號抖動 */
+.boot-text { position: absolute; left: 0; right: 0; top: 30%; text-align: center; }   /* 用 % 才跟著舞台縮放 */
+.boot-text span { display: inline-block; color: var(--accent); font-family: var(--font-display);
+  font-size: 1.06rem; font-weight: 600; letter-spacing: .4em; text-indent: .4em;
+  clip-path: inset(100% 0 0 0); opacity: 0;
+  animation: bt-reveal .46s cubic-bezier(.2,.8,.3,1) 1.04s forwards, bt-glitch .26s steps(2, end) 1.44s 1; }
+.boot-text small { display: block; margin-top: 16px; color: var(--text-muted); letter-spacing: .16em;
+  font-size: .70rem; font-family: var(--font); opacity: 0; animation: bt-in .36s ease 1.36s forwards; }
+.boot-text small b { font-weight: 400; opacity: .25; animation: bt-tick 1.2s ease-in-out infinite; }
+.boot-text small b:nth-of-type(2) { animation-delay: .2s; }
+.boot-text small b:nth-of-type(3) { animation-delay: .4s; }
+
+@keyframes bt-in { to { opacity: 1; } }
+@keyframes bt-star { to { opacity: .55; } }
+@keyframes bt-twinkle { 0%, 100% { opacity: .55; } 50% { opacity: .16; } }
+@keyframes bt-split { to { transform: scaleX(1); } }
+@keyframes bt-draw { to { stroke-dashoffset: 0; } }
+@keyframes bt-draw300 { to { stroke-dashoffset: 0; } }
+@keyframes bt-orbit { to { stroke-dashoffset: -100; } }
+@keyframes bt-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.3); opacity: .78; } }
+@keyframes bt-tick { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+@keyframes bt-mote { 0% { opacity: 0; transform: translateY(16px); } 22% { opacity: .85; } 100% { opacity: 0; transform: translateY(-62px); } }
+@keyframes bt-influx { 0% { opacity: 0; transform: translate(var(--dx), var(--dy)); }
+  18% { opacity: 1; } 88% { opacity: 1; } 100% { opacity: 0; transform: translate(0, 0); } }
+@keyframes bt-flash { 0% { opacity: 0; transform: scale(.4); } 35% { opacity: 1; transform: scale(1.5); }
+  100% { opacity: 0; transform: scale(3.4); } }
+@keyframes bt-shock { 0% { opacity: .9; transform: scale(.25); } 100% { opacity: 0; transform: scale(2.1); } }
+@keyframes bt-scan { 0% { opacity: 0; transform: translateY(300px); } 12% { opacity: 1; }
+  85% { opacity: 1; } 100% { opacity: 0; transform: translateY(96px); } }
+@keyframes bt-reveal { from { clip-path: inset(100% 0 0 0); opacity: .2; } to { clip-path: inset(0 0 0 0); opacity: 1; } }
+@keyframes bt-glitch { 0%, 100% { transform: none; text-shadow: none; }
+  50% { transform: translateX(2px); text-shadow: -3px 0 var(--accent-amber), 3px 0 var(--accent-2); } }
+
+/* 「降低動態」：全部停下，並把終點狀態寫回去（否則畫面會是空的） */
+html[data-motion="0"] .boot-scene .bt-cone,
+html[data-motion="0"] .boot-scene .bt-bands,
+html[data-motion="0"] .boot-scene .bt-sweep,
+html[data-motion="0"] .boot-scene .bt-core,
+html[data-motion="0"] .boot-text small { animation: none; opacity: 1; }
+html[data-motion="0"] .boot-scene .bt-rim,
+html[data-motion="0"] .boot-scene .bt-fring { animation: none; stroke-dashoffset: 0; }
+html[data-motion="0"] .boot-scene .bt-floor line { animation: none; stroke-dashoffset: 0; }
+html[data-motion="0"] .boot-scene .bt-stars circle { animation: none; opacity: .55; }
+html[data-motion="0"] .boot-scene .bt-horizon { animation: none; transform: none; }
+html[data-motion="0"] .boot-scene .bt-motes circle { animation: none; opacity: .55; transform: none; }
+html[data-motion="0"] .boot-scene .bt-influx circle,
+html[data-motion="0"] .boot-scene .bt-shock ellipse,
+html[data-motion="0"] .boot-scene .bt-flash,
+html[data-motion="0"] .boot-scene .bt-scanbar { animation: none; opacity: 0; }
+html[data-motion="0"] .boot-text span { animation: none; opacity: 1; clip-path: none; transform: none; text-shadow: none; }
+html[data-motion="0"] .boot-text small b { animation: none; opacity: .6; }
+
+/* 個資遮罩（ui/el.js redactPII）：預設遮起來，點一下展開 */
+.pii { cursor: pointer; border-bottom: 1px dotted var(--border-strong); }
+.pii:hover { color: var(--accent); }
+
+/* Demo 假歷史列：有資料但沒有 run 目錄，點了只會 404 —— 視覺上就先說清楚 */
+tr.is-ghost { opacity: .62; cursor: default; }

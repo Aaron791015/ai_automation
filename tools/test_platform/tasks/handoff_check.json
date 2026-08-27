@@ -1,0 +1,17 @@
+{
+  "id": "handoff_check",
+  "label": "收尾體檢",
+  "icon": "🧾",
+  "order": 8,
+  "subtitle": "找出漏做的收尾 —— 這是平台獨有、單一 session 看不到的",
+  "skills": [
+    "handoff"
+  ],
+  "scope": "workspace",
+  "entry": [
+    "overview"
+  ],
+  "writes": "draft",
+  "fields": [],
+  "prompt_template": "載入 `handoff`。\n\n平台掃出下列跡象（**跨 session 視野，單一 session 看不到**）：\n\n{findings}\n\n請對照 `handoff` §2 的收尾六步，判斷哪些是真的漏做、哪些只是雜訊，並列出要補的動作。\n⭐ 掃到「**缺回歸案例**」時：那要用**「撰寫案例」任務**補（把 Bug 單號填進去），⛔ 不要在這裡寫案例 —— 規則在 `ui-test` 階段 2.6／2.7。\n⛔ 你**不能寫 repo 裡的檔案** —— 先把要補的內容回在對話裡，我確認後再寫檔。\n⚠️ 交接檔的編號要用 `next_todo_id.py` **當下取**，不要自己推算。\n\n要補進交接檔的內容，交草稿給我（平台會替你寫檔並**當下取編號**）：\n````\nkind     handover\nproduct  產品代號\nsection  todo（§2.1 可立即動手）／todo_ext（§2.2 等外部裁定）／\n         todo_who（§2.3 等他人處理）／todo_blk（§2.4 被 blocker 擋住）／\n         data（§5 測試資料現況）\n         ⚠️ 挑對子節 —— 寫進「被擋住」那一格的事，接手的人會直接跳過\ncells    表格列的各欄，**不含編號那一欄**（編號由平台在寫入那一刻取）\n         · §2 待辦：[事項, 說明, 優先]\n         · §5 資料：[動過什麼, 還原了嗎, 備註]\ntitle    一句話（顯示用）\nwhy      為什麼要補這一筆\n````\n⛔ **不要自己編號** —— 多 session 併行時沒有機制擋重複。\n"
+}

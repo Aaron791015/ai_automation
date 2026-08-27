@@ -1,0 +1,567 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "test_platform/tool.schema.json",
+  "title": "測試助手工具描述檔（*.tool.json）",
+  "description": "一個工具 = 一種 adapter + 一組命令 + 一張動態表單。平台核心只認本 schema，對工具細節一無所知。接入新工具＝新增一個符合本 schema 的 JSON。",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "kind",
+    "commands"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "spec_version": {
+      "type": "integer",
+      "default": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "唯一識別，同時是檔名（<id>.tool.json）"
+    },
+    "product": {
+      "type": "string",
+      "description": "單一產品 id；與 products 二擇一"
+    },
+    "products": {
+      "description": "跨產品工具列出全部產品 id；或用 \"*\" 表示跟著 config/products.json 動態展開（標準內建工具用，如 ui_tests）",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "const": "*"
+        }
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "subtitle": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "cli",
+        "pytest",
+        "http"
+      ]
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "product",
+        "workspace"
+      ],
+      "default": "product",
+      "description": "workspace ＝ 不屬於任何產品的工作區級工具（初始化／lint／盤點），豁免 product 必填，UI 歸「工作區」分組"
+    },
+    "owner": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "order": {
+      "type": "integer"
+    },
+    "docs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "相對 repo root 的文件路徑"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "danger": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "confirm_text": {
+          "type": "string"
+        },
+        "require_typed_confirm": {
+          "type": "boolean"
+        },
+        "typed_from": {
+          "type": "string",
+          "description": "require_typed_confirm 時要人打字複誦的內容取自哪個欄位 key（未指定時用工具名）。"
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "description": "統一使用工作區 .venv；不再有 interpreter 欄位。",
+      "properties": {
+        "cwd": {
+          "type": "string",
+          "description": "相對 repo root"
+        },
+        "executable": {
+          "type": "string",
+          "description": "覆寫執行檔（相對 repo root 或絕對路徑）；預設用工作區 .venv 的 python。"
+        },
+        "json_flag": {
+          "type": "string",
+          "description": "附加此旗標讓腳本吐單一 JSON 物件供解析（如 --json-out）；未宣告則結果退回純文字。"
+        },
+        "run_id_arg": {
+          "type": "string",
+          "description": "把平台的 run_id 交給引擎的旗標（如 --run-id），run 型 CLI 用。宣告了，引擎自己的 run 目錄就與平台的 run_id 對得上；沒宣告的話平台只能事後探測「哪個目錄是這次開的」，同時跑兩個 run 就可能認錯。"
+        },
+        "legacy_console_port": {
+          "type": "integer",
+          "description": "這支工具被吸收之前的舊控制台埠號（如 5000）。宣告了，儀表板的健康列才會替它點一盞「運作／未啟」的燈；⛔ 平台不認識任何產品，沒宣告就不顯示 —— 範本裡不該冒出同事沒有的控制台。"
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "requires": {
+          "type": "object",
+          "properties": {
+            "python_modules": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "external": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "hint": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "mode"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "run",
+              "sync",
+              "python_call",
+              "http"
+            ]
+          },
+          "argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "固定前綴（不含 python 路徑）；可變部分由 fields 的 emit 產生"
+          },
+          "call": {
+            "type": "string",
+            "description": "python_call：<module>:<function>"
+          },
+          "timeout_sec": {
+            "type": "integer"
+          },
+          "result": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "text",
+                  "json_table",
+                  "checklist",
+                  "copy_chip",
+                  "artifact_dir"
+                ]
+              }
+            }
+          },
+          "danger": {
+            "$ref": "#/properties/danger"
+          },
+          "params": {
+            "$ref": "#/$defs/params"
+          },
+          "primary": {
+            "type": "boolean",
+            "description": "工具頁預設開啟的命令"
+          },
+          "gate": {
+            "type": "object",
+            "description": "執行前的把關。requires_check＝要先跑哪個 sync 命令；max_age_minutes＝結論多久算過期；notice＝與任何 check 無關的靜態提示（如子帳號互踢）。⚠️ 一律只提示不硬擋 —— 平台看不到外部行程（你在終端機跑的 pytest、用 MCP 開的瀏覽器）。",
+            "properties": {
+              "requires_check": {
+                "type": "string"
+              },
+              "max_age_minutes": {
+                "type": "number"
+              },
+              "notice": {
+                "type": "string"
+              }
+            }
+          },
+          "next": {
+            "type": "array",
+            "description": "跑完之後可以接續的動作（走查盲點 ②：sync 命令原本沒有任何導引）。href 可用 {欄位鍵} 帶入這次填的值；when 為 ok／fail 時只在該結果出現。⛔ 不做自動跳轉 —— 人可能還想看輸出。",
+            "items": {
+              "type": "object",
+              "required": [
+                "label",
+                "href"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "href": {
+                  "type": "string"
+                },
+                "when": {
+                  "type": "string",
+                  "enum": [
+                    "ok",
+                    "fail"
+                  ]
+                },
+                "primary": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "properties": {
+        "concurrency": {
+          "type": "string",
+          "enum": [
+            "single",
+            "multi"
+          ],
+          "default": "single"
+        },
+        "max_parallel": {
+          "type": "integer"
+        },
+        "exclusive_group": {
+          "type": "string"
+        },
+        "run_id_env": {
+          "type": "string"
+        },
+        "status_source": {
+          "type": "object"
+        },
+        "phases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "value",
+              "label"
+            ],
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "tone": {
+                "type": "string"
+              },
+              "terminal": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "label"
+            ]
+          }
+        },
+        "progress": {
+          "type": "object"
+        }
+      }
+    },
+    "stop": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "flag",
+            "tree",
+            "http"
+          ]
+        },
+        "flag_file": {
+          "type": "string"
+        },
+        "grace_seconds": {
+          "type": "integer"
+        },
+        "warning": {
+          "type": "string"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "properties": {
+        "run_dir": {
+          "type": "string"
+        },
+        "console": {
+          "type": "string"
+        },
+        "whitelist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allow_subtree": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "primary": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "allure": {
+          "type": "object"
+        }
+      }
+    },
+    "cases": {
+      "type": "object",
+      "description": "僅 kind=pytest"
+    },
+    "http": {
+      "type": "object",
+      "description": "僅 kind=http"
+    }
+  },
+  "$defs": {
+    "params": {
+      "type": "object",
+      "properties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "label"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "collapsed": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/field"
+          }
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": [
+        "key",
+        "type",
+        "label"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "number",
+            "boolean",
+            "select",
+            "multiselect",
+            "textarea",
+            "secret",
+            "duration",
+            "file_select",
+            "number_list",
+            "case_picker",
+            "path_picker"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "default": {},
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "step": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "help": {
+          "type": "string"
+        },
+        "placeholder": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "integer"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "value",
+              "label"
+            ]
+          }
+        },
+        "options_from": {
+          "type": "object",
+          "description": "動態選項來源。通用：{\"source\":\"products\"}（可加 \"value\":\"product_id\" 取權威 id 而非 slug）、{\"source\":\"tools\"}、{\"source\":\"files\",\"dir\":\"config\",\"glob\":\"*.txt\",\"strip_ext\":false}（dir 相對於 runtime.cwd，不可含 ..）；其餘為逐工具特例"
+        },
+        "visible_when": {
+          "type": "object"
+        },
+        "available_when": {
+          "type": "object"
+        },
+        "required_when": {
+          "type": "object"
+        },
+        "unavailable_reason": {
+          "type": "string"
+        },
+        "reload_on_change": {
+          "type": "boolean"
+        },
+        "emit": {
+          "type": "string",
+          "enum": [
+            "opt",
+            "opt_eq",
+            "flag_when_true",
+            "flag_when_false",
+            "repeat",
+            "join",
+            "json",
+            "env",
+            "positional",
+            "argsfile",
+            "none"
+          ]
+        },
+        "arg": {
+          "type": "string"
+        },
+        "env": {
+          "type": "string"
+        },
+        "sep": {
+          "type": "string"
+        },
+        "never_persist": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

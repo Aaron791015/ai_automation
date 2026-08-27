@@ -1,0 +1,35 @@
+{
+  "id": "perf",
+  "label": "跑壓測",
+  "icon": "📈",
+  "order": 7,
+  "subtitle": "前置檢查 → 選輪次 → 執行 → 判定口徑",
+  "skills": [
+    "perf-test"
+  ],
+  "scope": "product",
+  "entry": [
+    "product"
+  ],
+  "writes": "none",
+  "fields": [
+    {
+      "key": "product",
+      "type": "select",
+      "label": "產品",
+      "required": true,
+      "options_from": {
+        "source": "products"
+      }
+    },
+    {
+      "key": "goal",
+      "type": "textarea",
+      "label": "這一輪要量什麼",
+      "required": true,
+      "rows": 2,
+      "placeholder": "例：驗證 CRUX-959 修復後的節流率"
+    }
+  ],
+  "prompt_template": "載入 `/{product_skill}` 與 `perf-test`。\n\n產品：**{product}**。這一輪要量：{goal}\n\n請先照 `perf-test` §0.0 找到這個產品的前置檢查清單並**逐項確認**，再提議要跑哪一種輪次。\n⚠️ 壓測是**真的下注**（真金流）—— 提議之後由我在確認卡上按執行，你可以用 `propose_run` 提議，但**不能自己啟動**。\n⚠️ 還原與否**由執行者於整批完成後決定**（§6 第 1 條），不要預設要還原。"
+}

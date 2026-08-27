@@ -1,0 +1,76 @@
+{
+  "id": "file_bug",
+  "label": "手動開 Bug 單",
+  "icon": "📝",
+  "order": 6,
+  "subtitle": "你看到一個問題，但不在任何 session 裡",
+  "skills": [
+    "bug-report"
+  ],
+  "scope": "product",
+  "entry": [
+    "overview"
+  ],
+  "writes": "draft",
+  "fields": [
+    {
+      "key": "product",
+      "type": "select",
+      "label": "產品",
+      "required": true,
+      "options_from": {
+        "source": "products"
+      }
+    },
+    {
+      "key": "symptom",
+      "type": "textarea",
+      "label": "現象",
+      "required": true,
+      "rows": 3,
+      "placeholder": "看到什麼（實際值）"
+    },
+    {
+      "key": "expected",
+      "type": "textarea",
+      "label": "期望",
+      "rows": 2,
+      "placeholder": "應該是什麼（附依據）"
+    },
+    {
+      "key": "env",
+      "type": "text",
+      "label": "環境",
+      "placeholder": "例：QAT 總監2 排列三 26199"
+    },
+    {
+      "key": "boundary",
+      "type": "select",
+      "label": "安全邊界",
+      "options": [
+        {
+          "value": "write",
+          "label": "可寫入 QAT（已預先授權）"
+        },
+        {
+          "value": "readonly",
+          "label": "本次唯讀（只看不改）"
+        }
+      ],
+      "default": "readonly",
+      "help": "預設唯讀（多數情況只是把已看到的現象整理成單）。要重現一次才確認得了現象時選可寫入"
+    },
+    {
+      "key": "account",
+      "type": "text",
+      "label": "指定子帳號",
+      "placeholder": "例：netsub2",
+      "help": "選填但強烈建議填 —— 同帳號他處登入會踢掉前者"
+    }
+  ],
+  "prompt_template": "載入 `/{product_skill}` 與 `bug-report`。\n\n產品：**{product}**\n現象：{symptom}\n期望：{expected}\n環境：{env}\n\n請先走 §3.9 的**開單前三問**並回報答案，再依 §4 的格式整理單子內容（Reproduce Steps 5 步以內、**不寫成因推導**）。\n若這批資料是重現環境，依 §4.1 註明「刻意保留、不還原」。\n\n## 安全邊界：{boundary_label}\n\n{boundary_rules}\n\n指定子帳號：**{account}**。\n\n⛔ 你**不能寫 repo 裡的檔案、也不要配號** —— **但站台的操作不在此限**（見上面的安全邊界）。\n\n草稿請用這個結構交給我（**平台會照這些欄位組單，缺的欄位它會寫「待補」，不會替你編**）：\n````\ntitle      一句話講現象（不寫成因）\nmodule     模組\nseverity   高／中／低\nsteps      重現步驟，**5 步以內**（`bug-report` §4）\nexpected   期望值（附規格依據）\nactual     實際值\nevidence   佐證位置（截圖檔名／API 回應／算式明細）\nprechecks  開單前三問的**答案**（is_spec／already_known／sample_power）\n````\n\n### 測試資料異動（**為了重現而動過站台就要交**）\n\n````\nkind     handover\nproduct  {product}\nsection  data\ntitle    一句話\nwhy      為什麼要登記\ncells    對象（動了什麼）| 站台與帳號 | 狀態（還原了沒；**據以開單的資料保留不還原**）| 記於（本次開單）\n````\n",
+  "allowed_tools": [
+    "mcp__playwright",
+    "mcp__playwright2"
+  ]
+}

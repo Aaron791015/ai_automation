@@ -1,0 +1,30 @@
+{
+  "_說明": "複製本檔為 config.local.json 並填入真實敏感值。切勿把此檔填真值後版控。",
+  "environments": {
+    "dev": {
+      "apiBase": "https://dev.example.com/api",
+      "frontendUrl": "https://dev.example.com",
+      "adminUrl": "https://dev-admin.example.com",
+      "apiToken": "<填入 token>",
+      "db": {
+        "host": "127.0.0.1",
+        "port": 3306,
+        "user": "<帳號>",
+        "password": "<密碼>",
+        "database": "<資料庫名>"
+      }
+    }
+  },
+  "jira": {
+    "_說明": "公司內網 JIRA 唯讀串接（tools/jira_qa/jira_api.py）。Jira Server 8.6.1 早於 PAT（8.14 才支援），只能用帳號密碼 Basic Auth。base_url 已在 environments.json，此處只需填帳密。",
+    "username": "<JIRA 帳號>",
+    "password": "<JIRA 密碼>",
+    "_session_cookie說明": "選填。站台有 2FA 外掛，附件下載走 web 層不吃 Basic Auth；貼上已通過 2FA 的瀏覽器 session 才能下載附件（會過期，失效時重新複製）。不需要下載附件就留空或刪掉此欄。",
+    "session_cookie": "JSESSIONID=<從瀏覽器開發者工具複製>"
+  },
+  "accounts": {
+    "總監": { "username": "<帳號>", "password": "<密碼>" },
+    "代理": { "username": "<帳號>", "password": "<密碼>" },
+    "會員": { "username": "<帳號>", "password": "<密碼>" }
+  }
+}

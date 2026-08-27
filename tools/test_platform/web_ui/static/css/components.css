@@ -1,0 +1,791 @@
+/* 元件（全站共用）：卡片、按鈕、表單、表格、modal、toast、tooltip、樹、tabs、報告 chip、監控
+ * 主題 Starlight Telemetry（見 .claude/skills/theme-factory/themes/starlight-telemetry.md）。
+ * ⚠️ 2026-08-19 第三版：**拆掉軍事 HUD 語彙** —— 切角、L 型角標、掃描線全部移除，
+ *    改為圓角矩形＋留白，對齊參考圖 IMG_5256 的乾淨儀表板質感（使用者三度指出「不像」的主因）。
+ * class 名沿用壓測控制台（.card／.settings-card／.tip-x／.tabs／.report-link／.alert），日後可整段複製。 */
+
+/* ── 卡片：圓角、微漸層、留白 ── */
+.card {
+  /* 卡片＝一片**背光的 HUD 面板**（2026-08-21 依參考圖 IMG_5256）：
+       ① 面比背景**更暗**且**半透明** —— 背後那團青色輝光要透得出來；
+       ② 識別來自**框線**，一條看得見的青調細框，不是靠面的明暗；
+       ③ 深度來自框線外輝，不是離地投影。
+     ⚠️ 不要改回「面比底亮＋上緣高光＋投影」那一套 —— 那是實體浮雕面板，
+        與參考圖的氣質相反（第一版做過，2026-08-21 使用者比對後改掉）。 */
+  background: linear-gradient(168deg, var(--panel-top), var(--panel-bot) 78%);
+  border: 1px solid var(--frame);
+  box-shadow: var(--panel-glow), var(--frame-glow);
+  padding: 16px 18px 17px; position: relative; min-width: 0;   /* 參考圖的面板留白偏鬆 */
+  border-radius: var(--radius-card);
+  transition: border-color .18s ease;
+}
+/* hover 只加強框線與外輝，**不做位移** —— 卡片一移動，裡面的數字與表格會跟著抖。
+   ⚠️ 輝光走一層 `::after` ＋ **opacity** 過場，**不要用 `transition: box-shadow`** ——
+      後者會在 .18s 內把整片模糊陰影重畫十幾次（實測單張卡 +3ms/幀、五張 +6.6ms）。
+      opacity 是合成層屬性，切換幾乎不用重畫。
+   ⚠️ `::before` 已被 `.card.is-running` 的左緣光棒佔用，所以用 `::after`。 */
+.card::after {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  box-shadow: var(--frame-glow-on); opacity: 0; transition: opacity .18s ease;
+}
+.card:hover { border-color: var(--frame-on); }
+.card:hover::after { opacity: 1; }
+.card > h3 {
+  /* 拿掉分隔線之後，標題與內容之間**只剩留白在分段**，所以留白要夠 —— 參考圖也是這樣 */
+  margin: 0 0 16px; font-family: var(--font-display); font-size: .64rem; font-weight: 600;
+  letter-spacing: .2em; text-transform: uppercase;
+  color: var(--title); display: flex; align-items: center; gap: 8px; white-space: nowrap;
+  /* ⚠️ **不要加分隔線**：參考圖的面板標題與內容之間只有留白，沒有任何線。
+     加了線之後每張卡都被切成兩塊，畫面會碎掉（2026-08-21 比對後移除）。 */
+}
+.card > h3 .cnt { font-variant-numeric: tabular-nums; color: var(--text-muted); font-weight: 400; font-size: .69rem; letter-spacing: .02em; text-transform: none; margin-left: auto; }
+.card-hint { color: var(--text-muted); font-size: .76rem; margin: 2px 0 7px; }
+.card.hud, .card.plain { /* 相容：舊 class 仍可用，樣式已是預設 */ }
+/* 執行中／異常：改用左緣光棒與邊框，取代原本的掃描線 */
+.card.is-running, .card.is-fault { overflow: hidden; }
+.card.is-running { border-color: var(--accent-dim); }
+.card.is-running::before, .card.is-fault::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--accent);
+}
+.card.is-fault { border-color: var(--danger); }
+.card.is-fault::before { background: var(--danger); animation: bar-pulse 2s ease-in-out infinite; }
+@keyframes bar-pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+html[data-motion="0"] .card.is-fault::before { animation: none; opacity: 1; }
+
+/* 巢狀卡片（卡片裡的卡片，例如「運行中」裡的 run-card）：**不能跟外層一樣浮** ——
+   同一組打光值套兩層，兩層就會讀成同一個平面。內層改為淺一階的受光面：
+   留上緣高光與下緣暗邊，但不給離地投影。 */
+.card .card {
+  background: var(--panel-in);
+  border-color: rgba(77, 131, 200, .22);
+  box-shadow: var(--edge-lit);
+}
+.card .card::after { display: none; }        /* 巢狀面板不給外輝，層級才讀得出來 */
+.card .card:hover { border-color: var(--frame); box-shadow: var(--edge-lit-on); }
+
+/* .scanline 保留為空殼：JS 仍會插入這個節點，這一版不再顯示掃描線 */
+.scanline { display: none; }
+
+/* ── 狀態燈 ── */
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); vertical-align: middle; flex-shrink: 0; }
+.dot.ok, .dot.success, .dot.completed { background: var(--success); box-shadow: 0 0 6px var(--success-dim); }
+.dot.warn, .dot.stopped { background: var(--accent-amber); box-shadow: 0 0 6px var(--amber-dim); }
+.dot.bad, .dot.danger, .dot.failed { background: var(--danger); box-shadow: 0 0 6px var(--danger-dim); }
+.dot.info, .dot.running, .dot.starting, .dot.stopping, .dot.queued { background: var(--accent); }
+.dot.running, .dot.starting { animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: .5; box-shadow: 0 0 2px var(--accent-dim); } 50% { opacity: 1; box-shadow: 0 0 10px var(--accent); } }
+html[data-motion="0"] .dot.running, html[data-motion="0"] .dot.starting { animation: none; }
+.dot.idle { background: var(--border-strong); }
+
+/* ── 按鈕：圓角，hover 只換色不掃光 ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 13px;
+  border: 1px solid var(--frame); background: rgba(8, 20, 33, .7); color: var(--text); cursor: pointer;
+  font-size: .78rem; line-height: 1.3; white-space: nowrap; position: relative; overflow: hidden;
+  letter-spacing: .02em; transition: border-color .15s, color .15s, background .15s, box-shadow .15s;
+  border-radius: var(--radius); box-shadow: var(--edge-lit);
+}
+.btn:hover { border-color: var(--accent-dim); color: var(--accent); background: rgba(127, 187, 240, .06);
+  box-shadow: var(--edge-lit-on), 0 6px 16px -10px rgba(0, 0, 0, .8); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.primary { background: rgba(127, 187, 240, .1); border-color: var(--accent); color: var(--accent); }
+.btn.primary:hover { box-shadow: var(--glow-accent), var(--edge-lit-on); }
+.btn.danger { border-color: var(--danger); color: var(--danger); background: rgba(255, 90, 95, .08); }
+.btn.danger:hover { box-shadow: var(--glow-danger); color: var(--danger-hover); }
+.btn.warn { border-color: var(--accent-amber); color: var(--accent-amber); background: rgba(255, 182, 72, .08); }
+.btn.warn:hover { box-shadow: var(--glow-amber); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
+.btn.ghost:hover { color: var(--accent); background: var(--accent-faint); }
+.btn.sm { padding: 3px 9px; font-size: .74rem; }
+.btn.xs { padding: 2px 8px; font-size: .69rem; }
+.btn.block { width: 100%; justify-content: center; }
+.btn.loading::before { content: ""; width: 11px; height: 11px; border: 1.5px solid var(--accent-dim); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── 表單 ── */
+fieldset.section { border: 1px solid rgba(77, 131, 200, .22); padding: 8px 12px 10px; margin: 0 0 10px; min-width: 0;
+  border-radius: var(--radius-card); background: var(--panel-in); box-shadow: var(--edge-lit); }
+fieldset.section > legend { color: var(--accent); font-size: .64rem; padding: 0 6px; letter-spacing: .18em; text-transform: uppercase; }
+fieldset.section.collapsed > *:not(legend) { display: none; }
+fieldset.section > legend .tog { cursor: pointer; color: var(--text-muted); margin-left: 6px; }
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 9px 12px; }
+.field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.field.span2 { grid-column: span 2; }
+.field.span3 { grid-column: 1 / -1; }
+.field > label { font-size: .7rem; color: var(--text-muted); display: flex; align-items: center; gap: 4px; letter-spacing: .06em; text-transform: uppercase; }
+.field > label .req { color: var(--danger); }
+.field input[type=text], .field input[type=number], .field input[type=password], .field select, .field textarea {
+  background: var(--code-bg); border: 1px solid var(--border-strong); color: var(--text); border-radius: 2px;
+  padding: 5px 8px; font-size: .84rem; font-family: inherit; width: 100%; min-width: 0;
+  /* ⚠️ 輸入框是**凹面**：受光在下緣、上緣落影 —— 與卡片（凸面，見 --edge-lit）相反。
+     方向搞反的話輸入框會看起來浮在卡片上，層級就亂了。 */
+  box-shadow: var(--sunken);
+}
+.field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-faint), var(--glow-accent), inset 0 1px 6px rgba(0, 0, 0, .35); }
+.field input.invalid, .field select.invalid { border-color: var(--danger); }
+/* 頁面工具列上的原生 select 不在 .field 裡，先前完全沒被樣式收編 ——
+   在光影語彙下它們會突兀地變成一塊沒受光的平板，故一併納入（凹面，同上）。 */
+.page-bar select, .page-bar input[type=text], .page-bar input[type=search] {
+  background: var(--code-bg); border: 1px solid var(--border-strong); color: var(--text);
+  border-radius: var(--radius); padding: 4px 9px; font-size: .78rem; font-family: inherit;
+  box-shadow: var(--sunken);
+  transition: border-color .15s, box-shadow .15s;
+}
+.page-bar select:hover, .page-bar input[type=text]:hover { border-color: var(--accent-dim); }
+.page-bar select:focus, .page-bar input[type=text]:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: var(--glow-accent), inset 0 2px 6px rgba(0, 0, 0, .5);
+}
+.field .err { color: var(--danger); font-size: .68rem; }
+.field .unit { color: var(--text-muted); font-size: .72rem; }
+.field.hidden-by-cond { display: none; }
+.field.unavailable { opacity: .48; }
+.field.unavailable .reason { color: var(--accent-amber); font-size: .68rem; }
+.field .with-unit { display: flex; align-items: center; gap: 6px; }
+.field .with-unit input { flex: 1; }
+.switch { position: relative; width: 34px; height: 17px; border-radius: 9px; background: var(--code-bg); border: 1px solid var(--border-strong); cursor: pointer; transition: border-color .15s, background .15s; flex-shrink: 0; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--text-muted); transition: left .15s, background .15s; }
+.switch.on { background: rgba(127, 187, 240, .12); border-color: var(--accent); }
+.switch.on::after { left: 18px; background: var(--accent); box-shadow: var(--glow-accent); }
+.field.boolean > .row { min-height: 26px; }
+.opt-note { color: var(--text-muted); font-size: .68rem; }
+.tip-wrap { position: relative; display: inline-flex; }
+.tip-icon { width: 13px; height: 13px; border-radius: 50%; border: 1px solid var(--border-strong); color: var(--text-muted); font-size: .6rem; display: grid; place-items: center; cursor: help; }
+.tip-wrap:hover .tip-icon { border-color: var(--accent); color: var(--accent); }
+.tip-content { display: none; position: absolute; left: 18px; top: -4px; z-index: 40; min-width: 210px; max-width: 320px; padding: 7px 10px;
+  background: linear-gradient(180deg, rgba(11, 27, 44, .93), rgba(4, 13, 23, .95)); backdrop-filter: var(--glass);
+  border: 1px solid var(--frame-on); border-radius: var(--radius); font-size: .76rem; color: var(--text);
+  box-shadow: var(--edge-lit-on), var(--lift-2); }
+.tip-wrap:hover .tip-content { display: block; }
+
+/* ── 表格：高密度 ── */
+table.tbl { width: 100%; border-collapse: collapse; font-size: .8rem; }
+table.tbl th, table.tbl td { padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; line-height: 1.35; }
+/* 吸頂表頭：它會蓋在資料列上，所以需要自己的受光與投影，否則捲動時兩層會糊在一起 */
+/* 表頭改用 `--accent`：`--accent-2` 在新的暗面板上只有 6.5:1，低於「≥ 7:1」的紀律
+   （這是舊有問題，面板變暗後才量出來）。`--accent` 是 10.6:1，而且參考圖的結構性標籤本來就是亮青。 */
+table.tbl th { color: var(--accent); font-weight: 500; font-size: .63rem; letter-spacing: .18em; text-transform: uppercase;
+  white-space: nowrap; position: sticky; top: 0; z-index: 2;
+  background: linear-gradient(180deg, #0d1e30, #071320);
+  box-shadow: inset 0 -1px 0 var(--frame), 0 10px 16px -12px rgba(0, 0, 0, .95); }
+table.tbl td.num, table.tbl th.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.tbl tbody tr { position: relative; }
+/* hover：左緣打一道光，底色由左往右衰減 —— 讀起來是「光掃過這一列」而不是換底色 */
+table.tbl tbody tr:hover td { background: linear-gradient(90deg, rgba(127, 187, 240, .11), rgba(127, 187, 240, .03)); }
+table.tbl tbody tr:hover td:first-child { box-shadow: inset 2px 0 0 var(--accent), inset 10px 0 18px -12px rgba(127, 187, 240, .8); }
+table.tbl tr.clickable { cursor: pointer; }
+table.tbl tr.selected-leaf td { background: rgba(127, 187, 240, .1); }
+.table-scroll { overflow: auto; }
+
+/* 膠囊分段控制（對齊參考圖的 1D/1W/1M 切換） */
+.seg { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 999px; background: var(--code-bg); }
+.seg-btn { border: 0; background: transparent; color: var(--text-muted); cursor: pointer; padding: 3px 13px;
+  border-radius: 999px; font-size: .74rem; font-family: inherit; transition: background .15s, color .15s; }
+.seg-btn:hover { color: var(--text); }
+.seg-btn.active { background: rgba(127, 187, 240, .14); color: var(--accent); }
+.seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ── chip／alert／tabs ── */
+.report-link, .chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; font-size: .7rem;
+  border: 1px solid var(--border-strong); color: var(--accent); background: rgba(41, 125, 224, .08);
+  border-radius: 999px;
+}
+a.report-link:hover { border-color: var(--accent); color: var(--accent); box-shadow: var(--glow-accent); text-decoration: none; }
+.report-link.missing { border-color: var(--border); color: var(--text-muted); background: transparent; }
+.alert { padding: 10px 14px; border: 1px solid var(--border-strong); background: rgba(11, 26, 46, .6); font-size: .8rem; border-left-width: 3px; border-radius: var(--radius); }
+.alert.is-error { background: var(--error-bg); border-color: var(--error-border); }
+.alert.is-warn { background: var(--warn-bg); border-color: var(--warn-border); }
+.alert.is-info { background: rgba(127, 187, 240, .05); border-color: var(--accent-dim); }
+/* ⚠️ 命令一多就會橫向溢出，最右邊那幾個被裁掉而且不知道還有東西
+   （2026-08-23：`setup` 有 16 個命令）。改成**換行**，不要橫捲。 */
+.tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; border-bottom: 1px solid var(--border);
+  margin-bottom: 10px; flex-shrink: 0; padding-bottom: 2px; }
+.tab-btn { padding: 6px 13px; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font-size: .78rem; position: relative; white-space: nowrap; letter-spacing: .04em; }
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--accent); }
+.tab-btn.active::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--accent); box-shadow: var(--glow-accent); }
+/* 換行後每一列都要看得出分界 */
+.tab-btn { border-radius: 3px; }
+.tab-btn:hover { background: rgba(255,255,255,.04); }
+.tab-btn .cnt.danger { color: var(--danger); border-color: var(--danger); }
+.tab-btn .cnt { font-variant-numeric: tabular-nums; font-size: .69rem; margin-left: 5px; color: var(--text-muted); }
+
+/* pill */
+.pill { display: inline-block; font-size: .66rem; padding: 1px 7px; border: 1px solid var(--border-strong); color: var(--text-muted); white-space: nowrap; letter-spacing: .04em; }
+.pill.crux { border-color: rgba(88, 166, 255, .5); color: var(--p-crux); }
+.pill.qixing { border-color: rgba(192, 132, 252, .5); color: var(--p-qixing); }
+.pill.wbot { border-color: rgba(255, 182, 72, .5); color: var(--p-wbot); }
+.pill.common { border-color: rgba(125, 147, 171, .5); color: var(--p-common); }
+.pill.smoke { border-color: var(--success-dim); color: var(--success); }
+.pill.write { border-color: var(--danger-dim); color: var(--danger); }
+.pill.prereq { border-color: var(--amber-dim); color: var(--accent-amber); }
+.pill.tone-success { border-color: var(--success); color: var(--success); }
+.pill.tone-warn { border-color: var(--accent-amber); color: var(--accent-amber); }
+.pill.tone-danger { border-color: var(--danger); color: var(--danger); }
+.pill.tone-info { border-color: var(--accent-dim); color: var(--accent); }
+
+/* ── modal ── */
+/* ⛔⛔ **全螢幕遮罩上不可以有 `backdrop-filter`。** 這是整個平台最貴的一行 CSS。
+ *
+ * 2026-08-24 實測（同一份 30 幀捲動，各跑三次取中位數，開著 89KB 的交接檔）：
+ *     有 blur ················· 4,533ms
+ *     拿掉 blur ＋ 背後凍結 ····   588ms   ← **快 7.7 倍**
+ *     拿掉 blur ＋ 背後照跑 ····   675ms
+ * 而「背景場」「表格 table-layout」「content-visibility」三個候選**各自都是零影響**
+ * （7,378／7,301／7,425 對照現況 7,353）—— 成本 100% 在這一行。
+ *
+ * ⚠️ 兩個**試過但沒用**的辦法，別再走一次：
+ *   ① 把模糊搬到 `.modal::before`，讓 `.box` 變成兄弟而不是後代 → 7,334ms，**沒有用**。
+ *      原本的推論（「捲動容器是被模糊元素的後代所以不能獨立合成」）是**錯的** ——
+ *      真相更簡單：**全螢幕 backdrop-filter 只要那塊區域有任何重繪就整片重算**，
+ *      跟捲動容器掛在哪裡無關。
+ *   ② 只把 `.box` 上的玻璃拿掉（2026-08-24 上午做過）→ 使用者回報「還是明顯卡頓」。
+ *      框上那層是小面積、看不出差別；**貴的一直是全螢幕這層**。
+ *
+ * 代價：少了玻璃感。補償是把遮罩加深（.68 → .82），深度由 `.box` 自己的
+ * `edge-lit` ＋ `panel-glow` ＋ `lift-2` 提供 —— 那些是 box-shadow，不重算背景。
+ * 同一條規則適用 `.cmdbar` 與 `.dock-scrim`（都是全螢幕 ＋ 裡面有捲動容器）。 */
+.modal { position: fixed; inset: 0; z-index: 160; background: rgba(2, 5, 10, .82); display: grid; place-items: center; }
+/* ⭐ 捲動鏈：內層捲到底之後**事件會往外傳**，於是整個對話框自己滑一截 ——
+   使用者回報的「滾動會卡頓、畫面跳動」就是這個。`contain` 讓捲動停在該停的地方。 */
+.modal .box, .modal pre, .docview-body, .chat .msgs, .console, .cmdbar .results,
+.table-scroll, .page > .page-body, .fill > .scroll, pre.bd-text, #rq-list { overscroll-behavior: contain; }
+.modal .box {
+  width: min(560px, 94vw); max-height: 88vh; overflow: auto;
+  background: linear-gradient(180deg, rgba(11, 27, 44, .93), rgba(4, 13, 23, .95));
+  /* ⛔ 這裡原本有 `backdrop-filter: var(--glass)` —— 與 `.rail` 同一個理由拿掉：
+     這個框自己已經 93~95% 不透明，**背後模糊不模糊看不出差別**，卻要為整框面積
+     每幀重算一次模糊。而框裡還有一個會捲動的長文（docview），每次捲動都會踩到。 */
+  border: 1px solid var(--frame-on); padding: 20px 22px; position: relative;
+  box-shadow: var(--edge-lit-on), var(--lift-2), var(--panel-glow);
+  border-radius: var(--radius-modal);
+}
+.modal .box.wide { width: min(880px, 96vw); }
+/* 長文專用：交接檔／機制文件常有 4~5 欄的表格，880px 下每一格都在硬斷行 */
+.modal .box.doc { width: min(1360px, 94vw); }
+/* ⭐ 文件全文：**用 flex 分高度，不要寫死 vh**（2026-08-24 使用者回報「右下角按鈕貼齊邊框」）。
+   成因：`.box.no-scroll` 是 `overflow:hidden`（擋捲動鏈用），而內文寫死 `74vh` ——
+   `74vh ＋ 標題 ＋ 路徑列 ＋ 按鈕列 ＋ 上下 padding` 超過 `max-height: 88vh` 時，
+   多出來的部分**無處可去**：實測內容 858px、可視 837px，按鈕列底部剛好壓在框線上，
+   20px 的下 padding 整個被切掉。
+   ⛔ 別再用「74vh 改小一點」補 —— 那只是換一個螢幕高度再犯一次。
+      讓內文吃**剩餘**空間，任何視窗高度都成立。 */
+.modal .box.doc { display: flex; flex-direction: column; height: min(88vh, 1100px); }
+.modal .box.doc > h3, .modal .box.doc > .actions { flex: none; }
+.modal .box.doc > .docview { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.modal .box.doc .docview-head { flex: none; }
+.modal .box.doc .docview-body { flex: 1 1 auto; min-height: 0; max-height: none; }
+.modal h3 { margin: 0 0 14px; font-family: var(--font-display); font-size: .8rem; letter-spacing: .14em; text-transform: uppercase; color: var(--title); padding-bottom: 9px; border-bottom: 1px solid var(--border); }
+.modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.modal.danger .box { border-color: var(--danger); }
+.modal.danger .box::before, .modal.danger .box::after { border-color: var(--danger); }
+.modal pre { background: var(--code-bg); padding: 9px; overflow: auto; font-size: .76rem; max-height: 300px; border: 1px solid var(--border); }
+
+/* ── toast ── */
+.toasts { position: fixed; right: 18px; bottom: 84px; z-index: 170; display: flex; flex-direction: column; gap: 8px; max-width: 380px; }
+.toast { padding: 9px 13px; background: linear-gradient(180deg, rgba(11, 27, 44, .93), rgba(4, 13, 23, .95));
+  border: 1px solid var(--frame); border-left: 3px solid var(--accent); font-size: .8rem;
+  box-shadow: var(--edge-lit), var(--lift-2); animation: toast-in .2s ease; border-radius: var(--radius); }
+.toast.success { border-left-color: var(--success); } .toast.danger { border-left-color: var(--danger); } .toast.warn { border-left-color: var(--accent-amber); }
+@keyframes toast-in { from { transform: translateY(8px); opacity: 0; } }
+
+/* ── 樹 ── */
+.tree { font-size: .8rem; }
+.tree .node { display: flex; align-items: center; gap: 6px; padding: 2px 5px; cursor: default; position: relative; }
+.tree .node:hover { background: var(--accent-faint); }
+.tree .node.selected-leaf { background: rgba(127, 187, 240, .1); box-shadow: inset 2px 0 0 var(--accent); }
+.tree .node .tw { width: 13px; text-align: center; color: var(--text-muted); cursor: pointer; user-select: none; flex-shrink: 0; }
+.tree .node .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree .node .lbl.case { cursor: pointer; }
+.tree .node .lbl.case:hover { color: var(--accent); }
+/* ★ 展開的子樹交給瀏覽器**跳過畫面外的部分**：案例樹展開後有數百列，
+   一次全畫是一個 60ms 以上的長任務（換到案例頁會頓一下）。
+   `content-visibility: auto` 讓捲出畫面的分支不參與排版與繪製，
+   `contain-intrinsic-size` 先給一個高度估值，捲軸才不會跳。
+   ⚠️ 只放在 `.children`（分支容器），**不要放到每一列** —— 那反而會多出上百次的
+      「進出視窗」判定，得不償失。 */
+.tree .children { margin-left: 14px; border-left: 1px solid var(--border); padding-left: 4px;
+  content-visibility: auto; contain-intrinsic-size: auto 320px; }
+.tree .badges { display: flex; gap: 3px; flex-shrink: 0; }
+.tree .badges .b { font-family: var(--mono); font-size: .62rem; padding: 0 4px; background: var(--code-bg); color: var(--text-muted); border: 1px solid var(--border); }
+.tree .badges .b.w { color: var(--danger); border-color: var(--danger-dim); } .tree .badges .b.s { color: var(--success); border-color: var(--success-dim); } .tree .badges .b.p { color: var(--accent-amber); border-color: var(--amber-dim); }
+.tree input[type=checkbox] { accent-color: var(--accent); margin: 0; flex-shrink: 0; }
+.tree .node.type-product > .lbl { font-weight: 600; letter-spacing: .06em; }
+.tree .node.type-file > .lbl { color: var(--text-muted); }
+
+/* ── 環／sparkline ── */
+.ring { display: inline-grid; place-items: center; position: relative; }
+.ring svg { transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-linecap: round; }
+.ring .track { stroke: var(--border); }
+.ring .bar { stroke: url(#ringGrad); filter: drop-shadow(var(--glow-accent)); transition: stroke-dashoffset .6s ease; }
+.ring .val { position: absolute; font-variant-numeric: tabular-nums; font-weight: 500; font-size: .78rem; color: var(--accent); }
+.spark { display: block; width: 100%; }
+.spark .line { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round;
+  filter: drop-shadow(0 0 3px rgba(127, 187, 240, .55)); }   /* 參考圖的折線是會發光的訊號線 */
+.spark .area { fill: url(#sparkArea); stroke: none; }
+
+/* ── 指標卡 ── */
+/* ⚠️ 這裡原本有一個 `::after` 的**右上角 L 型角標** —— 第三版全站拆掉軍事 HUD 語彙時漏掉了這一個
+   （VISUAL.md 明訂「不要再加回 L 型角標」，卻有一個從第一版活到 2026-08-21 才被抓到）。
+   已移除；巡查時記得連 `::before/::after` 一起看，不能只 grep `clip-path`。 */
+.metric-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 9px; }
+.metric { padding: 11px 12px 12px; border: 1px solid rgba(77, 131, 200, .22); background: var(--panel-in);
+  border-radius: var(--radius); box-shadow: var(--edge-lit); position: relative; }
+.metric .k { font-size: .57rem; color: var(--text-muted); letter-spacing: .22em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.metric .v { font-variant-numeric: tabular-nums; font-weight: 300; font-size: 1.85rem; line-height: 1.08; letter-spacing: -.015em; color: var(--text); margin-top: 3px; }
+.metric.success .v { color: var(--success); } .metric.danger .v { color: var(--danger); } .metric.warn .v { color: var(--accent-amber); } .metric.accent .v { color: var(--accent); }
+
+/* ── console ── */
+.console { background: #030a14; border: 1px solid var(--border); padding: 7px 10px; font-family: var(--mono); font-size: .74rem; overflow: auto; white-space: pre; color: #8fb7dd; position: relative; }
+.console .ln.fail { color: var(--danger); } .console .ln.pass { color: var(--success); } .console .ln.skip { color: var(--accent-amber); }
+
+/* ── 指令列 ── */
+/* 同 `.modal`：全螢幕不放 backdrop-filter（`.results` 是捲動容器） */
+.cmdbar { position: fixed; inset: 0; z-index: 180; background: rgba(2, 5, 10, .76); display: grid; place-items: start center; padding-top: 11vh; }
+.cmdbar .box { width: min(700px, 94vw); background: linear-gradient(180deg, rgba(11, 27, 44, .93), rgba(4, 13, 23, .95));
+  border: 1px solid var(--frame-on);
+  box-shadow: var(--glow-accent), var(--edge-lit-on), var(--lift-2); overflow: hidden; position: relative; border-radius: var(--radius-modal); }
+.cmdbar .box > .scanline { z-index: 3; }
+.cmdbar input { width: 100%; padding: 13px 18px; background: transparent; border: 0; border-bottom: 1px solid var(--border); color: var(--text); font-size: .95rem; font-family: inherit; outline: none; letter-spacing: .02em; }
+.cmdbar .results { max-height: 52vh; overflow: auto; }
+.cmdbar .res { padding: 7px 18px; display: flex; align-items: center; gap: 10px; cursor: pointer; border-left: 2px solid transparent; }
+.cmdbar .res:hover, .cmdbar .res.active { background: var(--accent-faint); border-left-color: var(--accent); }
+.cmdbar .res .t { font-size: .64rem; padding: 1px 6px; background: var(--code-bg); color: var(--accent); font-family: var(--mono); min-width: 42px; text-align: center; border: 1px solid var(--border); }
+.cmdbar .res .l { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdbar .res .s { color: var(--text-muted); font-size: .72rem; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdbar .foot { padding: 6px 18px; font-size: .68rem; color: var(--text-muted); border-top: 1px solid var(--border); display: flex; gap: 14px; }
+
+/* ── 對話（dock 內與 sessions 頁共用） ── */
+.chat { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.chat .head { display: flex; align-items: center; gap: 6px; padding-bottom: 7px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.chat .head select { max-width: 190px; background: var(--code-bg); border: 1px solid var(--border-strong); color: var(--text); padding: 3px 6px; font-size: .74rem; }
+.chat .msgs { flex: 1; overflow: auto; padding: 9px 2px; display: flex; flex-direction: column; gap: 7px; min-height: 0; }
+.msg { max-width: 94%; padding: 7px 11px; font-size: .82rem; white-space: pre-wrap; word-break: break-word; border: 1px solid var(--border); }
+.msg.user { align-self: flex-end; background: rgba(127, 187, 240, .08); border-color: var(--accent-dim); }
+.msg.assistant { align-self: flex-start; background: rgba(11, 26, 46, .7); border-color: var(--border-strong); }
+.msg.system { align-self: center; color: var(--text-muted); font-size: .72rem; background: transparent; border: 0; text-align: center; }
+.msg .meta { font-size: .64rem; color: var(--text-muted); margin-top: 4px; }
+.msg .demo-tag { color: var(--accent-amber); }
+.chat .input { display: flex; gap: 7px; padding-top: 7px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.chat .input textarea { flex: 1; resize: none; height: 38px; background: var(--code-bg); border: 1px solid var(--border-strong); color: var(--text); padding: 6px 8px; font-family: inherit; font-size: .82rem; }
+.chat .input textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--glow-accent); }
+/* ── 對話的行距比正文緊（2026-08-27）──
+   對話是**逐則掃讀**，不是長文閱讀：正文的 1.45／1.55 用在這裡，
+   一則多行的回覆會被拉得很鬆，一屏裝不下幾行。
+   ⛔ **刻意限定在 `.chat` 底下，不動全域的 `.md`** —— 那支還被
+   `ui/modal.js` 的文件全文檢視與 `ui/todopanel.js` 共用，
+   那兩處是真的在讀長文，鬆一點才對。 */
+.chat .input textarea { line-height: 1.3; }
+.chat .msg { line-height: 1.38; }
+.chat .msg .md { line-height: 1.38; }
+.chat .msg .md p { margin: 3px 0; }
+.chat .msg .md ul, .chat .msg .md ol { margin: 4px 0; }
+/* 標題在對話裡多半只隔一兩行，正文的 14px 上緣會空出一大塊 */
+.chat .msg .md h1, .chat .msg .md h2, .chat .msg .md h3,
+.chat .msg .md h4, .chat .msg .md h5, .chat .msg .md h6 { margin: 8px 0 3px; }
+.proposal { margin-top: 7px; padding: 8px 10px; border: 1px solid var(--accent-amber); background: rgba(255, 182, 72, .06); }
+.proposal h5 { margin: 0 0 5px; font-size: .72rem; color: var(--accent-amber); letter-spacing: .1em; }
+.proposal .kv { font-family: var(--mono); font-size: .7rem; color: var(--text-muted); }
+
+/* ── 待辦與 Bug ── */
+.action-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.action-card { padding: 6px 8px; border: 1px solid var(--border); cursor: pointer; background: rgba(8, 22, 39, .5); position: relative; }
+.action-card:hover { border-color: var(--accent-dim); background: var(--accent-faint); }
+.action-card .n { font-variant-numeric: tabular-nums; font-weight: 500; font-size: 1.3rem; line-height: 1.1; }
+.action-card .l { font-size: .66rem; color: var(--text-muted); letter-spacing: .08em; }
+.action-card.revisit .n { color: var(--accent); } .action-card.unfiled .n { color: var(--accent-amber); } .action-card.to_close .n { color: #e3b341; } .action-card.no_regr .n { color: var(--text-muted); }
+.action-card.zero { opacity: .45; }
+.todo-row { display: grid; grid-template-columns: 40px 1fr auto; gap: 8px; align-items: baseline; padding: 3px 4px; border-bottom: 1px solid var(--border); font-size: .8rem; cursor: pointer; }
+.todo-row:hover { background: var(--accent-faint); }
+.todo-row .id { font-family: var(--mono); color: var(--accent); font-size: .74rem; }
+.todo-row.done .id, .todo-row.done .sum { text-decoration: line-through; color: var(--text-muted); }
+.todo-row .sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.todo-row .pri { font-size: .68rem; color: var(--text-muted); white-space: nowrap; }
+.todo-row.selected-leaf { background: rgba(127, 187, 240, .1); }
+.blocker { padding: 6px 10px; border: 1px solid var(--danger); border-left-width: 3px; background: rgba(255, 90, 95, .06); margin-bottom: 6px; font-size: .78rem; }
+.blocker b { color: var(--danger); }
+.md { font-size: .82rem; line-height: 1.55; }
+.md code { background: var(--code-bg); padding: 0 4px; border: 1px solid var(--border); }
+.md p { margin: 6px 0; }
+
+/* ── 文件全文檢視（docview.js）──
+   目標是讀得懂、能定位，不是完美還原排版。標題只用字級與顏色分層，不加線，
+   免得交接檔那種每兩行一個 ## 的文件變成一堆分隔線。 */
+.docview-head { padding-bottom: 7px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+/* ⭐ `.modal .box` 本身也是捲動容器（max-height:88vh; overflow:auto）——
+   兩層疊在一起就會互搶。docview 開啟時由 `.box.no-scroll` 把外層關掉，
+   全部捲動交給這一層（見 `ui/docview.js`）。 */
+.modal .box.no-scroll { overflow: hidden; }
+.docview-body { max-height: 66vh; overflow: auto; padding-right: 6px; position: relative;
+  /* 長文有數千個節點：把它宣告成獨立的排版／繪製單元，捲動時瀏覽器就不必回頭問外面 */
+  contain: layout paint style; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+  margin: 14px 0 5px; font-family: var(--font-display); color: var(--title);
+  letter-spacing: .04em; line-height: 1.35; text-transform: none; padding: 0; border: 0; }
+.md h1 { font-size: 1.02rem; } .md h2 { font-size: .93rem; } .md h3 { font-size: .86rem; }
+.md h4, .md h5, .md h6 { font-size: .82rem; color: var(--text-muted); }
+.md ul, .md ol { margin: 6px 0; padding-left: 20px; }
+.md li { margin: 2px 0; }
+.md li::marker { color: var(--accent-dim, var(--text-muted)); }
+.md blockquote { margin: 8px 0; padding: 2px 0 2px 11px; border-left: 2px solid var(--border-strong); color: var(--text-muted); }
+.md blockquote p { margin: 4px 0; }
+.md hr { border: 0; border-top: 1px solid var(--border); margin: 12px 0; }
+.md a { color: var(--accent); }
+.md .md-code { background: var(--code-bg); border: 1px solid var(--border); padding: 8px 10px;
+  overflow-x: auto; font-size: .74rem; line-height: 1.5; margin: 8px 0; max-height: none; }
+.md .md-table-wrap { overflow-x: auto; margin: 8px 0; }
+.md .md-table-wrap table.tbl { width: 100%; table-layout: auto; }
+/* 交接檔的儲存格常塞長路徑與 code（`_reports/需求驗證報告_…_2026-08-20.md`）。
+   不許它們撐寬表格 —— 撐寬的結果是最右欄被裁掉，而那欄往往正是「依據」。 */
+.md .md-table-wrap td, .md .md-table-wrap th { vertical-align: top; overflow-wrap: anywhere; }
+.md .md-table-wrap code { white-space: normal; overflow-wrap: anywhere; }
+/* 「看全文」跳過去的那一段：靠左緣光棒指出來，不用背景色蓋掉原本的可讀性 */
+.md .line-hit { position: relative; animation: line-hit-fade 2.4s ease-out forwards; }
+.md .line-hit::before { content: ""; position: absolute; left: -10px; top: -2px; bottom: -2px; width: 2px; background: var(--accent); }
+@keyframes line-hit-fade { 0%, 55% { background: rgba(127, 187, 240, .13); } 100% { background: transparent; } }
+html[data-motion="0"] .md .line-hit { animation: none; background: rgba(127, 187, 240, .13); }
+
+/* ── checklist／sync 結果 ── */
+.checklist .it { display: grid; grid-template-columns: 16px 1fr; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: .8rem; }
+.checklist .it .d { color: var(--text-muted); font-size: .72rem; }
+.copy-chip { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px; border: 1px solid var(--accent-dim); font-family: var(--mono); background: var(--code-bg); }
+.result-box { margin-top: 10px; padding: 10px; border: 1px solid var(--border-strong); background: rgba(8, 22, 39, .5); }
+.result-box pre { margin: 0; white-space: pre-wrap; font-size: .76rem; }
+
+/* ── 執行監控 ── */
+.timeline { display: flex; align-items: center; overflow-x: auto; padding: 4px 0 2px; }
+.timeline .ph { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 84px; position: relative; font-size: .68rem; color: var(--text-muted); text-align: center; letter-spacing: .04em; }
+.timeline .ph::before { content: ""; position: absolute; top: 6px; left: 50%; width: 100%; height: 1px; background: var(--border); z-index: 0; }
+.timeline .ph:last-child::before { display: none; }
+.timeline .ph .d { width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--bg); z-index: 1; }
+.timeline .ph.done .d { background: var(--accent-2); border-color: var(--accent-2); box-shadow: 0 0 6px rgba(41, 125, 224, .5); }
+.timeline .ph.done::before { background: var(--accent-dim); }
+.timeline .ph.cur .d { border-color: var(--accent); background: var(--accent); box-shadow: var(--glow-accent); animation: pulse 2s ease-in-out infinite; }
+.timeline .ph.cur { color: var(--accent); }
+.timeline .ph.term-success .d { background: var(--success); border-color: var(--success); }
+.timeline .ph.term-warn .d { background: var(--accent-amber); border-color: var(--accent-amber); }
+.timeline .ph.term-danger .d { background: var(--danger); border-color: var(--danger); }
+
+/* ── 工具卡 ── */
+.tool-card { display: flex; flex-direction: column; gap: 5px; cursor: pointer; transition: transform .15s, border-color .15s; }
+.tool-card:hover { border-color: var(--accent-dim); transform: translateY(-2px); }
+.tool-card .name { font-weight: 600; display: flex; align-items: center; gap: 7px; font-size: .86rem; }
+.tool-card .subtitle { color: var(--text-muted); font-size: .74rem; line-height: 1.4; }
+.tool-card .foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 5px; font-size: .7rem; color: var(--text-muted); border-top: 1px solid var(--border); }
+.danger-lvl { font-size: .62rem; padding: 0 6px; border: 1px solid transparent; letter-spacing: .06em; white-space: nowrap; }
+.danger-lvl.high { background: rgba(255, 90, 95, .12); color: var(--danger); border-color: var(--danger-dim); }
+.danger-lvl.medium { background: rgba(255, 182, 72, .12); color: var(--accent-amber); border-color: var(--amber-dim); }
+.danger-lvl.low { background: rgba(53, 224, 138, .1); color: var(--success); border-color: var(--success-dim); }
+
+/* ── run 卡 ── */
+.run-card { display: grid; grid-template-columns: 54px 1fr auto; gap: 12px; align-items: center; }
+.run-card .title { font-weight: 600; display: flex; align-items: center; gap: 7px; font-size: .84rem; flex-wrap: wrap; }
+.run-card .sub { color: var(--text-muted); font-size: .72rem; }
+.run-card .mini-metrics { display: flex; gap: 12px; margin-top: 3px; font-size: .74rem; flex-wrap: wrap; }
+.run-card .mini-metrics b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.run-card.recent { opacity: .8; }
+
+/* ── 確認框的「人話摘要 ＋ 命令列預覽」（views/tool.js go()）
+      先前這裡是 JSON.stringify(表單值)：鍵名不是人話，還會連被 visible_when 隱藏的欄位
+      與 secret 明文一起吐出來。改成後端 adapters/argv.py 組出的兩段式。 */
+.confirm-sum { margin-top: 8px; border: 1px solid var(--border); border-radius: 5px; padding: 6px 9px; background: var(--code-bg); }
+.confirm-sum .row { padding: 2px 0; font-size: 12px; line-height: 1.6; }
+.confirm-sum .row + .row { border-top: 1px dashed var(--border); }
+.confirm-sum b { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+pre.cmd-preview {
+  margin: 4px 0 8px; padding: 8px 10px; font-size: 11.5px; line-height: 1.65;
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 132px; overflow-y: auto;
+  border-left: 2px solid var(--accent);
+}
+
+/* 落單預覽（views/run.js fileBugs）：一張單一個 details，展開才看全文 */
+.bd-prev { border: 1px solid var(--border); border-radius: 5px; padding: 6px 9px; margin-top: 6px; }
+.bd-prev > summary { cursor: pointer; font-size: 12.5px; line-height: 1.7; }
+.bd-prev input, .bd-prev select {
+  width: 100%; margin-top: 3px; padding: 4px 6px; font-size: 12px;
+  background: var(--code-bg); border: 1px solid var(--border-strong); color: var(--text); border-radius: 4px;
+}
+.bd-prev .bd-sev { width: 78px; }
+/* ⭐ 文件的「原始碼」模式（2026-08-24）—— 整份就一個 <pre>，捲動快約 1.8 倍。
+   ⚠️ `word-break: break-all` 不要用：中文文件被硬切在半個詞中間會非常難讀，
+      `overflow-wrap: anywhere` 只在真的塞不下時才斷。 */
+.docview-body.raw { padding: 0; }
+/* ⚠️ **要壓過 `.modal pre` 的 `max-height: 300px`**（2026-08-24 使用者回報
+   「檢視報告的頁面，使用原始碼，視窗只有一半」）——
+   那條通用規則是給對話框裡的小段程式碼用的，而這裡的 `<pre>` **就是內容本身**，
+   高度該由外層的 `.docview-body` 決定。被卡在 300px 時，680px 的容器下面
+   會空掉將近 400px，而且 `<pre>` 自己長出第二層捲軸。
+   ⛔ 背景與邊框也要拿掉：外層已經是內容區，再套一層框會變成「框中框」。 */
+.modal .box.doc pre.doc-raw,
+pre.doc-raw {
+  margin: 0; padding: 12px 14px; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: 12px/1.75 var(--mono, ui-monospace, Consolas, monospace);
+  color: var(--text); tab-size: 2;
+  max-height: none; overflow: visible; background: none; border: 0;
+}
+
+pre.bd-text { max-height: 220px; overflow: auto; margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ── 需求 → 案例（views/require.js）────────────────────────────────────
+   一條案例一張卡：標題可就地改、marker 可切、meta 逐項列出「期望／前置／步驟／可用方法／範本」。
+   刻意把「可用方法」與「範本」放進畫面 —— 產出的可信度取決於它們，不能藏起來。 */
+.rq-case { border: 1px solid var(--border); border-radius: 5px; padding: 7px 9px; margin-bottom: 7px; }
+.rq-case + .rq-case { margin-top: 0; }
+.rq-case input.rq-title {
+  padding: 4px 7px; font-size: 12.5px; background: var(--code-bg);
+  border: 1px solid var(--border-strong); color: var(--text); border-radius: 4px; min-width: 0;
+}
+.rq-case select.rq-mk { font-size: 11px; padding: 3px 5px; }
+.rq-meta { margin-top: 5px; padding-left: 4px; border-left: 2px solid var(--border); line-height: 1.75; }
+.rq-meta b { color: var(--text-dim); font-weight: 600; margin-right: 2px; }
+.rq-meta code { margin-right: 5px; }
+.rq-meta .pc-warn { color: var(--accent-amber); }
+#rq-list { max-height: 62vh; overflow-y: auto; padding-right: 3px; }
+#rq-text { width: 100%; font-family: var(--mono, monospace); font-size: 12px; line-height: 1.7; }
+
+/* 任務啟動器（階段 E，2026-08-23）—— 只加元件，不動既有版面 */
+.task-bar { margin-top: 10px; }
+.task-bar-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.task-bar-head .nm { font-size: 12px; letter-spacing: .08em; color: var(--muted); }
+.task-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.task-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; font-size: 12px; }
+.task-btn .ic { font-size: 14px; line-height: 1; }
+.task-btn.is-off { opacity: .45; cursor: not-allowed; }
+
+/* 對話：進行中的提示（2026-08-23）——
+   它必須看得出「還在跑」，否則使用者以為按鈕壞了。 */
+.msg.pending { color: var(--accent); opacity: .9; font-size: .82rem;
+  display: flex; align-items: center; gap: 8px; }
+/* ⚠️ pending 這一則的內容改由 `spinner()` 產生（`.loading-dots`），
+   所以**不要**再加 `::before` 的那顆點 —— 會變成兩組指示器並排。 */
+@keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+
+/* ── 載入動畫（全站共用）──
+ * 三顆依序跳動的點。為什麼是點而不是轉圈：轉圈是「短時間、馬上好」的語彙，
+ * 而這裡一等就是好幾分鐘（session 要載 skill、查索引）——
+ * 逐一跳動的點傳達的是「持續在進行」，比較誠實。
+ * 動畫走 `transform`／`opacity`（合成執行緒），不會跟捲動搶主執行緒。
+ *
+ * ⭐ 2026-08-24 由 `.loading-dots` 改名為 `.loading-dots` 並升格為全站元件 ——
+ *    原本只有對話面板會動，換頁時的十處載入態全是**靜止文字**，
+ *    而「靜止的文字看起來像卡死」正是當初做這顆動畫的理由（使用者回報：
+ *    「各個不同頁面切換後，若目標頁面內容還未出現時，無載入中動畫」）。
+ *    產生器見 `ui/loading.js`，那裡記著各頁實測的空窗長度。 */
+.loading-dots { display: flex; align-items: center; gap: 9px; color: var(--accent);
+  font-size: .8rem; padding: 2px 0; }
+.loading-dots .dots { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.loading-dots .dots i { width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+  box-shadow: var(--glow-accent); animation: chat-dot 1.1s ease-in-out infinite; }
+.loading-dots .dots i:nth-child(2) { animation-delay: .16s; }
+.loading-dots .dots i:nth-child(3) { animation-delay: .32s; }
+.loading-dots .lb { color: var(--text-muted); }
+@keyframes chat-dot {
+  0%, 70%, 100% { transform: translateY(0) scale(.82); opacity: .3; }
+  35% { transform: translateY(-4px) scale(1); opacity: 1; }
+}
+/* 關掉動效時仍要看得出「在載入」—— 用靜態的實心點，不是整組消失 */
+html[data-motion="0"] .loading-dots .dots i { animation: none; opacity: .85; }
+
+/* 整塊內容的載入態：置中撐開，讓內容進來時版面不要整個跳一下。
+   ⚠️ `min-height` 不要設太高 —— 它也用在側欄那種矮容器裡。 */
+.loading-block { display: flex; align-items: center; justify-content: center;
+  min-height: 96px; padding: 18px 0; }
+
+/* 對話：長訊息（任務提示）摺疊 */
+.msg .fold > summary { cursor: pointer; color: var(--text-muted); font-size: .76rem;
+  letter-spacing: .04em; padding: 2px 0; }
+.msg .fold > summary:hover { color: var(--text); }
+.msg .fold .foldbody { margin-top: 6px; padding-left: 8px;
+  border-left: 2px solid var(--border-strong); white-space: pre-wrap; }
+
+/* 對話：正在用哪些工具（2026-08-23）—— 等待期唯一的回饋 */
+.msg .toolrow { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.msg .toolchip { font-size: .68rem; letter-spacing: .03em; padding: 1px 6px;
+  border: 1px solid var(--border-strong); border-radius: 2px; color: var(--text-muted); }
+.msg .toolchip.more { border-style: dashed; }
+
+/* 憑證頁：一欄位一列（2026-08-23 UI 走查：先前全部黏在一起，
+   「清除」看起來像屬於下一個欄位） */
+.credfld { padding: 10px 0; border-top: 1px solid var(--border); }
+.credfld:first-of-type { border-top: 0; }
+.credhead { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.credfld input { width: 100%; max-width: 520px; padding: 6px 9px;
+  background: var(--code-bg); border: 1px solid var(--border-strong); color: var(--text); }
+.credfld .credhelp { margin-top: 5px; max-width: 640px; line-height: 1.55; }
+
+/* 對話裡的 markdown（2026-08-23）——
+   用的是文件檢視器那支渲染器，但對話框窄，字級與間距要收斂。 */
+.msg .md > *:first-child { margin-top: 0; }
+.msg .md > *:last-child { margin-bottom: 0; }
+.msg .md h1, .msg .md h2, .msg .md h3, .msg .md h4 {
+  font-size: .84rem; margin: 10px 0 4px; color: var(--text); }
+.msg .md p { margin: 5px 0; }
+.msg .md ul, .msg .md ol { margin: 5px 0; padding-left: 18px; }
+.msg .md li { margin: 2px 0; }
+.msg .md pre { margin: 6px 0; padding: 7px 9px; font-size: .72rem;
+  background: var(--code-bg); border: 1px solid var(--border);
+  overflow-x: auto; max-width: 100%; }
+.msg .md code { font-size: .74rem; }
+/* 表格在窄面板裡要能橫捲，不要把訊息撐爆 */
+.msg .md table { display: block; overflow-x: auto; max-width: 100%;
+  border-collapse: collapse; font-size: .72rem; margin: 6px 0; }
+.msg .md th, .msg .md td { border: 1px solid var(--border);
+  padding: 3px 6px; white-space: nowrap; }
+.msg .md blockquote { margin: 6px 0; padding-left: 8px;
+  border-left: 2px solid var(--border-strong); color: var(--text-muted); }
+
+/* ── 設定 → 設定檔編輯器（2026-08-24）──
+ * 左邊選檔、右邊編輯。⛔ JSON 壞掉時「儲存」會被停用（見 views/configfiles.js）——
+ * 壞掉的設定檔會讓 lint_docs／bug_paths／平台一起**靜默**失效。 */
+.cfg-wrap { display: grid; grid-template-columns: 268px minmax(0, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 1000px) { .cfg-wrap { grid-template-columns: 1fr; } }
+.cfg-list { display: flex; flex-direction: column; gap: 6px; }
+.cfg-item { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left;
+  padding: 8px 10px; border: 1px solid var(--border); background: rgba(8, 22, 39, .5); color: var(--text); cursor: pointer; }
+.cfg-item:hover { border-color: var(--accent-dim); background: var(--accent-faint); }
+.cfg-item.active { border-color: var(--accent); background: var(--accent-faint); }
+.cfg-item .nm { font-size: .82rem; }
+.cfg-item .pt { color: var(--text-muted); font-size: .66rem; word-break: break-all; }
+.cfg-item .mt { font-size: .64rem; }
+.cfg-edit { display: flex; flex-direction: column; min-width: 0; }
+.cfg-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cfg-desc { margin: 4px 0 0; }
+/* 範例格式（2026-08-24）：接產品的人打開環境設定時最需要的東西。
+   預設收合 —— 已經知道怎麼寫的人不必每次都看到。 */
+.cfg-example { margin: 8px 0 0; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel-in); padding: 7px 11px; }
+.cfg-example > summary { cursor: pointer; font-size: .78rem; color: var(--accent);
+  letter-spacing: .04em; list-style: none; }
+.cfg-example > summary::before { content: "▸ "; }
+.cfg-example[open] > summary::before { content: "▾ "; }
+.cfg-example > summary::-webkit-details-marker { display: none; }
+.cfg-example pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px;
+  padding: 9px 11px; margin: 7px 0; font-size: .74rem; line-height: 1.5; overflow-x: auto; }
+.cfg-example .tiny { margin-bottom: 7px; line-height: 1.55; }
+
+/* ⭐ 編輯區吃滿剩餘高度（先前固定 46vh，下面空一大截 —— 2026-08-24 走查）。
+   `min-height` 保底，`height` 讓它隨視窗長高；扣掉的是標題、說明、範例、動作列。 */
+.cfg-ta { width: 100%; min-height: 46vh; height: calc(100dvh - 430px); resize: vertical; margin-top: 8px; padding: 10px 12px;
+  background: var(--code-bg); border: 1px solid var(--border-strong); color: var(--text);
+  font-size: .78rem; line-height: 1.55; tab-size: 2; white-space: pre; overflow: auto; }
+.cfg-ta:focus { outline: none; border-color: var(--accent); box-shadow: var(--glow-accent); }
+.cfg-actions { margin-top: 8px; gap: 6px; align-items: center; }
+
+/* 語意色的獨立版本 —— 先前只有 `.pill.tone-*`，於是憑證頁的
+ * `<span class="tiny tone-ok">✅ …</span>` 完全沒有顏色（2026-08-24 走查）。 */
+.tone-ok { color: var(--success); }
+.tone-warn { color: var(--accent-amber); }
+.tone-bad { color: var(--danger); }
+
+/* ── 工具頁嵌在設定頁裡（設定 → 工作區）──
+ * `.page` 是「吃滿整個 view 高度」的排版，嵌進 `.page-body`（本身已在捲動）時
+ * 那套 flex:1 會撐出一大片空白，右側欄還會被切掉。這裡給它自己的高度規則。 */
+.tool-embed { display: flex; flex-direction: column; min-height: 0; }
+.tool-embed > .tabs { flex-shrink: 0; }
+/* 高度隨內容 —— 無參數的命令不該撐出 300px 的空白 */
+.tool-embed #tool-grid { min-height: 0; height: auto; align-items: start; }
+.tool-embed #tool-grid > aside { overflow: visible; }
+.tool-embed #tool-grid > section > div:first-child { overflow: visible; }
+/* 路徑類的長字串在窄卡片裡要斷行，不要溢出卡框（工作區分頁的「健康」卡踩到） */
+.tool-embed #health, .tool-embed #recent { word-break: break-all; }
+
+/* 自己捲動的表格（報告中心、案例、產品頁）也要替右下角的對話入口讓位 ——
+ * 不然最後一列的「報告」連結永遠被蓋住，捲到底也點不到（2026-08-24 版面稽核抓到）。
+ * `.page > .page-body::after` 只保護「頁面本身在捲」的情況。 */
+/* `.page` 已在底部保留一條給浮動入口（見 base.css），這裡不必再補 */
+
+/* 短標籤欄不換行 —— Bug 表的「未修復」被折成「未修 / 復」兩行（2026-08-24 走查） */
+.tbl td.nowrap, .tbl th.nowrap { white-space: nowrap; }
+
+/* ── 列表標題當作連結（2026-08-24 使用者：「列表標題應可以點擊併開啟」）──
+ * 人的直覺是點標題，而先前每一列的入口都只有最右邊那顆按鈕。
+ * ⚠️ 樣式**不要**用 `--accent` 的整片藍 —— 一整欄都是藍字會蓋過真正的重點；
+ *    平常維持正常字色，hover 才點亮並出現底線，這樣「可以點」看得出來、又不搶眼。 */
+.row-open { color: inherit; text-decoration: none; }
+.row-open:hover, .row-open:focus-visible { color: var(--accent); text-decoration: underline; }
+
+/* ── 需求頁的案例草稿收件匣（2026-08-24 流程重設計）──
+ * 這一頁不再自己生成案例；產出一律由 session 交回來，落在這份清單裡。
+ * ⭐ 它是主角而不是頁首角落的下拉 —— 「離開再回來」是正常動線，
+ *    人要一眼看到「有幾份在等我」。 */
+.rq-draft { padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel-in); cursor: pointer; margin-bottom: 6px;
+  transition: border-color .14s, background .14s; }
+.rq-draft:hover { border-color: var(--accent-dim); background: var(--accent-faint); }
+.rq-draft.active { border-color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); }
+.rq-draft .nm { font-size: .82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rq-draft .nowrap { white-space: nowrap; }
+.rq-draft .rq-del { cursor: pointer; color: var(--text-muted); padding: 0 3px; }
+.rq-draft .rq-del:hover { color: var(--danger); }
+
+/* 驗證報告的「已確認」（2026-08-24）——
+   ⚠️ 用**降低存在感**表示已完成，不要用綠色打勾去強調它。
+   這份清單的用途是「還有哪些沒看」，所以沒看的才該顯眼。 */
+/* ⭐ 「接下來」—— 命令用 `next` 宣告跑完之後去哪（2026-08-24 走查盲點 ②）。
+   ⚠️ 與結果之間要有分隔線：它是**另一件事**（看結果 vs 做下一步），
+      黏在一起人會把按鈕當成結果的一部分。 */
+.next-actions {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--border-strong);
+}
+
+/* ⭐ 從「待確認」的產出連結點過來時，閃一下告訴人「就是這一塊」（2026-08-24）。
+   ⚠️ 只閃兩秒就收 —— 常駐的高亮會在人捲動時一直干擾。 */
+@keyframes flash-focus {
+  0%, 100% { box-shadow: none; }
+  30% { box-shadow: 0 0 0 2px var(--accent), var(--glow-accent); }
+}
+.flash-focus { animation: flash-focus 1s ease-in-out 2; }
+html[data-motion="0"] .flash-focus { animation: none; box-shadow: 0 0 0 2px var(--accent); }
+
+/* ── sync 命令的執行中／上次結果（2026-08-24 走查盲點 ①）──────────
+   sync 佔 28/33 條命令，timeout 最高 900 秒 —— 先前執行中只有一顆轉圈的按鈕、
+   結果離開頁面就消失。現在：執行中有計時條，回到頁面會還原上次的結果。 */
+.result-box.running { border-left: 3px solid var(--accent); }
+.result-box.running .mono { color: var(--accent); font-variant-numeric: tabular-nums; }
+/* ⭐ 「上一次的結果」要淡一階並標得出來 —— 不然人會以為是剛剛按的那次 */
+.result-box.is-stale { opacity: .78; border-left: 3px solid var(--border-strong); }
+.result-box.is-stale:hover { opacity: 1; }
+
+/* ── 案例瀏覽器：新寫入待確認（2026-08-24）────────────────────────
+   ⭐ 為什麼給它帶狀而不是一張卡：它**只在有待確認時出現**，是這一頁唯一
+      有時效性的東西。做成卡片會一直佔著版面，人很快就當它是背景。
+   ⚠️ 收起時整塊不留高度（`#cs-newwrap` 空字串）—— 留一條空殼會讓案例樹
+      每次進頁面都往下跳一截。 */
+.newwrite-bar {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 8px;
+  padding: 7px 11px; font-size: .8rem;
+  border: 1px solid var(--accent-amber); border-left-width: 3px;
+  background: linear-gradient(90deg, rgba(227, 179, 65, .13), rgba(227, 179, 65, .03));
+}
+.newwrite-bar.done { border-color: var(--border-strong); background: none; color: var(--text-muted); }
+.newwrite-bar .nw-ic { font-size: .95rem; }
+.newwrite-bar .warn { color: var(--accent-amber); }
+
+.newwrite-list { margin: 0 0 8px; display: flex; flex-direction: column; gap: 6px; }
+.nw-batch { border: 1px solid var(--border); background: rgba(8, 22, 39, .45); padding: 7px 10px; }
+/* 確認過的整批淡下去但**不收起** —— 人要回頭找「我剛剛確認的是哪一批」 */
+.nw-batch.is-acked { opacity: .5; }
+.nw-batch.is-acked:hover { opacity: .9; }
+.nw-batch.is-acked .nw-title { text-decoration: line-through; }
+.nw-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .78rem; }
+.nw-ack { display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+.nw-title { color: var(--text); font-weight: 600; }
+.nw-cases { margin: 7px 0 2px; padding: 0 0 0 2px; list-style: none;
+  display: flex; flex-direction: column; gap: 3px; font-size: .76rem; }
+.nw-cases li { display: flex; align-items: baseline; gap: 6px; }
+/* ⭐ 沒跑過的那顆記號要看得見 —— 它是這份清單唯一真正的分流 */
+.nw-v { flex: none; width: 1.1em; text-align: center; }
+.nw-v.no { color: var(--accent-amber); }
+
+#rp-tbl tr.is-acked > td { opacity: .52; }
+#rp-tbl tr.is-acked:hover > td { opacity: .85; }
+/* ⭐ 打勾＝這一份看完了，標題劃掉（2026-08-24 使用者要求）。
+   取消勾選會拿掉 `is-acked`，刪除線隨之消失 —— 不必另外寫還原邏輯。
+   ⚠️ 只劃**標題**，不劃整列：日期與檔名是「還要拿來找檔案」的資訊，
+      劃掉會讓人以為那份報告作廢了，而它只是「我看過了」。 */
+#rp-tbl tr.is-acked .row-open { text-decoration: line-through; text-decoration-thickness: 1px; }
+#rp-tbl .rp-ack { accent-color: var(--accent); cursor: pointer; }

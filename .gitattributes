@@ -1,0 +1,17 @@
+# 統一換行：倉庫內文字檔一律以 LF 儲存，避免跨平台（Windows/Mac）差異與 CRLF 提醒
+* text=auto eol=lf
+
+# ⚠️ 這個檔案的 CRLF 是刻意修復過的：Windows cmd.exe 對 LF-only 的 .bat 檔會有 DBCS
+# 解析錯亂（雙擊會出現亂碼「不是內部或外部命令」），2026-08-26 已改成純 ASCII + CRLF
+# 並經使用者實機雙擊確認修好——git 的全域 eol=lf 規則會在 checkout/commit 時把它轉回 LF，
+# 重新引入這個 bug，故在此明確覆寫。
+tools/test_platform/run_server.bat text eol=crlf
+
+# 明確標記二進位（若日後納入版控，不做換行轉換）
+*.png  binary
+*.jpg  binary
+*.pdf  binary
+*.xlsx binary
+*.docx binary
+*.pptx binary
+*.zip  binary

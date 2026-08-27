@@ -1,0 +1,529 @@
+{
+  "$schema": "./_schema.json",
+  "spec_version": 1,
+  "id": "ui_tests",
+  "products": "*",
+  "name": "UI 自動化測試",
+  "subtitle": "pytest + Playwright + Allure — 案例樹按產品分區",
+  "kind": "pytest",
+  "owner": "共用基礎設施",
+  "tags": [
+    "pytest",
+    "playwright",
+    "allure"
+  ],
+  "order": 0,
+  "docs": [
+    "tests/README.md",
+    ".claude/skills/ui-test/SKILL.md"
+  ],
+  "danger": {
+    "level": "medium",
+    "confirm_text": "選取範圍含 write_action，會實際寫入 QAT 測試站資料。"
+  },
+  "runtime": {
+    "cwd": ".",
+    "env": {
+      "PYTHONUTF8": "1",
+      "PYTHONIOENCODING": "utf-8"
+    },
+    "requires": {
+      "python_modules": [
+        "pytest",
+        "playwright",
+        "allure_pytest"
+      ],
+      "external": [
+        {
+          "cmd": "allure",
+          "resolver": "npm_global_first",
+          "hint": "powershell -File scripts\\setup_test_env.ps1"
+        }
+      ]
+    }
+  },
+  "commands": [
+    {
+      "id": "run_cases",
+      "label": "執行案例",
+      "mode": "run",
+      "primary": true,
+      "argv": [
+        "-m",
+        "pytest",
+        "-v",
+        "-p",
+        "no:cacheprovider"
+      ],
+      "params": {
+        "groups": [
+          {
+            "id": "sel",
+            "label": "選取"
+          },
+          {
+            "id": "env",
+            "label": "環境"
+          },
+          {
+            "id": "opt",
+            "label": "選項"
+          },
+          {
+            "id": "note",
+            "label": "備註"
+          }
+        ],
+        "_env_comment": "環境欄位依「選取案例所屬的產品」顯示（虛擬欄位 _products，由平台注入；見 store.js syncSelectionProducts）。三個產品的欄位形狀不同，照 config/environments.json 的實際結構：crux 第三層是總監、wbot 第三層是同一環境下的多個站台（不是三選一，故只要 env 一欄）、qixing 三彩種是各自獨立站台。",
+        "fields": [
+          {
+            "key": "selection",
+            "type": "case_picker",
+            "label": "要執行的案例",
+            "group": "sel",
+            "required": true,
+            "emit": "argsfile",
+            "help": "在案例瀏覽器勾選；wbot 案例建議以「階段」為單位。勾選的產品決定下方出現哪一組環境欄位"
+          },
+          {
+            "key": "marker",
+            "type": "select",
+            "label": "標記篩選",
+            "group": "sel",
+            "arg": "-m",
+            "options": [
+              {
+                "value": "",
+                "label": "（不篩選）"
+              },
+              {
+                "value": "smoke",
+                "label": "smoke（不寫入資料）"
+              },
+              {
+                "value": "write_action",
+                "label": "write_action（會寫入 QAT）"
+              },
+              {
+                "value": "not write_action",
+                "label": "排除 write_action"
+              }
+            ]
+          },
+          {
+            "key": "keyword",
+            "type": "text",
+            "label": "關鍵字（-k）",
+            "group": "sel",
+            "arg": "-k"
+          },
+          {
+            "key": "crux_env",
+            "type": "select",
+            "label": "CRUX 環境",
+            "group": "env",
+            "default": "qat",
+            "emit": "env",
+            "env": "CRUX_QA_ENV",
+            "visible_when": {
+              "_products": [
+                "crux"
+              ]
+            },
+            "options": [
+              {
+                "value": "qat",
+                "label": "QAT"
+              },
+              {
+                "value": "stg",
+                "label": "STG（⛔ 需逐次授權）"
+              }
+            ]
+          },
+          {
+            "key": "crux_director",
+            "type": "select",
+            "label": "CRUX 總監站台",
+            "group": "env",
+            "default": "director2",
+            "emit": "env",
+            "env": "CRUX_QA_DIRECTOR",
+            "visible_when": {
+              "_products": [
+                "crux"
+              ]
+            },
+            "options": [
+              {
+                "value": "director1",
+                "label": "總監1"
+              },
+              {
+                "value": "director2",
+                "label": "總監2"
+              },
+              {
+                "value": "director3",
+                "label": "總監3"
+              }
+            ]
+          },
+          {
+            "key": "wbot_env",
+            "type": "select",
+            "label": "投注機器人 環境",
+            "group": "env",
+            "default": "qat",
+            "emit": "env",
+            "env": "WBOT_QA_ENV",
+            "visible_when": {
+              "_products": [
+                "wbot"
+              ]
+            },
+            "help": "平台／主投後台／投注聊天室／幸運五星彩總監是同一環境下的多個站台，會一起切；URL 由總控動態生成，見 config/environments.json 的 wbot 區塊",
+            "options": [
+              {
+                "value": "qat",
+                "label": "QAT",
+                "note": "含真金流下注"
+              },
+              {
+                "value": "stg",
+                "label": "STG（⛔ 需逐次授權）",
+                "note": "已提供客戶試用"
+              }
+            ]
+          },
+          {
+            "key": "qixing_env",
+            "type": "select",
+            "label": "七星 環境",
+            "group": "env",
+            "default": "qat",
+            "emit": "env",
+            "env": "QIXING_QA_ENV",
+            "visible_when": {
+              "_products": [
+                "qixing"
+              ]
+            },
+            "options": [
+              {
+                "value": "qat",
+                "label": "QAT"
+              },
+              {
+                "value": "stg",
+                "label": "STG（⛔ 尚未提供 URL）"
+              }
+            ]
+          },
+          {
+            "key": "qixing_lottery",
+            "type": "select",
+            "label": "七星 彩種（站台）",
+            "group": "env",
+            "default": "lucky5",
+            "emit": "env",
+            "env": "QIXING_QA_LOTTERY",
+            "visible_when": {
+              "_products": [
+                "qixing"
+              ]
+            },
+            "help": "三彩種在 QAT 是各自獨立站台，切換會一併切 URL／總監帳號／會員清單",
+            "options": [
+              {
+                "value": "lucky5",
+                "label": "幸運五星彩",
+                "note": "高頻・5 分鐘一期"
+              },
+              {
+                "value": "sevenstar",
+                "label": "七星彩",
+                "note": "低頻・一天一期，需先開盤"
+              },
+              {
+                "value": "p5",
+                "label": "排列五",
+                "note": "低頻・一天一期，需先開盤"
+              }
+            ]
+          },
+          {
+            "key": "headed",
+            "type": "boolean",
+            "label": "顯示瀏覽器視窗",
+            "group": "opt",
+            "default": false,
+            "arg": "--headed",
+            "emit": "flag_when_true"
+          },
+          {
+            "key": "generate_allure",
+            "type": "boolean",
+            "label": "產生 Allure 報告",
+            "group": "opt",
+            "default": true,
+            "emit": "none",
+            "help": "只記進 run 的參數卡，不進命令列（平台自己保存）"
+          },
+          {
+            "key": "remark",
+            "type": "textarea",
+            "label": "本次備註",
+            "group": "note",
+            "rows": 2,
+            "emit": "none",
+            "placeholder": "例：CRUX-934 修復重驗",
+            "help": "只記進 run 的參數卡，不進命令列（平台自己保存）"
+          }
+        ]
+      },
+      "gate": {
+        "notice": "⚠️ **站台是「同帳號他處登入即踢掉前者」** —— 平台的併發控制看不到外部行程。若你此刻正在終端機跑 `scripts/run_ui_tests.ps1`，或用 MCP 瀏覽器操作**同一組子帳號**，兩邊會互踢，症狀是 `令牌过期，请重新登录`（**極易誤判成平台的 bug**）。分配慣例見 `config/environments.md`：pytest 用 netsub1、MCP 探索用 netsub2、第三個 session 用 netsub4。"
+      }
+    },
+    {
+      "id": "rebuild_index",
+      "label": "重建案例索引",
+      "mode": "sync",
+      "argv": [],
+      "timeout_sec": 120,
+      "result": {
+        "kind": "text"
+      },
+      "description": "跑 pytest --collect-only 重建案例樹（唯讀，不執行任何測試）",
+      "next": [
+        {
+          "label": "看案例瀏覽器",
+          "href": "#/cases",
+          "when": "ok",
+          "primary": true
+        }
+      ]
+    }
+  ],
+  "cases": {
+    "roots": [
+      "tests"
+    ],
+    "watch_globs": [
+      "tests/**/*.py",
+      "tools/*_qa/**/*.py",
+      "pyproject.toml",
+      "tools/test_platform/demo/generated_tests/**/*.py"
+    ],
+    "cache": "cache/cases/ui_tests.json",
+    "collect_timeout_sec": 90,
+    "title_priority": [
+      "allure_title",
+      "docstring_first_line",
+      "function_name"
+    ],
+    "group_by": [
+      "product",
+      "allure.parentSuite",
+      "allure.suite",
+      "allure.subSuite",
+      "file"
+    ],
+    "product_map": [
+      {
+        "prefix": "tools/test_platform/demo/generated_tests/crux/",
+        "product": "crux",
+        "kind": "generated",
+        "label": "CRUX（生成骨架・待補判準）",
+        "collapsed": true
+      },
+      {
+        "prefix": "tools/test_platform/demo/generated_tests/wbot/",
+        "product": "wbot",
+        "kind": "generated",
+        "label": "投注機器人（生成骨架・待補判準）",
+        "collapsed": true
+      },
+      {
+        "prefix": "tools/test_platform/demo/generated_tests/qixing/",
+        "product": "qixing",
+        "kind": "generated",
+        "label": "七星（生成骨架・待補判準）",
+        "collapsed": true
+      },
+      {
+        "prefix": "tests/crux/",
+        "product": "crux",
+        "kind": "e2e"
+      },
+      {
+        "prefix": "tests/wbot/perf/",
+        "product": "wbot",
+        "kind": "unit",
+        "needs_browser": false
+      },
+      {
+        "prefix": "tests/wbot/",
+        "product": "wbot",
+        "kind": "e2e"
+      },
+      {
+        "prefix": "tests/qixing/",
+        "product": "qixing",
+        "kind": "e2e"
+      },
+      {
+        "prefix": "tests/tooling/",
+        "product": "common",
+        "kind": "unit",
+        "needs_browser": false,
+        "label": "工作區工具自測（非產品）",
+        "collapsed": true
+      }
+    ],
+    "stages": [
+      {
+        "id": "wbot_z0",
+        "label": "階段0 前置建立",
+        "path": "tests/wbot/test_z0_setup.py",
+        "provides": [
+          "wbot_target"
+        ],
+        "order": 0
+      },
+      {
+        "id": "wbot_zs",
+        "label": "階段1 主投後台設定",
+        "path": "tests/wbot/test_zs_settings.py",
+        "order": 1
+      },
+      {
+        "id": "wbot_zm_bet",
+        "label": "階段2 投注核心",
+        "path": "tests/wbot/test_zm_betting.py",
+        "order": 2
+      },
+      {
+        "id": "wbot_zm_cmd",
+        "label": "階段3 會員指令",
+        "path": "tests/wbot/test_zm_commands.py",
+        "order": 3
+      },
+      {
+        "id": "wbot_zr",
+        "label": "階段4 報表正確性",
+        "path": "tests/wbot/test_zr_reports.py",
+        "order": 4
+      }
+    ],
+    "prerequisite_rules": [
+      {
+        "when_fixture": "wbot_target",
+        "requires_stage": "wbot_z0",
+        "note": "未先跑階段0 會 skip（reports/created_accounts/wbot_current_target.json 無 master）"
+      }
+    ],
+    "recommended_trigger_unit": "stage"
+  },
+  "run": {
+    "concurrency": "single",
+    "exclusive_group": "qat_ui_write",
+    "status_source": {
+      "kind": "platform_plugin"
+    },
+    "phases": [
+      {
+        "value": "collecting",
+        "label": "收集案例",
+        "tone": "info"
+      },
+      {
+        "value": "running",
+        "label": "執行中",
+        "tone": "info"
+      },
+      {
+        "value": "generating_reports",
+        "label": "產生 Allure",
+        "tone": "info"
+      },
+      {
+        "value": "completed",
+        "label": "完成",
+        "tone": "success",
+        "terminal": true
+      },
+      {
+        "value": "stopped",
+        "label": "已停止",
+        "tone": "warn",
+        "terminal": true
+      },
+      {
+        "value": "failed",
+        "label": "失敗",
+        "tone": "danger",
+        "terminal": true
+      }
+    ],
+    "metrics": [
+      {
+        "key": "passed",
+        "label": "通過",
+        "format": "int",
+        "tone": "success"
+      },
+      {
+        "key": "failed",
+        "label": "失敗",
+        "format": "int",
+        "tone": "danger"
+      },
+      {
+        "key": "skipped",
+        "label": "略過",
+        "format": "int",
+        "tone": "muted"
+      }
+    ]
+  },
+  "stop": {
+    "strategy": "tree",
+    "warning": "pytest 無優雅停止機制；中止會使本次 Allure 結果不完整。"
+  },
+  "artifacts": {
+    "run_dir": "{platform_run_dir}",
+    "console": "console.log",
+    "allure": {
+      "enabled": true,
+      "results": "allure-results",
+      "report": "allure-report",
+      "history_store": "logs/allure_history/ui_tests"
+    },
+    "allow_subtree": [
+      "allure-report"
+    ],
+    "whitelist": [
+      "console.log",
+      "run_meta.json",
+      "run_status.json",
+      "selection.txt"
+    ],
+    "primary": [
+      {
+        "path": "allure-report/index.html",
+        "label": "Allure 報告",
+        "kind": "html",
+        "open": "iframe"
+      },
+      {
+        "file": "console.log",
+        "label": "pytest 輸出",
+        "kind": "text",
+        "open": "newtab"
+      }
+    ]
+  },
+  "_comment": "2026-08-23 階段 C：移除 demo 旗標 —— PytestAdapter 已實作，本工具改走真的執行。"
+}

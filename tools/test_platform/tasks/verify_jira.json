@@ -1,0 +1,64 @@
+{
+  "id": "verify_jira",
+  "label": "驗 JIRA 修復",
+  "icon": "🔍",
+  "order": 4,
+  "subtitle": "RD 說修好了 —— 重驗並判定五值結論",
+  "skills": [
+    "jira-verify"
+  ],
+  "scope": "product",
+  "entry": [
+    "overview",
+    "product"
+  ],
+  "writes": "draft",
+  "allowed_tools": [
+    "mcp__playwright",
+    "mcp__playwright2"
+  ],
+  "fields": [
+    {
+      "key": "product",
+      "type": "select",
+      "label": "產品",
+      "required": true,
+      "options_from": {
+        "source": "products"
+      }
+    },
+    {
+      "key": "tickets",
+      "type": "textarea",
+      "label": "JIRA 單號",
+      "required": true,
+      "rows": 2,
+      "placeholder": "一行一個，或用逗號分隔"
+    },
+    {
+      "key": "boundary",
+      "type": "select",
+      "label": "安全邊界",
+      "options": [
+        {
+          "value": "write",
+          "label": "可寫入 QAT（已預先授權）"
+        },
+        {
+          "value": "readonly",
+          "label": "本次唯讀（只看不改）"
+        }
+      ],
+      "default": "write",
+      "help": "⭐ 重驗＝把重現步驟重跑一次，多半要寫入才做得到。⛔ STG 需逐次授權，不在選項裡"
+    },
+    {
+      "key": "account",
+      "type": "text",
+      "label": "指定子帳號",
+      "placeholder": "例：netsub2",
+      "help": "選填但強烈建議填 —— 同帳號他處登入會踢掉前者"
+    }
+  ],
+  "prompt_template": "載入 `/{product_skill}` 與 `jira-verify`。\n\n產品：**{product}**。要重驗的單：\n{tickets}\n\n請照 `jira-verify` 的流程走。特別注意：\n· §5.1 **兩階段順序** —— 目標單全部驗完並出報告，才回頭驗 side effect\n· §5.3 覆蓋度規範（**不適用 ≠ 未驗**，不適用不進分母）\n· §5.4 PASS 判準以**使用者視角**認定\n\n⭐ **Bug 單用 `grep` 取需要的節**（Reproduce Steps／Expect result／frontmatter），不要整份 `Read` —— 單子動輒好幾百行，而你要的通常只有兩節。\n\n## 安全邊界：{boundary_label}\n\n{boundary_rules}\n\n指定子帳號：**{account}**（有指定就用它登入，不要自己換一組）。\n\n⛔ 你**不能寫 repo 裡的檔案** —— **但站台的操作不在此限**（見上面的安全邊界）。\n產出用下列固定區塊交給我，**平台會在人確認後寫檔並配號**。\n\n### ① 重驗報告（**一定要交**）\n\n````\nkind         report\nreport_kind  report\nproduct      {product}\ntitle        一句話：驗了哪幾單、結論是什麼\nwhy          給我判斷要不要寫檔的一句話\nbody         完整 markdown：`jira-verify` 的報告章節（結論／驗證項目／\n             驗證過程與結果／side effect／覆蓋度），**逐項帶實際值 vs 期望值**\n````\n⛔ **不要自己拼檔名** —— 平台會用 `scripts/new_bug_doc.py` 當下取\n（`JIRA_Bug驗證報告_<日期>.md`，同日多批自動加「_第N批」）。\n\n### ② 殘留缺陷要開新單（走 §3.9 三問，**不要自己配號**）\n\n````\ntitle      一句話講現象（不寫成因）\nmodule     模組\nseverity   高／中／低\nsteps      重現步驟，**5 步以內**\nexpected   期望值（附規格依據）\nactual     實際值\nevidence   佐證位置（截圖檔名／API 回應／算式明細）\nprechecks  開單前三問的**答案**（is_spec／already_known／sample_power）\n````\n⭐ 部分修復時**開新單承接殘留**，不要回填舊單（`jira-verify` 的既有紀律）。\n\n### ③ 測試資料異動（**動過站台就一定要交**）\n\n````\nkind     handover\nproduct  {product}\nsection  data\ntitle    一句話\nwhy      為什麼要登記\ncells    對象（改了什麼）| 站台與帳號 | 狀態（還原了沒；刻意保留的寫明屬哪一張單）| 記於（本次重驗）\n````\n\n### ④ side effect 待驗項（有就交）\n\n````\nkind     handover\nproduct  {product}\nsection  todo\ntitle    一句話\nwhy      為什麼留到下一輪\ncells    待驗項目 | 為什麼還沒驗 | 下一步\n````\n"
+}

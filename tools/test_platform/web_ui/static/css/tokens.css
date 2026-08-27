@@ -1,0 +1,131 @@
+/* 測試平台 design tokens — 主題 **Starlight Telemetry**
+ *
+ * ★ 權威來源：`.claude/skills/theme-factory/themes/starlight-telemetry.md`
+ *   （theme-factory 客製主題，色票逐點取樣自參考圖 IMG_5256）
+ *   本檔的每個色票值都必須在該主題檔找得到對應，不得在這裡憑感覺加顏色。
+ *
+ * 前段為「相容層」：與三個壓測控制台（CRUX 5000／wbot 5100／七星 5200）同名的 20 個 token，
+ * 名稱不動、數值改為青鋼 HUD 基調（2026-08-19 依參考圖 IMG_5256 逐點取樣重調） —— 吸收壓測控制台時元件 CSS 仍可整段複製。
+ * 後段為 HUD 擴充。
+ *
+ * 長時間監看的紀律（見 docs/VISUAL.md）：發光只給邊框與小面積、絕不給正文；正文對比 ≥ 7:1；
+ * 明顯吸睛動態 ≤ 3（hero 場景 ≥6s 的環境級慢浮不計）；「降低動態效果」一律全停。
+ */
+@font-face {
+  font-family: "Inter";
+  src: url("/static/fonts/Inter-var.woff2") format("woff2");
+  font-weight: 100 900;        /* 可變字型：一支涵蓋所有字重 */
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sora";
+  src: url("/static/fonts/Sora-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/static/fonts/JetBrainsMono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ── 相容層（名稱不動）── */
+  --bg: #020a14;                    /* 2026-08-21 再壓沉一階，讓中央輝光與框線更跳 */
+  --bg-elevated: #0e1721;
+  --card: #08131f;
+  --surface: #142130;
+  --border: #1b2b40;
+  --text: #d0e0f5;
+  /* ⚠️ 由 #8fa3bd 提亮：色相由青旋到藍之後亮度會掉（藍的亮度係數遠低於青），
+     在面板上只剩 6.86:1、跌破「≥ 7:1」的紀律。提亮後 7.43:1。
+     **色相旋轉後一定要重量對比**，不能假設 HSL 的 L 不變就等於亮度不變。 */
+  --text-muted: #97abc4;
+  --muted: #97abc4;
+  --primary: #297de0;
+  --primary-hover: #5ca3f2;
+  --danger: #ff5a5f;
+  --danger-hover: #ff8a8d;
+  --success: #4ade80;
+  --warn-bg: #2b2208;
+  --warn-border: #8a6b14;
+  --error-bg: #33101a;
+  --error-border: #c2334d;
+  --code-bg: #081420;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* ── HUD 擴充 ── */
+  --accent: #7fbbf0;                        /* 主青 */
+  --accent-2: #297de0;                      /* 次藍（大量藍光用） */
+  --accent-dim: rgba(127, 187, 240, .38);
+  --accent-faint: rgba(127, 187, 240, .09);
+  --blue-faint: rgba(41, 125, 224, .10);
+  --accent-amber: #f0b429;
+  --amber-dim: rgba(240, 180, 41, .35);
+  --danger-dim: rgba(255, 90, 95, .35);
+  --success-dim: rgba(74, 222, 128, .35);
+  --border-strong: #27446a;
+  --grid-line: rgba(127, 187, 240, .035);
+  --panel-glow: inset 0 0 42px rgba(41, 125, 224, .05);
+
+  /* ── 光影：**背光的 HUD 面板**（2026-08-21 依參考圖 IMG_5256 重做）──────────
+     這一組是全站唯一的打光語彙，加新表面時沿用，不要各自發明陰影值。全是**靜態**的。
+
+     ★ 兩次改版的差別，改動前務必看懂：
+       第一版（08-20）用的是「**前上方打光**」—— 面比底亮、上緣高光、離地投影。
+       那會把卡片做成**實體浮雕面板**，而參考圖是**背光的 HUD 面板**：
+         ① 面**比底更暗**而且**半透明**，讓背後那團青色輝光透出來；
+         ② 卡片的識別來自**框線**，不是面 —— 一條看得見的青調細框；
+         ③ 深度感由「框線外輝 ＋ 背景輝光」給，不是由投影給。
+       ⚠️ 在 #020a14 這種近黑底上，黑色投影本來就幾乎沒有色差（第一版已驗證過），
+          所以投影只留給**真正浮在內容之上**的層（modal／指令列／dock／toast）。 */
+  --panel-top:  rgba(10, 25, 41, .66);                      /* 面板填色：上 */
+  --panel-bot:  rgba(4, 13, 23, .74);                       /* 面板填色：下（半透明，背景輝光要透得出來） */
+  --panel-in:   rgba(12, 30, 48, .72);                      /* 巢狀面板（卡片裡的卡片、fieldset） */
+  --frame:      rgba(93, 149, 216, .50);                    /* 面板框線（靜） */
+  --frame-on:   rgba(127, 187, 240, .80);                   /* 面板框線（hover／作用中） */
+  --frame-glow:    0 0 26px -6px rgba(41, 125, 224, .34), inset 0 0 36px -20px rgba(127, 187, 240, .8), inset 0 1px 0 rgba(127, 187, 240, .09);
+  --frame-glow-on: 0 0 32px -3px rgba(127, 187, 240, .45), inset 0 0 40px -18px rgba(127, 187, 240, .95), inset 0 1px 0 rgba(127, 187, 240, .18);
+  --edge-lit:    inset 0 1px 0 rgba(127, 187, 240, .07);    /* 內側頂緣的一線微光，很淡就好 */
+  --edge-lit-on: inset 0 1px 0 rgba(127, 187, 240, .16);
+  --sunken: inset 0 2px 7px rgba(0, 0, 0, .55);             /* 凹面（輸入框、code 區） */
+  --lift-1: 0 10px 20px -6px rgba(0, 0, 0, .72), 0 2px 4px rgba(0, 0, 0, .4);
+  --lift-2: 0 20px 42px -8px rgba(0, 0, 0, .82), 0 4px 9px rgba(0, 0, 0, .5);
+  --glass: blur(16px) saturate(130%);                      /* 浮層的玻璃感 */
+  --glow-accent: 0 0 10px rgba(127, 187, 240, .35);
+  --glow-blue: 0 0 12px rgba(41, 125, 224, .38);
+  --glow-amber: 0 0 10px rgba(240, 180, 41, .35);
+  --glow-danger: 0 0 10px rgba(255, 90, 95, .4);
+  --title: #adc2dc;                          /* 卡片標題（參考圖的淡鋼青，非飽和青） */
+  --header-h: 44px;
+  --rail-w: 64px;
+  --motion: 1;
+
+  /* 產品色（與 registry/products.json 一致） */
+  --p-crux: #4fa9ff;      /* 青藍，對應參考圖的牛 EQUITIES（hue 205°）*/
+  --p-qixing: #8f8cff;    /* 藍紫，對應參考圖的水晶 ALTERNATIVES（hue 240°，比原本的洋紫更藍）*/
+  --p-wbot: #ffc853;      /* 金，對應參考圖的大樓 FIXED INCOME（hue 40°）*/
+  /* 右下角對話入口要讓出的寬度 —— 2026-08-24 那顆從 52px 圓鈕變成有字的膠囊鈕，
+     原本散在三處的 78px 就不夠了（案例頁的「執行選取」被蓋住）。集中成一個變數。 */
+  --p-common: #6f8aad;    /* 共通已不設基座，只用於散落全景的星塵 */
+
+  /* ── 圓角（主題 Form 段：圓角，不切角）──
+     ⚠️ 2026-08-21 由 6/10/12 收到 3/4/6：參考圖的面板幾乎是直角，只有一點點倒角。
+        10px 讀起來是「卡片」，4px 才讀得出「儀器面板」。 */
+  --radius: 3px;              /* 按鈕、輸入框 */
+  --radius-card: 4px;         /* 卡片 */
+  --radius-modal: 6px;
+
+  /* ── 字體（拉丁自帶於 web_ui/static/fonts，中文走系統字）── */
+  --font: "Inter", "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
+  --font-display: "Sora", "Inter", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion: 0; }
+}
+html[data-motion="0"] { --motion: 0; }

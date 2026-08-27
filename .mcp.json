@@ -1,0 +1,35 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@playwright/mcp@0.0.77",
+        "--isolated",
+        "--config",
+        ".mcp/playwright-fullscreen.json"
+      ]
+    },
+    "playwright2": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@playwright/mcp@0.0.77",
+        "--isolated",
+        "--config",
+        ".mcp/playwright-fullscreen.json"
+      ]
+    },
+    "test-platform": {
+      "command": ".venv/Scripts/python.exe",
+      "args": [
+        "tools/test_platform/mcp/server.py"
+      ]
+    }
+  },
+  "_comment": "MCP server 註冊。⚠️ 路徑一律**相對 repo root** —— 本檔隨範本發給同事，寫絕對路徑到別人機器上就壞了。改本檔需重啟 session 才生效。"
+}

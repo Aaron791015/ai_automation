@@ -1,0 +1,18 @@
+# 工作區相依套件 —— **唯一的一份**，`scripts/setup_test_env.ps1` 只裝這個檔。
+# 安裝：scripts/setup_test_env.ps1（或 .venv\Scripts\python.exe -m pip install -r requirements.txt）
+#
+# ⛔ 新增相依請加在這裡，不要在子目錄另開一份 requirements ——
+#    子目錄那份不會被環境建置腳本裝到，在 fresh clone 上就是「跑不起來」。
+#    （2026-08-23 教訓：平台的 flask 只列在 tools/test_platform/requirements.txt，
+#      本機因為壓測工具裝過所以沒事，但匯出給同事的範本**平台開不起來**。）
+
+# ── UI 自動化測試（pytest + playwright + allure）──────────────
+pytest==8.3.5
+playwright==1.52.0
+pytest-playwright==0.7.0
+allure-pytest==2.14.2
+
+# ── 統一測試平台 tools/test_platform（Flask :5300）────────────
+flask>=3.0.0
+psutil>=5.9.0
+requests>=2.31.0

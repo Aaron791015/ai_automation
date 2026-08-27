@@ -1,0 +1,37 @@
+{
+  "id": "start_day",
+  "label": "開工接手",
+  "icon": "🌅",
+  "order": 0,
+  "subtitle": "今天這條線做得了什麼 —— 讀 blocker、看哪些資料不能動、挑出可立即動手的事",
+  "skills": [
+    "handoff"
+  ],
+  "scope": "product",
+  "entry": [
+    "overview",
+    "product"
+  ],
+  "writes": "draft",
+  "allowed_tools": [],
+  "fields": [
+    {
+      "key": "product",
+      "type": "select",
+      "label": "產品",
+      "required": true,
+      "options_from": {
+        "source": "products"
+      }
+    },
+    {
+      "key": "intent",
+      "type": "textarea",
+      "label": "今天想做什麼",
+      "rows": 2,
+      "placeholder": "例：把賠率變動設置那批待補回歸補完 / 還沒想好，先看有什麼",
+      "help": "選填。填了就會告訴你「這件事現在做不做得了」；留白則列出可立即動手的事"
+    }
+  ],
+  "prompt_template": "載入 `/{product_skill}` 與 `handoff`。\n\n產品：**{product}**。今天想做的事：{intent}\n\n平台掃出的跡象（**跨 session 視野，單一 session 看不到**）：\n\n{findings}\n\n請照 `handoff` §1 的**開工清單**回答我三件事：\n\n1. **⛔ 現在有什麼卡住**（§1 blocker）—— 卡在誰身上、影響到什麼，以及「這個 blocker 現在還在不在」（交接檔可能沒跟上）\n2. **⚠️ 哪些測試資料不能動**（§5 測試資料現況）—— 特別是標著「刻意保留、屬哪一張單」的那些。\n   ⭐ 這一條是開工唯一無法「需要時再讀」的：看到一批像殘留的資料時，**不會有任何訊號提醒你先查交接檔**，而清掉之後那張單就不可重現\n3. **今天做得了什麼** —— 從 §2.1「可立即動手」挑出來，並說明為什麼那幾件現在做得了\n   （我上面填了想做的事的話，先回答「這件事現在做不做得了、缺什麼」）\n\n⛔ 你**不能寫 repo 裡的檔案**，本任務也**不要操作站台** —— 這一步只是讀與判斷。\n\n讀完若發現交接檔本身有問題（blocker 已解除卻沒劃掉、待辦放錯格、資料現況與實際不符），\n交草稿給我，平台會替你寫檔並**當下取編號**：\n\n````\nkind     handover\nproduct  {product}\nsection  todo\ntitle    一句話\nwhy      為什麼要補這一列\ncells    待辦內容 | 為什麼還沒做 | 下一步\n````\n\n⚠️ **改既有的列平台做不到**（只能附加）—— 那種請直接講出來是哪一列、要改成什麼，我自己改。\n"
+}

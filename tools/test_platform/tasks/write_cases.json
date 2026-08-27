@@ -1,0 +1,80 @@
+{
+  "id": "write_cases",
+  "label": "撰寫案例",
+  "icon": "✍️",
+  "order": 3,
+  "subtitle": "把覆蓋矩陣的功能點轉成 pytest 案例",
+  "skills": [
+    "ui-test",
+    "testcase-design"
+  ],
+  "scope": "product",
+  "entry": [
+    "overview",
+    "product"
+  ],
+  "writes": "draft",
+  "fields": [
+    {
+      "key": "product",
+      "type": "select",
+      "label": "產品",
+      "required": true,
+      "options_from": {
+        "source": "products"
+      }
+    },
+    {
+      "key": "source",
+      "type": "text",
+      "label": "來源覆蓋矩陣",
+      "placeholder": "例：docs/CRUX/CRUX_排列五與七星彩_驗證項目清單.md",
+      "help": "選填 —— 有矩陣的話會照它的「後續詳驗要點」推案例"
+    },
+    {
+      "key": "boundary",
+      "type": "select",
+      "label": "安全邊界",
+      "default": "write",
+      "options": [
+        {
+          "value": "write",
+          "label": "可寫入 QAT（已預先授權）"
+        },
+        {
+          "value": "readonly",
+          "label": "本次唯讀（只看不改）"
+        }
+      ],
+      "help": "⭐ 預設可寫入 —— 案例要驗的多半是「送出之後變成什麼」，唯讀模式下那些步驟一步都跑不到，寫出來的 expected 仍然是猜的。⛔ STG 不在選項裡（需逐次授權，見 CLAUDE.md §5）"
+    },
+    {
+      "key": "account",
+      "type": "text",
+      "label": "指定子帳號",
+      "placeholder": "例：netsub2",
+      "help": "選填但強烈建議填 —— 站台是「同帳號他處登入即踢掉前者」。留白時 session 自己依 config/environments.md 挑，兩個任務同時跑就可能互踢"
+    },
+    {
+      "key": "bug_ids",
+      "type": "text",
+      "label": "要補回歸的 Bug 單",
+      "placeholder": "例：CRUX-105 CRUX-109",
+      "help": "選填 —— 填了就是補回歸案例，撰寫規則完全一樣。⭐ 缺陷還沒修好的，那條案例本來就該是紅的，登記進 known_fail 即可"
+    },
+    {
+      "key": "points",
+      "type": "textarea",
+      "label": "要轉成案例的功能點",
+      "required": true,
+      "rows": 3,
+      "placeholder": "例：A4 最小下注／單注上限、C6 攔貨金額"
+    }
+  ],
+  "prompt_template": "載入 `/{product_skill}`、`ui-test` 與 `testcase-design`。\n\n產品：**{product}**。來源矩陣：{source}\n指定子帳號：**{account}**（有指定就用它登入，不要自己換一組）。\n要轉成案例的功能點：\n{points}\n要補回歸的 Bug 單：{bug_ids}\n\n## 安全邊界：{boundary_label}\n\n{boundary_rules}\n\n## 怎麼做 —— ⭐ **開發並驗證**案例，不是推導案例\n\n⛔ **不要憑覆蓋矩陣直接寫**，那樣每個具體值都是猜的（selector、頁面路徑、送出後跳哪裡）。\n⭐ **一條一條來：寫進 `tests/{product}/` → 跑 → 綠了再寫下一條**，\n跟人在終端機做的是同一件事。⛔ 不要整批寫完才跑。\n\n每一條的三步：\n\n1. **先在站台上操作一遍**（依上面的安全邊界；selector 照 `browser-ops` 的語意定位）——\n   記下真實入口、欄位名稱、送出後的落點，以及**畫面上真正出現的值**（那就是 `expected`）\n2. **確認判準判得動**：寫得出「實際值 vs 期望值」怎麼比 ＋ 規格依據（CLAUDE.md §5）。\n   比不出來的在 `note` 寫明缺什麼，⛔ 不要編一個看起來合理的\n3. **寫成 pytest 跑起來**：`tools/{product}_qa/pages/` 有現成 POM 就用，\n   沒有就語意定位直接寫，並在 `note` 說「該補 POM」\n\n⚠️ **被測行為一律走 UI**（CLAUDE.md §5）；API 只能用在前置資料準備。\n\n## 產出\n\n```powershell\n.venv\\Scripts\\python.exe -m pytest <你的檔> -k <這條的函式名> -q\n```\n⭐ 整檔跑用 `-q --tb=line`（一條一行就夠判斷紅綠）；**要診斷某一條**再單獨跑它、換 `--tb=short`。\n⛔ 不要整檔帶完整 traceback —— 那會把整份堆疊留在 context 裡，之後每一輪重讀。\n\n⛔ **紅燈有兩種，處置完全相反 —— 照 `ui-test` 的階段 2.6 判**：\n你寫錯了就修到綠；**抓到缺陷的不准動判準把它弄綠**，\n保持原判準、記進下面的 `known_fail` 並寫明是哪張單。\n判不出是哪一種就當缺陷（走 `bug-report` §3.9），⛔ 不要先把判準改鬆。\n\n⛔ **全部寫完要整檔跑兩次 —— 照 `ui-test` 的階段 2.7**（第一次抓互相影響、\n第二次抓可不可以反覆執行），兩次結果一致才算數。\n\n**補回歸案例**（有填 Bug 單號時）規則**一模一樣**，只多兩件事：\n① 先讀那張單的 Reproduce Steps 與 Expect result，案例照它寫；\n缺陷沒修好的**本來就該紅**，登記 `known_fail` 即可。\n② 補完把該單的 `regression:` 填上 nodeid，⛔ **只改那一行**，\n改完跑 `python scripts\\gen_bug_index.py <產品>`。\n\n**一條案例一個區塊**：\n\n````\nkind          case\nproduct       {product}\ntitle         測試對象 ＋ 情境 ＋ 預期結果（CLAUDE.md §3 的命名要求）\nsurface       backend／frontend／api\npreconditions 前置條件（要先有什麼資料、什麼設定）\nsteps         操作步驟（一行一步；**被測行為一律走 UI**）\nexpected      預期結果 —— 寫得出**實際值 vs 期望值**怎麼比，附規格依據\nmarkers       smoke 或 write_action（會寫入測試站的用後者）\npom_hints     用到的 POM 方法（`<Page 類別>.<方法>`，例：LoginPage.login）；沒用到就留空\nverified      ⭐ **這條 pytest 跑過了嗎** —— yes（綠燈）／partial／no，並附**那次執行的結果**（passed／failed 與訊息）\nnote          判準還缺什麼、哪裡需要人確認\nwrote         你把它寫進哪個檔（例：tests/crux/test_賠率變動設置篩選.py）\n````\n\n⚠️ **`preconditions` 不要寫死站台或子帳號**（「總監1 已登入」這種）——\n站台與帳號由執行時的環境設定決定，寫死會讓案例綁在某一台機器上，\n而且**可能綁到別人正在用的站台**。寫「已登入總監後台」就好。\n\n### 整檔執行結果（**一定要交這一筆**）\n\n````\nkind          case_run\nproduct       {product}\nwrote         tests/{product}/test_….py\nfull_run      第一次整檔跑的結果（例：20 passed, 2 failed —— c07/c12 受 c06 沒還原篩選影響）\nrerun         第二次的結果，以及**與第一次是否一致**\nknown_fail    ⛔ 判準正確但抓到缺陷、因此**應該紅**的案例 —— 寫成 `函式名=Bug單號`，\n              沒有就寫「無」。⚠️ 這裡寫的每一條，人都會去核對\n````\n\n### 測試資料異動（**動過站台就一定要交這一筆**）\n\n⛔ **動過卻沒登記，等於沒有人知道你動過什麼** —— 下一個人會把它當殘留清掉。\n\n````\nkind     handover\nproduct  {product}\nsection  data\ntitle    一句話（例：撰寫賠率變動案例時建立的兩筆設定）\nwhy      為什麼要登記\ncells    對象（建立/修改了什麼）| 站台與帳號 | 狀態（還原了沒；刻意保留的寫明屬哪一張單）| 記於（本次任務）\n         ⚠️ 欄位順序以交接檔 §5 該表的表頭為準，平台會對齊欄數\n````\n\n⛔ **不要交骨架** —— `pytest.skip(...)`、`assert x is not None` 不算案例；\n⚠️ 跑得過但什麼都沒驗的比不交更糟，它會被算進回歸覆蓋率。\n⛔ **`verified` 誠實填** —— 平台**會把整檔再跑一次**，寫 yes 而實際是紅的，當場就對不上。\n沒跑成就寫 `no` ＋ 原因（被前置卡住／邊界不允許／找不到入口）。\n\n## 收工前\n\n用完瀏覽器呼叫 `browser_close`；測試資料依 CLAUDE.md §5 還原\n（⛔ 但**據以開 Bug 單的資料保留不還原**）。\n",
+  "description": "把功能點轉成 pytest —— 逐條寫逐條跑，最後整檔跑兩次確認可反覆執行",
+  "allowed_tools": [
+    "mcp__playwright",
+    "mcp__playwright2"
+  ]
+}

@@ -1,0 +1,586 @@
+/* HUD 專屬：總覽單屏 grid、HERO 產品基座場景、知識雷達、全域 dock、熱度條 */
+
+/* ── 總覽單屏（2026-08-24 重排）──
+ * 三塊：**頂部狀態列（全寬）** ／ 左側主視覺 ／ 右側四張監控卡。
+ *
+ * ⭐ 為什麼要改：原本右欄是「五張卡垂直排 ＋ 整欄捲動」，五張的自然高度超過欄高，
+ *    「待辦與 Bug」「助手提示」整張落在摺線下 —— **連標題都看不到**，
+ *    使用者根本不會知道有這兩張卡（2026-08-24 回報）。
+ *    判準是：**卡片的「存在」不該靠捲動才發現**；內容可以捲，標題不行。
+ */
+.dash {
+  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px 14px;
+}
+/* ① 頂部狀態列：三段橫排。它原本是右欄第一張卡，在 380px 窄欄裡被迫疊成三層、
+   吃掉近三分之一的欄高；橫著擺反而更好讀，也剛好是「看一眼就不必再看」的東西。 */
+.dash .dash-strip {
+  grid-column: 1 / -1; grid-row: 1;
+  display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.3fr) minmax(0, 1.55fr);
+  align-items: stretch; gap: 0; padding: 7px 4px;
+}
+.dash .strip-seg { padding: 0 14px; min-width: 0; position: relative;
+  display: flex; flex-direction: column; justify-content: center; }
+.dash .strip-seg + .strip-seg { border-left: 1px solid var(--border); }
+.dash .strip-seg > .body { min-height: 0; }
+.dash .strip-score { position: absolute; top: -3px; right: 14px; font-size: .64rem;
+  color: var(--text-muted); font-variant-numeric: tabular-nums; letter-spacing: .1em; }
+/* 五個大數字**固定五欄**，不交給 flex-wrap —— 折行會讓整條狀態列忽高忽低 */
+.dash .strip-seg.stats .stat-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; align-items: end; }
+.dash .strip-seg.stats .stat .v { font-size: 1.62rem; }
+.dash .strip-seg.stats .stat .k { letter-spacing: .14em; overflow: hidden; text-overflow: ellipsis; }
+.dash .strip-seg.env .lamp-row { flex-wrap: wrap; }
+/* ④ Claude 用量：三個窗口固定三欄（同 stats 的理由：折行會讓整條狀態列忽高忽低）。
+   ⛔ 這裡刻意沒有進度條 —— 本機統計沒有分母，畫了就是假的（見 core/claude_usage.py）。 */
+.dash .strip-seg.claude { cursor: pointer; transition: background .15s; }
+.dash .strip-seg.claude:hover { background: var(--accent-faint); }
+.dash .strip-seg.claude .stat-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr); gap: 8px; align-items: end; }
+/* 最後一欄的標籤要讓開右上角的方案角標（`.strip-score` 是絕對定位，會疊上去）*/
+.dash .strip-seg.claude .stat:last-child .k { padding-right: 58px; }
+/* 即時更新鈕：只重讀本機快照，零成本。⛔ 平台不會為了刷這個數字去起 session ——
+   實測 `claude -p "/usage"` 不會更新快取（slash 指令在 print 模式不執行），起了也是白燒額度。 */
+.dash .strip-seg.claude > .strip-score { right: 30px; }
+.strip-refresh { position: absolute; top: -5px; right: 10px; width: 18px; height: 18px; padding: 0;
+  line-height: 1; border: 0; border-radius: 50%; background: transparent; cursor: pointer;
+  color: var(--text-muted); font-size: .78rem; transition: color .15s, background .15s; }
+.strip-refresh:hover { color: var(--accent); background: var(--accent-faint); }
+.strip-refresh.spinning { animation: tp-spin .7s linear infinite; color: var(--accent); }
+@keyframes tp-spin { to { transform: rotate(360deg); } }
+.dash .strip-seg.claude .stat .v { font-size: 1.12rem; }
+.dash .strip-seg.claude .stat .k { letter-spacing: .12em; overflow: hidden; text-overflow: ellipsis; }
+.dash .strip-seg.claude .stat .d { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 近 14 天趨勢：沒有分母也讀得出「最近是不是燒得比平常兇」——
+   每根對自己這 14 天的最大值取比例，今天那根打亮。 */
+.usage-spark { display: flex; align-items: flex-end; gap: 2px; height: 13px; margin-top: 4px; }
+.usage-spark .b { flex: 1 1 0; min-width: 2px; border-radius: 1px 1px 0 0;
+  background: var(--accent); opacity: .38; }
+.usage-spark .b.now { opacity: .95; }
+/* 額度進度條：**只有官方百分比可用時才會出現**（那是唯一有分母的數字）。
+   高度刻意只有 3px —— 它是數字的註腳，不是主角。 */
+.qbar { display: block; height: 3px; border-radius: 2px; background: var(--accent-faint);
+  overflow: hidden; margin: 2px 0 0; }
+.qbar > i { display: block; height: 100%; background: var(--accent); }
+.qbar.warn > i { background: var(--accent-amber); }
+.qbar.danger > i { background: var(--danger); }
+.qfoot { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 設定 → Claude 的用量明細用的加高版 ＋ 橫向比例條 */
+.usage-spark.tall { height: 54px; gap: 3px; }
+.scroll-x { overflow-x: auto; max-width: 100%; }
+.mini-bar { display: block; height: 6px; border-radius: 3px; background: var(--accent-faint); overflow: hidden; }
+.mini-bar > i { display: block; height: 100%; background: var(--accent); opacity: .6; }
+
+.dash .row-hero { min-height: 0; position: relative; grid-column: 1; grid-row: 2; }
+
+/* ② 右欄：**整欄不捲**。四張卡分掉欄高、各自的 body 內捲 ——
+   於是「有幾張卡」是版面保證的，不是使用者要捲到底才會發現。 */
+.dash .dash-side {
+  grid-column: 2; grid-row: 2;
+  display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: hidden;
+}
+.dash .dash-side > .card { display: flex; flex-direction: column; min-height: 0; }
+.dash .dash-side > .card > .body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* 高度配額：待辦拿多數。min-height 是「標題 ＋ 至少一列內容」的底線 ——
+   低於它寧可讓該卡內捲，也不要把標題壓掉。
+   ⭐ 2026-08-25 由四張卡縮成兩張（助手提示、最近報告已下架）—— 兩張分掉整欄。 */
+.dash #c-active  { flex: 1 1 36%; min-height: 128px; }   /* ＋熱度條那一段 */
+.dash #c-todo    { flex: 2 1 64%; min-height: 168px; }
+/* ★ 有東西在跑（run **或 session**）時：「運行中」升到最上面、多吃高度、整張卡發亮。
+   判準是使用者的原話「回到總覽，就知道是什麼任務正在進行中」。
+   ⚠️ 2026-08-24 從 34% 調到 46%：session 那一列比 run 高（要放工具動作），
+      而「待確認」那一列**是可以動作的**（每一項都點得過去）——
+      它被切掉的話，等於做完了卻沒人知道要去哪看，正是這一整輪在修的失效模式。 */
+.dash .dash-side.has-run #c-active { order: -1; flex: 3 1 46%; }
+.dash #c-active.is-running > h3 { color: var(--accent); }
+.dash #c-active.is-running { border-color: var(--frame-on);
+  box-shadow: var(--panel-glow), var(--edge-lit-on), 0 0 30px -4px rgba(127, 187, 240, .5); }
+/* 產品頁籤、那排動作卡、熱度條是卡片裡最該先看到的東西 —— 不准被壓縮 */
+.dash #c-todo > #tb-tabs { flex-shrink: 0; }
+.dash #tb-body .action-cards { flex-shrink: 0; }
+/* 熱度條在「運行中」的捲動區之外：上半再長也擠不掉它（2026-08-25 由助手提示卡搬來） */
+.dash #c-active > .heat-foot { flex-shrink: 0; margin-top: 6px; }
+.dash #c-active > .heat-foot .tiny { margin-bottom: 3px; letter-spacing: .12em; }
+
+/* 最近報告：一行一次執行 */
+.rp-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: baseline;
+  padding: 4px 2px; border-bottom: 1px solid var(--border); font-size: .76rem; cursor: pointer; }
+.rp-row:last-child { border-bottom: 0; }
+.rp-row:hover { background: var(--accent-faint); }
+.rp-row .nm { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-row .hd { color: var(--text-muted); font-size: .7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; grid-column: 2; }
+.rp-row .ag { color: var(--text-muted); font-size: .7rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 窄／矮畫面：改成單欄直排、整頁捲動（`.screen` 在 base.css 已放行）。
+   這時候「卡片要捲才看得到」不成問題 —— 整頁本來就是要捲的，心智模型不一樣。 */
+@media (max-width: 1279px), (max-height: 759px) {
+  .dash { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
+  .dash .dash-strip { grid-column: 1; grid-row: 1; grid-template-columns: 1fr; }
+  .dash .strip-seg { padding: 8px 10px; }
+  .dash .strip-seg + .strip-seg { border-left: 0; border-top: 1px solid var(--border); }
+  .dash .row-hero { min-height: 420px; grid-column: 1; grid-row: 2; }
+  .dash .dash-side { grid-column: 1; grid-row: 3; overflow: visible; }
+  .dash .dash-side > .card { flex: 0 0 auto; }
+  .dash #c-active, .dash #c-todo { max-height: 320px; }
+}
+
+/* ── 上列大數字卡 ────────────────────────────────────────────────────
+   ★ 參考圖的「質感」有很大一部分不是顏色，是**型階的落差**：
+     標籤極小（約 9px）、字距拉到 .22em、顏色沉；數字大（約 30px）而且**細**（300）。
+     兩者差 3 倍以上，一眼就分得出「這是標題／這是數字」。
+     先前是 10px 對 21px（差 2.1 倍），讀起來像一般表單，沒有儀表板的重量感。
+   ⚠️ 標籤**不要再調暗**：`--text-muted` 在面板上是 7.2:1，已經貼著紀律的 7:1 下限。
+      參考圖的標籤更暗（約 5:1），但那是行銷渲染圖，不是要盯一整天的工具。 */
+.stat-row { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+.stat { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.stat .k { font-size: .57rem; letter-spacing: .22em; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
+.stat .v { font-variant-numeric: tabular-nums; font-weight: 300; font-size: 2rem; line-height: 1.02; letter-spacing: -.015em; color: var(--text); }
+.stat .v.sm { font-size: 1.3rem; }
+.stat .v.accent { color: var(--accent); text-shadow: 0 0 10px rgba(127, 187, 240, .3); }
+.stat .v.success { color: var(--success); } .stat .v.danger { color: var(--danger); } .stat .v.warn { color: var(--accent-amber); }
+.stat .d { font-size: .66rem; color: var(--text-muted); }
+.lamp-row { display: flex; flex-wrap: wrap; gap: 7px 16px; }
+.lamp { display: flex; align-items: center; gap: 6px; font-size: .69rem; letter-spacing: .04em; color: var(--text-muted); white-space: nowrap; }
+.lamp .v { color: var(--text); font-variant-numeric: tabular-nums; font-size: .72rem; }
+.lamp.bad .v { color: var(--danger); } .lamp.ok .v { color: var(--success); } .lamp.warn .v { color: var(--accent-amber); }
+
+/* ── HERO 場景（圓柱基座＋大型線框物件＋中央地球，對齊參考圖 IMG_5256）── */
+.hero { position: absolute; inset: 0; overflow: hidden; }
+.hero svg { width: 100%; height: 100%; display: block; }
+.hero .floor-ring { fill: none; stroke: var(--accent-dim); stroke-width: 1; }
+.hero .floor-ring.faint { stroke: rgba(41, 125, 224, .12); }
+.hero .floor-tick { stroke: rgba(127, 187, 240, .18); stroke-width: 1; }
+
+.hero .pedestal { cursor: pointer; }
+.hero .pedestal.dim { opacity: .3; transition: opacity .2s; }
+
+/* 圓柱基座：深色柱身、發光頂緣、柱面直紋；標籤刻在柱面上 */
+/* ⚠️ 整座基座（柱身／底盤／外沿）一律**半透明**，不可用不透明填色
+   （柱身原為不透明的 drumGrad、底盤原為 #060f19、外沿原為 #071019）——
+   不透明會在地板與星空上壓出一整塊近黑的量體，把密集的節點打斷成三個黑洞
+   （2026-08-19 使用者指出「底座的黑色圓圈應可移除」→「半透明會更好看」→
+   「改成像暗掉時的基座顯示方式，可以看得到背景圖」）。
+   半透明則星空與地板電路都穿得過去，基座讀成玻璃台座，又比完全不填色保有體積感。
+   ⚠️ 調更低之前先確認柱面三行字（產品名／案例數／BUG·HP）還讀得清楚 —— 它們就疊在柱身上。 */
+.hero .drum-body { fill: url(#drumGrad); fill-opacity: .42; stroke: var(--border-strong); stroke-width: 1; }
+.hero .drum-bottom { fill: rgba(6, 15, 25, .3); stroke: var(--border-strong); stroke-width: 1; }
+.hero .drum-rib { stroke: currentColor; stroke-width: 1; opacity: .07; }
+.hero .drum-seam { fill: none; stroke: var(--border-strong); stroke-width: .8; opacity: .55; }
+/* ⚠️ 外沿**不可描邊**：它的 path 是半橢圓用 `Z` 收尾，Z 會補一條直線橫過頂部，
+   三座基座的外沿又彼此重疊 → 連成一條橫貫整個主視覺的直線（2026-08-20 使用者指出）。
+   輪廓本來就由下一行的 .drum-flange-ring（完整橢圓）負責，這裡只留填色。 */
+.hero .drum-flange { fill: rgba(7, 16, 25, .24); stroke: none; }
+.hero .drum-flange-ring { fill: none; stroke: currentColor; stroke-width: .8; opacity: .3; }
+.hero .drum-top.inner { stroke-width: .9; opacity: .45; fill: none; }
+.hero .drum-top.inner2 { stroke-width: .7; opacity: .25; fill: none; }
+.hero .drum-top-fill { fill: currentColor; opacity: .13; }
+.hero .drum-top { fill: none; stroke-width: 1.6; filter: drop-shadow(0 0 4px currentColor); }
+.hero .pedestal .p-name { font-size: 12.5px; font-weight: 700; letter-spacing: .1em; text-anchor: middle;
+  paint-order: stroke; stroke: #030a12; stroke-width: 3px; stroke-linejoin: round; }
+.hero .pedestal .p-num { font-size: 21px; font-weight: 500; text-anchor: middle; fill: var(--text); }
+.hero .pedestal .p-num .p-unit { font-size: 10px; fill: var(--text-muted); }
+.hero .pedestal .p-sub { font-size: 9.5px; text-anchor: middle; fill: var(--text-muted); letter-spacing: .06em; }
+
+/* 全息容器光管 */
+.hero .holo-tube { stroke: none; opacity: .9; }
+.hero .holo-cap { fill: none; stroke-width: 1; opacity: .16; }
+
+/* 投影裝置：光錐／掃描帶／發射環 —— 讓物件讀起來是「基座投出來的全息影像」 */
+.hero .holo-cone { fill: currentColor; opacity: .055; stroke: none; }
+.hero .holo-cone.edge { fill: none; stroke: currentColor; stroke-width: 1; opacity: .22; }
+.hero .holo-band { stroke: currentColor; stroke-width: 1; opacity: .07; }
+.hero .holo-emit { fill: none; stroke: currentColor; stroke-width: 1; opacity: .30; }
+.hero .pedestal.hot .holo-band { opacity: .13; }
+.hero .projector { animation: holo-flicker 5.5s ease-in-out infinite; }
+@keyframes holo-flicker { 0%, 92%, 100% { opacity: 1; } 94% { opacity: .82; } 96% { opacity: 1; } 98% { opacity: .9; } }
+html[data-motion="0"] .hero .projector { animation: none; }
+
+/* ── 宇宙星點投影（主題 signature）──
+ * 依參考圖：連續發亮輪廓為骨幹、切面半透明、頂點亮星、內部細星塵。
+ * ⚠️ 先前把輪廓畫成點，整體讀起來像「點描」而不是「投影」—— 2026-08-19 修正。 */
+/* ⚠️ 不要在 .glyph-wrap 上掛濾鏡：那會把約 2,000 個子節點整組送去高斯模糊，
+   而裡面的閃爍動畫每一幀都要重算 —— 是主視覺卡頓的主因（2026-08-19 實測）。
+   發光只給少數幾條輪廓線。 */
+.hero .glyph-wrap { contain: paint; }
+.hero .pc-outline { fill: none; stroke: currentColor; stroke-width: 1.6; opacity: .95; stroke-linejoin: round; filter: drop-shadow(0 0 3px currentColor); }
+.hero .pc-dot { fill: currentColor; stroke: none; }
+.hero .pc-dot.k-bug { fill: var(--danger); }
+.hero .pc-dot.k-edge { fill: #f2faff; }
+.hero .pc-dot.tw { animation: pc-twinkle 4.5s ease-in-out infinite; }
+@keyframes pc-twinkle { 0%, 100% { opacity: inherit; } 50% { opacity: .2; } }
+html[data-motion="0"] .hero .pc-dot.tw { animation: none; }
+/* 物件底部的 bloom（參考圖每個物件與基座交界都有一團光） */
+.hero .pc-bloom { fill: currentColor; opacity: .3; }
+.hero .pc-bloom.core { opacity: .85; fill: #f2faff; }
+
+/* ── 深空背景：星雲／銀河帶／星空 ── */
+.hero .nebula { pointer-events: none; }
+.hero .floor-dots, .hero .starfield, .hero .milky { pointer-events: none; }
+.hero .floor-dot { fill: var(--accent); }
+.hero .floor-dot.warm, .hero .fseg.warm, .hero .fnode.warm { fill: var(--accent-amber); stroke: var(--accent-amber); }
+.hero .ftrace { fill: none; stroke: var(--accent-2); stroke-width: .7; }
+.hero .fseg { fill: none; stroke: var(--accent); stroke-width: 1.1; stroke-linecap: round; }
+.hero .fnode { fill: var(--accent); stroke: none; }
+.hero .milky circle { fill: #cfe9ff; pointer-events: none; }
+.hero .starfield circle { fill: #dff1ff; pointer-events: none; }
+.hero .starfield, .hero .milky, .hero .floor-dots, .hero .nebula { shape-rendering: optimizeSpeed; }
+.hero .starfield.bright g { pointer-events: none; }
+.hero .bstar circle { fill: #ffffff; }
+.hero .bstar .halo { fill: #cfe9ff; opacity: .22; }   /* 用一圈淡光取代濾鏡 */
+.hero .bstar path { stroke: #ffffff; stroke-width: .6; opacity: .5; }
+.hero .bstar { animation: star-blink 7s ease-in-out infinite; }
+@keyframes star-blink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+html[data-motion="0"] .hero .bstar { animation: none; }
+
+/* 場景星塵＝「共通」的知識量（它貫穿所有產品，故不設基座）—— 比背景星空亮、且是青色 */
+.hero .scene-dust { fill: var(--accent); }
+.hero .dust-field { pointer-events: none; }
+
+/* 物件內的掃描顆粒：只負責體積質感，不代表資料 */
+/* ⚠️ 這裡**不要**加 shape-rendering: optimizeSpeed。關掉反鋸齒後，靜止時看不出來，
+   但擺動時這些小點會在像素格之間跳格，整片閃爍 —— 讀起來就是抖
+   （2026-08-20 使用者指出「不平順的抖動」）。顆粒已由 420 減到 200，反鋸齒付得起。 */
+.hero .pc-grain { fill: currentColor; pointer-events: none; }
+
+/* 物件上的結構線與裝飾 */
+
+/* ── 3D 線框投影（models.js）──
+ * 面依深度排序、明暗依法線；背面不剔除但畫得更暗，做出「看得穿的全息體」。 */
+/* ★ 立體擠出的產品字樣（2026-08-20 取代原本的 3D 物件）
+   由後而前 N 層：後層是填色的「厚度」，最前層**只描邊不填色** ——
+   前層留空才看得到裡面的 .pc-dot，字才會是「由知識量的星點組成」而不是一塊實心色板。 */
+/* ⚠️ text-rendering: geometricPrecision 是**擺動平順的必要條件**：
+   預設的 auto 會做字形對齊（hinting），字元原點被吸附到像素格，
+   而 transform 每幀都在變 → 吸附結果逐幀不同，字就會微微抖。
+   geometricPrecision 關掉吸附、用精確幾何定位，代價是靜止時字緣略軟一點點。 */
+.hero .m3-word text { fill: currentColor; stroke: none; font-family: var(--font-display);
+  font-weight: 600; letter-spacing: .13em; text-rendering: geometricPrecision; }
+/* ⚠️ 輝光要**收得緊**。大半徑的柔光會讓字讀起來像霓虹招牌（＝「過於可愛」，
+   2026-08-20 使用者指出）；科技感來自銳利的邊與明確的厚度，不是暈開的光。 */
+/* ⚠️ 前緣的輝光**不可用 filter**：SVG 濾鏡的作用區會被吸附到整數裝置像素，
+   元素次像素移動時，光暈相對字形的偏移逐幀變動 → 擺動時看得到光暈在抖
+   （2026-08-20 使用者指出「不平順的抖動」）。改用一層寬而淡的描邊當光暈，
+   純幾何、跟著字一起變換，不會有吸附問題，順帶省下每幀的濾鏡光柵化。 */
+.hero .m3-word.front text { fill: none; stroke: currentColor; stroke-width: 1.05; stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke; }
+.hero .m3-word.front text.halo { stroke-width: 5; stroke-opacity: .16; stroke-linejoin: round; }
+/* 最後一層描一道細邊 → 擠出的體積有明確的後緣，不會糊成一團殘影 */
+.hero .m3-word.rear text { fill-opacity: .55; stroke: currentColor; stroke-width: .8;
+  stroke-opacity: .55; vector-effect: non-scaling-stroke; }
+
+/* 執行中：光管脈動＋頂緣掃描環；有 blocker：頂緣轉紅 */
+.hero .pedestal.hot .holo-tube { animation: beam-pulse 2.4s ease-in-out infinite; }
+@keyframes beam-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+html[data-motion="0"] .hero .pedestal.hot .holo-tube { animation: none; }
+.hero .pedestal.hot .drum-top { stroke-width: 2.4; }
+
+/* ── 任務 session 執行中的產品投影（2026-08-24 使用者要求）──
+ * 使用者：「各 session 執行中，在主視覺各產品投影需要有動畫效果」。
+ *
+ * ★ 與 run 的 `.hot` **刻意長得不一樣**：run 是「機器在跑一批案例」，
+ *   session 是「Claude 正在替這個產品做事」—— 兩者同時發生時要分得出來。
+ *     · run（`.hot`）  ＝ 光柱慢呼吸（2.4s）＋ 頂緣加粗
+ *     · session（`.sess`）＝ 光柱**快**呼吸（1.2s）＋ 頂圈**跑馬掃描** ＋ 全息體輕浮
+ *
+ * ⛔ 只動 `opacity`／`transform`／`stroke-dashoffset` —— 這三個走合成器，
+ *    不觸發重排。主視覺有 6,900 個 SVG 節點，任何會 relayout 的動畫都會整片頓
+ *    （VISUAL.md 的效能節記過這件事）。
+ * ⛔ 動畫**只掛在該產品的基座上**，不是整個 hero —— 沒在跑的產品完全不動。
+ */
+.hero .pedestal.sess .holo-tube { animation: sess-beam 1.2s ease-in-out infinite; }
+@keyframes sess-beam { 0%, 100% { opacity: .48; } 50% { opacity: 1; } }
+
+/* 頂圈跑馬：虛線 ＋ 位移，看起來像有東西沿著基座邊緣掃 */
+.hero .pedestal.sess .drum-top {
+  stroke-width: 2.4;
+  stroke-dasharray: 14 10;
+  animation: sess-scan 1.9s linear infinite;
+}
+@keyframes sess-scan { to { stroke-dashoffset: -48; } }
+
+/* 投影機本體閃一下 —— 它只有十來個節點，動它很便宜 */
+.hero .pedestal.sess .projector { animation: sess-emit 1.2s ease-in-out infinite; }
+@keyframes sess-emit { 0%, 100% { opacity: .75; } 50% { opacity: 1; } }
+
+/* ⛔ **不要動 `.glyph-wrap`** —— 那個群組底下約 1,800 個節點，
+      動它等於每幀重新光柵化一大片（VISUAL.md 的效能節明訂）。
+      「這個產品有事在進行」用光柱＋頂圈＋投影機三處表達就夠，
+      而它們合計不到 20 個節點。 */
+
+/* 關掉動效時仍要看得出「有事在進行」—— 用靜態的加亮，不是整組消失 */
+html[data-motion="0"] .hero .pedestal.sess .holo-tube,
+html[data-motion="0"] .hero .pedestal.sess .drum-top,
+html[data-motion="0"] .hero .pedestal.sess .projector { animation: none; }
+html[data-motion="0"] .hero .pedestal.sess .holo-tube { opacity: .95; }
+html[data-motion="0"] .hero .pedestal.sess .drum-top { stroke-dasharray: none; }
+/* 有 blocker 時不把整座染紅 —— 產品色是該產品的識別，不該被狀態蓋掉（2026-08-19 使用者指出）。
+   改用柱面上的紅色警示標記表示。 */
+.hero .pedestal .fault-mark { display: none; }
+.hero .pedestal.fault .fault-mark { display: block; }
+.hero .fault-mark .bg { fill: var(--danger); opacity: .18; }
+.hero .fault-mark .ring { fill: none; stroke: var(--danger); stroke-width: 1.2; }
+.hero .fault-mark .ex { stroke: var(--danger); stroke-width: 2; stroke-linecap: round; }
+/* ── 執行中：一眼看出「誰在跑、跑什麼、到哪」（2026-08-20）───────────────
+   ⚠️ 只把執行中的那一座「加亮」是沒有用的 —— 三座本來就都亮著，加亮讀不出差別。
+      真正有效的是**把沒在跑的那幾座壓下去**：對比才是可讀性的來源。
+      標籤同理，必須直接寫出工具名與進度，不能只用光效暗示。 */
+/* ⚠️ 這裡原本會把「沒在跑的基座壓暗到 34%」當作對比手段。
+   2026-08-20 使用者裁示移除：執行中標籤＋行進虛線＋能量點已經夠顯眼，
+   壓暗反而讓另外兩個產品的資訊變得難讀。**不要再加回來。** */
+.hero .run-tag { pointer-events: none; }
+.hero .run-tag .rt-bg { fill: rgba(3, 12, 22, .84); stroke: currentColor; stroke-opacity: .5; stroke-width: 1; }
+.hero .run-tag .rt-dot { fill: currentColor; animation: rt-blink 1.15s ease-in-out infinite; }
+.hero .run-tag .rt-phase { fill: currentColor; font-size: 11px; letter-spacing: .1em; opacity: .9; }
+.hero .run-tag .rt-name { fill: var(--text); font-size: 15px; font-weight: 600; font-family: var(--font-display); }
+.hero .run-tag .rt-pct { fill: currentColor; font-size: 14px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.hero .run-tag .rt-track { fill: currentColor; opacity: .22; }
+.hero .run-tag .rt-fill { fill: currentColor; }
+.hero .run-tag .rt-leader { stroke: currentColor; stroke-opacity: .45; stroke-width: 1; }
+@keyframes rt-blink { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
+html[data-motion="0"] .hero .run-tag .rt-dot { animation: none; }
+/* 光柱裡往上流的能量點：讀起來是「正在把東西送上去跑」 */
+.hero .beam-mote { fill: currentColor; opacity: 0; animation: beam-rise 3.1s ease-out var(--d, 0s) infinite; }
+@keyframes beam-rise { 0% { opacity: 0; transform: translateY(0); } 14% { opacity: .95; } 100% { opacity: 0; transform: translateY(-152px); } }
+html[data-motion="0"] .hero .beam-mote { animation: none; opacity: .5; }
+/* ── 閒置動畫：全息投影每隔數秒「重建」一次 ───────────────────────────
+   概念取自主視覺本來的語彙（投影機、掃描帶、取樣點）：投影不是貼上去的圖，
+   而是**持續被投影機重畫出來的**，所以每隔幾秒會有一條亮線由下往上掃過字樣，
+   掃過時發射環同步亮一下 —— 像投影在刷新。
+   紀律三條：
+     ① 週期 4.2s，**掃描只佔前 33%（約 1.4s），其餘 2.8s 完全靜止**（2026-08-20 使用者指定
+        「3–5s 顯示一次」）—— 屬環境級氛圍，不計入「明顯動態 ≤ 3」的上限（見 VISUAL.md）。
+        ⚠️ 掃描帶會經過字樣那一片點雲，動的時候底下那塊要重新光柵化。
+           所以**一定要留靜止的空檔**，不要把可見比例調高或把週期縮短到沒有空隙。
+     ② 三座**同步**（2026-08-20 使用者裁示「不用輪流」）。先前是錯開相位，
+        結果三座接力之下幾乎沒有全靜的時刻；同步反而更省，也更像「整個投影系統一起刷新」。
+     ③ **執行中的那座不播** —— 那時該由執行中標籤與行進虛線說話，兩套動畫疊在一起會打架。
+   ⚠️ 動的只有一條 rect 與兩個小橢圓。**不要改成動 `.glyph-wrap`** ——
+      那個群組底下有約 1,800 個節點，對它做 transform 動畫等於每幀重新光柵化一大片。 */
+/* 亮線本體 ＋ 一層較寬較淡的暈（用第二個 rect 做，**不要用 filter**：
+   濾鏡區域會對齊裝置像素，動起來會閃 —— 主視覺踩過這個坑）。 */
+.hero .idle-scan { fill: currentColor; opacity: 0; animation: idle-scan 4.2s ease-out infinite; }
+.hero .idle-scan.halo { opacity: 0; }
+.hero .idle-scan.halo { animation-name: idle-scan-halo; }
+@keyframes idle-scan-halo {
+  0%   { opacity: 0; transform: translateY(6px); }
+  5%   { opacity: .16; }
+  28%  { opacity: .09; }
+  33%  { opacity: 0; transform: translateY(-152px); }
+  100% { opacity: 0; transform: translateY(-152px); }
+}
+@keyframes idle-scan {
+  0%   { opacity: 0; transform: translateY(6px); }
+  5%   { opacity: .6; }
+  28%  { opacity: .34; }
+  33%  { opacity: 0; transform: translateY(-152px); }
+  100% { opacity: 0; transform: translateY(-152px); }
+}
+.hero .pedestal:not(.hot) .holo-emit { animation: emit-breath 4.2s ease-in-out infinite; }
+@keyframes emit-breath { 0%, 26%, 100% { opacity: .3; } 6% { opacity: .85; } }
+.hero .pedestal.hot .idle-scan { display: none; }
+html[data-motion="0"] .hero .idle-scan, html[data-motion="0"] .hero .idle-scan.halo { animation: none; opacity: 0; }
+html[data-motion="0"] .hero .pedestal:not(.hot) .holo-emit { animation: none; opacity: .3; }
+
+/* 頂面環改為行進虛線＝還在動的訊號 */
+.hero .pedestal.hot .drum-top { stroke-dasharray: 13 9; animation: drum-march 2.4s linear infinite; }
+html[data-motion="0"] .hero .pedestal.hot .drum-top { animation: none; stroke-dasharray: none; }
+@keyframes drum-march { to { stroke-dashoffset: -44; } }
+
+.hero .scan-ring { fill: none; stroke: var(--accent); stroke-width: 1.2; opacity: 0; animation: scan-out 2.6s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes scan-out { 0% { opacity: .6; transform: scale(.5); } 100% { opacity: 0; transform: scale(1.3); } }
+html[data-motion="0"] .hero .scan-ring { animation: none; opacity: .2; }
+
+/* ── 中央：螺旋星系 ＋ 知識雷達軌道（取代原本的線框地球）── */
+.hero .gx-hit { fill: transparent; }
+.hero .gx-halo { fill: url(#gx-glow); }
+.hero .gx-disc { fill: url(#gx-disc); }
+.hero .gx-star { fill: #dfedff; }
+.hero .gx-star.dim { fill: #9fd0ff; }
+.hero .gx-core { fill: url(#gx-core); }
+.hero .gx-core-hot { fill: #ffffff; filter: drop-shadow(0 0 8px rgba(200, 225, 255, .9)); }
+.hero .galaxy.state-idle .gx-core-hot { animation: gx-breath 9s ease-in-out infinite; }
+@keyframes gx-breath { 0%, 100% { opacity: .8; } 50% { opacity: 1; } }
+html[data-motion="0"] .hero .galaxy.state-idle .gx-core-hot { animation: none; }
+
+/* 知識雷達融進星系外圍：五條壓扁軌道，每個產品佔一段弧 */
+.hero .ko-track { fill: none; stroke: var(--border-strong); stroke-width: .7; opacity: .5; }
+.hero .ko-arc { fill: none; stroke-width: 2.4; stroke-linecap: round; cursor: pointer; opacity: .9; filter: drop-shadow(0 0 2px currentColor); }
+.hero .ko-arc:hover { stroke-width: 3.4; opacity: 1; }
+.hero .ko-node { opacity: .9; }
+.hero .ko-lbl { font-size: 8px; fill: var(--text-muted); opacity: .7; letter-spacing: .08em; pointer-events: none; }
+
+.hero .run-arc { fill: none; stroke-width: 3; stroke-linecap: round; filter: drop-shadow(var(--glow-accent)); transition: stroke-dashoffset .8s ease; cursor: pointer; }
+
+.hero-tip { position: absolute; left: 0; top: 0; z-index: 25; pointer-events: none; will-change: transform; padding: 6px 10px; background: var(--bg-elevated); border: 1px solid var(--accent-dim); font-size: .74rem; box-shadow: 0 8px 20px rgba(0, 0, 0, .6); max-width: 260px; }
+.hero-tip b { color: var(--accent); }
+
+/* 小圖騰（產品頁頁首、#/tools 欄首）：只用剪影＋結構線，不畫點陣 */
+
+/* ── 知識雷達（嵌在 hero 中央，或產品頁小圖） ── */
+.radar { position: relative; }
+.radar svg { display: block; width: 100%; height: auto; }
+.radar .ring-bg { fill: none; stroke: var(--border); stroke-width: 1; }
+.radar .grid-line { stroke: var(--border); stroke-width: 1; }
+.radar .arc { fill: none; stroke-linecap: round; cursor: pointer; transition: opacity .15s; }
+.radar .arc:hover { opacity: 1 !important; filter: drop-shadow(var(--glow-accent)); }
+.radar .arc.dim { opacity: .25; }
+.radar .arc.zero { stroke-dasharray: 1.5 3.5; }   /* 透明度由 JS 給，CSS 不要再壓一次 */
+.radar .arc-track { fill: none; stroke: var(--border-strong); stroke-linecap: butt; pointer-events: none; opacity: .55; }
+.radar .sector-lbl { font-size: 10px; fill: var(--text-muted); font-family: var(--font); pointer-events: none; }
+.radar .sector-lbl.active { font-weight: 600; }
+.radar .ring-lbl-bg { fill: rgba(4, 8, 15, .74); stroke: var(--border); stroke-width: .5; pointer-events: none; }
+.radar .ring-lbl { font-size: 9px; fill: var(--text-muted); font-family: var(--font); pointer-events: none; opacity: .8; letter-spacing: .04em; }
+.radar .center-txt { font-family: var(--font); fill: var(--text); text-anchor: middle; }
+.radar .center-txt.big { font-size: 13px; font-weight: 600; letter-spacing: .1em; }
+.radar .center-txt.small { font-size: 8px; fill: var(--text-muted); letter-spacing: .14em; }
+.radar .center-txt.state-running { fill: var(--accent); }
+.radar .center-txt.state-warning { fill: var(--accent-amber); }
+.radar .center-txt.state-fault { fill: var(--danger); }
+.radar .heat { stroke-linecap: butt; }
+.radar .core-ring { fill: none; stroke: var(--accent); stroke-width: 1; opacity: .45; }
+.radar .core-ring.breath { animation: breath 8s ease-in-out infinite; }
+@keyframes breath { 0%, 100% { opacity: .25; } 50% { opacity: .62; } }
+html[data-motion="0"] .radar .core-ring.breath { animation: none; }
+.radar .run-arc { fill: none; stroke-width: 4; stroke-linecap: round; filter: drop-shadow(var(--glow-accent)); transition: stroke-dashoffset .8s ease; }
+.radar .sector-hit { fill: transparent; cursor: pointer; }
+.radar .sector-hit:hover { fill: rgba(127, 187, 240, .035); }
+.radar-tip { position: absolute; z-index: 25; pointer-events: none; padding: 6px 10px; background: var(--bg-elevated); border: 1px solid var(--accent-dim); font-size: .74rem; box-shadow: 0 8px 20px rgba(0, 0, 0, .5); max-width: 260px; }
+.radar-tip b { color: var(--accent); }
+.radar-legend { display: flex; flex-direction: column; gap: 4px; font-size: .72rem; min-width: 170px; }
+.radar-legend .lg { display: flex; align-items: center; gap: 7px; color: var(--text-muted); cursor: pointer; padding: 1px 3px; }
+.radar-legend .lg:hover { background: var(--accent-faint); color: var(--text); }
+.radar-legend .lg .sw { width: 8px; height: 8px; flex-shrink: 0; }
+.radar-legend .lg .n { font-variant-numeric: tabular-nums; margin-left: auto; color: var(--text); font-size: .7rem; }
+
+/* ── 助手提示／熱度 ── */
+.hint-list { display: flex; flex-direction: column; gap: 5px; }
+.hint { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid rgba(77, 131, 200, .22); font-size: .76rem;
+  background: var(--panel-in); border-radius: var(--radius); box-shadow: var(--edge-lit); }
+.hint .t { flex: 1; min-width: 0; }
+.hint.warn { border-color: var(--amber-dim); }
+.heat-strip { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 20px; }
+.heat-strip .h { background: var(--code-bg); position: relative; border: 1px solid transparent; }
+.heat-strip .h.ok { background: rgba(53, 224, 138, .35); } .heat-strip .h.fail { background: rgba(255, 90, 95, .4); }
+.heat-strip .h:hover { border-color: var(--accent); }
+/* 現在這個小時：標出來，方向不必靠 hover 才知道（2026-08-25） */
+.heat-strip .h.now { border-color: var(--accent-dim); box-shadow: inset 0 -2px 0 var(--accent); }
+/* 標題列：左邊講是什麼、右邊講方向 */
+.heat-cap { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 3px; letter-spacing: .12em; }
+.heat-cap > span:last-child { letter-spacing: .04em; opacity: .75; }
+.heat-strip .h:hover::after { content: attr(data-tip); position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--bg-elevated); border: 1px solid var(--accent-dim); padding: 3px 8px; font-size: .68rem; z-index: 5; }
+/* ⛔ 頭尾各三格的 tooltip 要**貼齊自己那一側** —— 置中的話有一半會跑到卡片外被切掉，
+   而那兩端正是「24 小時前」與「現在」，最需要看得到（2026-08-25 使用者回報）。 */
+.heat-strip .h:nth-child(-n+3):hover::after { left: 0; transform: none; }
+.heat-strip .h:nth-last-child(-n+3):hover::after { left: auto; right: 0; transform: none; }
+
+/* ── 全域對話入口與視窗（2026-08-24 改版） ──
+ * ① 入口圖示從「會呼吸的圓點」換成**通訊埠**（六角框＋對話泡＋訊號點）——
+ *    圓點跟背景那三千顆星塵長得一樣，看不出是入口。
+ * ② 視窗從「貼右下角 400×560」改成**置中大視窗**——
+ *    小面板連一張判定表都放不下，而 session 交回來的幾乎都是 markdown 表格。
+ */
+.portal-glyph { display: block; overflow: visible; }
+.portal-glyph .hex { fill: rgba(127, 187, 240, .07); stroke: var(--accent); stroke-width: 1.35; stroke-linejoin: round; }
+.portal-glyph .bub { fill: none; stroke: var(--accent); stroke-width: 1.25; stroke-linejoin: round; stroke-linecap: round; }
+.portal-glyph .sig { fill: var(--accent); animation: sig-blink 1.9s ease-in-out infinite; }
+.portal-glyph .sig.s2 { animation-delay: .22s; } .portal-glyph .sig.s3 { animation-delay: .44s; }
+@keyframes sig-blink { 0%, 62%, 100% { opacity: .32; } 22% { opacity: 1; } }
+html[data-motion="0"] .portal-glyph .sig { animation: none; opacity: .85; }
+
+/* ⭐ 右下角的浮動對話按鈕（`.dock-btn`）已於 2026-08-24 移除 —— 使用者要求
+   「各頁面右下角的對話開啟按鈕可以移除，藉此增加各頁面的可視範圍」。
+   它與 rail 底部的 CLAUDE 燈是同一個入口，卻 `position: fixed` 壓著頁面
+   右下角的內容。⛔ 不要再加回來；要加入口就加在 rail 或頁面自己的版面裡。
+   左下那顆的強化樣式在 `base.css` 的 `.rail .ai-status`。 */
+
+/* 同 `.modal`：全螢幕不放 backdrop-filter（見 components.css 的實測數字）。
+   ⚠️ 這一層是 `.dock-panel` 的**兄弟**而不是祖先，但一樣貴 ——
+   成本來自「整片重算」，不是來自階層關係。 */
+.dock-scrim { position: fixed; inset: 0; z-index: 148; background: rgba(2, 5, 10, .78); }
+.dock-scrim.hidden, .dock-panel.hidden { display: none; }
+.dock-panel {
+  position: fixed; inset: 0; margin: auto; z-index: 149;
+  width: min(1080px, 92vw); height: min(760px, 86dvh);
+  background: linear-gradient(180deg, rgba(11, 27, 44, .96), rgba(4, 13, 23, .97));
+  /* ⛔ 不放 `backdrop-filter` —— 這面板 96~97% 不透明，模糊看不出來；
+     而它裡面就是**捲動最頻繁**的訊息區（見 `.rail` 那條的實測數字）。 */
+  border: 1px solid var(--frame-on);
+  box-shadow: var(--edge-lit-on), var(--lift-2), var(--panel-glow);
+  display: flex; flex-direction: column; padding: 12px 16px 14px; animation: dock-in .18s ease;
+  border-radius: var(--radius-modal);
+}
+@keyframes dock-in { from { transform: translateY(12px) scale(.985); opacity: 0; } }
+html[data-motion="0"] .dock-panel, html[data-motion="0"] .toast { animation: none; }
+.dock-panel > h3 { margin: 0 0 9px; font-size: .72rem; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 9px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.dock-panel > h3 .cnt { color: var(--text-muted); font-weight: 400; font-size: .68rem; letter-spacing: 0; text-transform: none; margin-left: auto; }
+.dock-panel > h3 .x { cursor: pointer; color: var(--text-muted); font-size: .9rem; }
+.dock-panel > h3 .x:hover { color: var(--danger); }
+.dock-panel .chat { flex: 1; min-height: 0; }
+/* 視窗變大之後，訊息也該用得上寬度（小面板時代訂的 94% 在 1080px 下會拉成一整行難讀） */
+.dock-panel .msg { max-width: min(78%, 760px); font-size: .84rem; }
+.dock-panel .chat .input textarea { height: 62px; font-size: .86rem; }
+.dock-panel .chat .head select { max-width: 300px; }
+@media (max-width: 720px) { .dock-panel { width: 96vw; height: 92dvh; } }
+
+/* ── 總覽主視覺腳下的對話入口 ── */
+#hero-portal { position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); z-index: 6; }
+.chat-portal {
+  display: flex; align-items: center; gap: 12px; padding: 9px 18px 9px 14px; cursor: pointer;
+  border: 1px solid var(--accent-dim); border-radius: 30px;
+  background: linear-gradient(180deg, rgba(14, 36, 58, .82), rgba(5, 14, 25, .88));
+  color: var(--text);
+  box-shadow: 0 0 22px rgba(127, 187, 240, .18), 0 6px 20px rgba(0, 0, 0, .5);
+  transition: border-color .16s, box-shadow .16s, transform .16s;
+}
+.chat-portal:hover { border-color: var(--accent); transform: translateY(-2px);
+  box-shadow: 0 0 34px rgba(127, 187, 240, .32), 0 10px 26px rgba(0, 0, 0, .6); }
+.chat-portal:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.chat-portal .tx { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.chat-portal .tx b { font-size: .86rem; letter-spacing: .06em; color: var(--accent); font-weight: 500; }
+.chat-portal .tx small { font-size: .68rem; color: var(--text-muted); letter-spacing: .02em; }
+.chat-portal .go { color: var(--accent-dim); font-size: .9rem; margin-left: 4px; }
+.chat-portal.is-off { border-color: var(--border-strong); box-shadow: none; }
+.chat-portal.is-off .tx b { color: var(--text-muted); }
+
+/* ── 產品看板（#/tools） ── */
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 10px; align-items: start; }
+@media (max-width: 1200px) { .board { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px) { .board { grid-template-columns: 1fr; } }
+.board .col-head { display: flex; align-items: center; gap: 8px; padding: 6px 4px 7px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.board .col-head .bar { width: 3px; height: 20px; box-shadow: 0 0 8px currentColor; }
+.board .col-head .nm { font-weight: 600; letter-spacing: .08em; font-size: .84rem; }
+.board .col-head .sub { font-size: .7rem; color: var(--text-muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+/* 產品徽章：與主視覺同一組字樣。寬度隨字長伸縮，故只鎖高度 */
+.board .col-glyph { height: 20px; display: inline-flex; align-items: center; }
+.board .col-glyph svg { height: 100%; width: auto; }
+.wm-box { fill: currentColor; fill-opacity: .10; stroke: currentColor; stroke-opacity: .45; stroke-width: 1; }
+.wm-text { fill: currentColor; font-family: var(--font-display); font-weight: 600; letter-spacing: .03em; }
+
+/* 產品頁／看板的小圖騰 */
+.page-head svg { overflow: visible; }
+
+/* 統計數字下的拆解說明（總覽「測試案例」＝產品 ＋ 共通）——
+   三根柱子只畫產品案例，總數含共通，不標出來會被當成算錯。 */
+.stat .sub { line-height: 1.3; letter-spacing: 0; }
+
+/* ── 任務 session 在「運行中」卡裡的樣子（2026-08-24）──
+ * 使用者：「平台啟 session 執行任務，尚無法追蹤執行狀態」。
+ * ⭐ 刻意與 run 用**同一組卡片樣式**（`.run-card`）—— 對使用者來說它們是同一件事
+ *    「我按下去的東西現在怎麼樣了」，分成兩種長相只會讓人多學一次。
+ *    差別只在左邊那顆記號：run 是進度環，session 是一顆轉動的半月。 */
+.sess-orb { width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center;
+  border-radius: 50%; border: 1px solid var(--accent-dim); color: var(--accent);
+  font-size: 1.05rem; background: var(--panel-in); }
+.sess-orb:not(.done) { animation: sess-spin 1.6s linear infinite; }
+.sess-orb.done { border-color: var(--success-dim); color: var(--success); animation: none; }
+@keyframes sess-spin { to { transform: rotate(360deg); } }
+html[data-motion="0"] .sess-orb { animation: none; }
+
+/* 「做完了，這是它交出來的東西」—— 每一項都是可以點過去的入口。
+   ⛔ 不要只寫「已完成」：那等於把「去哪看」留給人自己找，
+      而那正是這個平台一直在修的失效模式。 */
+.review-items { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.review-item { font-size: .72rem; padding: 2px 8px; border-radius: 10px;
+  border: 1px solid var(--border-strong); color: var(--text); background: var(--code-bg); }
+.review-item:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+.review-item.bug, .review-item.bug_draft { border-color: var(--danger-dim); }
+.review-item.cases, .review-item.doc { border-color: var(--success-dim); }
+.review-item.needs_review, .review-item.failed { border-color: var(--amber-dim); color: var(--accent-amber); }

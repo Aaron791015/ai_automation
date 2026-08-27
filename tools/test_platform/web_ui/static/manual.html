@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="color-scheme" content="dark"/>
+<title>測試助手 · 使用手冊</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 1.9 27.7 8.6v14.8L16 30.1 4.3 23.4V8.6z' fill='none' stroke='%237fbbf0' stroke-width='2'/%3E%3Cpath d='M9.4 10.6h13.2v8.6h-6.9l-4 3.4v-3.4H9.4z' fill='none' stroke='%237fbbf0' stroke-width='1.8'/%3E%3C/svg%3E"/>
+<style>
+/* 字型與這個平台自帶的同一組（相對路徑：手冊與 fonts/ 同層，
+   不論是平台服務的 /static/manual.html 還是直接雙擊檔案都讀得到）。
+   ⚠️ 找不到就退回系統字型，手冊仍然完整可讀 —— 不做任何外部連線。 */
+@font-face { font-family: "Inter"; src: url("fonts/Inter-var.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Sora"; src: url("fonts/Sora-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+
+:root {
+  --bg: #020a14; --panel-top: rgba(10,25,41,.66); --panel-bot: rgba(4,13,23,.74);
+  --panel-in: rgba(12,30,48,.72); --frame: rgba(93,149,216,.42); --frame-on: rgba(127,187,240,.8);
+  --text: #d0e0f5; --muted: #97abc4; --title: #adc2dc;
+  --accent: #7fbbf0; --accent-2: #297de0; --accent-faint: rgba(127,187,240,.09);
+  --amber: #f0b429; --danger: #ff5a5f; --success: #4ade80;
+  --code-bg: #081420; --border: #1b2b40; --border-strong: #27446a;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --sans: "Inter", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --display: "Sora", var(--sans);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 18px; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--sans); font-size: 15px; line-height: 1.75;
+  letter-spacing: .01em;
+  /* 背景：極淡的網格 ＋ 一團藍光，與平台同一組語彙 */
+  background-image:
+    radial-gradient(ellipse 900px 520px at 22% -6%, rgba(41,125,224,.16), transparent 70%),
+    linear-gradient(rgba(127,187,240,.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(127,187,240,.028) 1px, transparent 1px);
+  background-size: auto, 46px 46px, 46px 46px;
+  background-attachment: fixed;
+}
+.wrap { display: grid; grid-template-columns: 232px minmax(0,1fr); gap: 40px; max-width: 1180px; margin: 0 auto; padding: 0 26px 96px; }
+
+/* ── 目錄 ── */
+nav { position: sticky; top: 0; align-self: start; max-height: 100dvh; overflow-y: auto; padding: 26px 0 30px; }
+nav .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+nav .brand svg { flex: none; }
+nav .brand b { font-family: var(--display); font-size: 1rem; letter-spacing: .09em; color: var(--accent); font-weight: 600; }
+nav .brand small { display: block; font-size: .68rem; letter-spacing: .16em; color: var(--muted); text-transform: uppercase; }
+nav a { display: block; padding: 4px 10px; margin-left: -10px; color: var(--muted); text-decoration: none; font-size: .82rem; border-left: 2px solid transparent; }
+nav a:hover { color: var(--accent); background: var(--accent-faint); }
+nav a.on { color: var(--accent); border-left-color: var(--accent); background: var(--accent-faint); }
+nav .grp { margin-top: 14px; font-size: .64rem; letter-spacing: .18em; color: #5f7594; text-transform: uppercase; }
+
+/* ── 版頭 ── */
+header.hero { padding: 58px 0 26px; }
+header.hero .eyebrow { font-size: .68rem; letter-spacing: .3em; color: var(--accent-2); text-transform: uppercase; }
+header.hero h1 { font-family: var(--display); font-weight: 600; font-size: 2.3rem; line-height: 1.22; margin: 12px 0 14px; letter-spacing: .01em; text-wrap: balance; }
+header.hero p.lede { font-size: 1.02rem; color: var(--title); max-width: 62ch; margin: 0; }
+header.hero .meta { margin-top: 18px; font-size: .74rem; color: var(--muted); font-family: var(--mono); }
+
+/* ── 區塊 ── */
+section { padding-top: 42px; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 1.32rem; margin: 0 0 6px; letter-spacing: .02em; display: flex; align-items: baseline; gap: 12px; }
+h2 .n { font-family: var(--mono); font-size: .78rem; color: var(--accent-2); letter-spacing: .1em; }
+h2 + .sub { color: var(--muted); font-size: .88rem; margin: 0 0 18px; max-width: 66ch; }
+h3 { font-family: var(--display); font-weight: 600; font-size: .98rem; margin: 26px 0 8px; color: var(--title); letter-spacing: .03em; }
+p { max-width: 74ch; }
+a { color: var(--accent); }
+
+.card { border: 1px solid var(--frame); border-radius: 4px; padding: 16px 18px;
+  background: linear-gradient(180deg, var(--panel-top), var(--panel-bot));
+  box-shadow: 0 0 26px -6px rgba(41,125,224,.3), inset 0 1px 0 rgba(127,187,240,.07);
+  margin: 14px 0; }
+.card > :first-child { margin-top: 0; } .card > :last-child { margin-bottom: 0; }
+
+code { font-family: var(--mono); font-size: .86em; background: var(--code-bg); border: 1px solid var(--border); padding: 1px 5px; border-radius: 3px; color: #b9d4ee; }
+pre { font-family: var(--mono); font-size: .8rem; line-height: 1.6; background: var(--code-bg);
+  border: 1px solid var(--border-strong); border-radius: 4px; padding: 12px 14px; overflow-x: auto;
+  box-shadow: inset 0 2px 7px rgba(0,0,0,.55); }
+pre code { background: none; border: 0; padding: 0; font-size: 1em; }
+
+table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: .86rem; display: block; overflow-x: auto; }
+thead th { text-align: left; font-weight: 500; font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--accent); border-bottom: 1px solid var(--border-strong); padding: 7px 10px; white-space: nowrap; }
+tbody td { border-bottom: 1px solid var(--border); padding: 8px 10px; vertical-align: top; }
+tbody tr:hover td { background: var(--accent-faint); }
+td.nw, th.nw { white-space: nowrap; }
+tbody td:first-child { color: var(--title); }
+
+ul, ol { max-width: 74ch; padding-left: 1.35em; }
+li { margin: 5px 0; }
+li::marker { color: var(--accent-2); }
+
+.note, .warn, .stop { border-left: 3px solid; border-radius: 3px; padding: 12px 16px; margin: 16px 0; font-size: .9rem; max-width: 76ch; }
+.note { border-color: var(--accent-2); background: rgba(41,125,224,.08); }
+.warn { border-color: var(--amber); background: rgba(240,180,41,.07); }
+.stop { border-color: var(--danger); background: rgba(255,90,95,.07); }
+.note b, .warn b, .stop b { color: var(--title); }
+.stop b { color: #ff9ea1; }
+
+/* ── 實拍畫面 ──
+ * ⚠️ 每張圖都給 width/height，否則圖還沒載入時版面會跳（讀者正在讀的那段會被推走）。
+ * ⚠️ `max-width` 一律等於原始寬度 —— 小元件圖放大只會糊掉。 */
+figure { margin: 20px 0 24px; }
+figure > a { display: block; border: 1px solid var(--frame); border-radius: 4px; overflow: hidden;
+  background: var(--code-bg); box-shadow: 0 0 24px -8px rgba(41,125,224,.35), inset 0 1px 0 rgba(127,187,240,.06);
+  transition: border-color .16s, box-shadow .16s; }
+figure > a:hover { border-color: var(--frame-on); box-shadow: 0 0 30px -6px rgba(127,187,240,.42); }
+figure img { display: block; width: 100%; height: auto; }
+figcaption { margin-top: 9px; font-size: .8rem; line-height: 1.65; color: var(--muted); max-width: 74ch; }
+figcaption b.fig { font-family: var(--mono); font-size: .72rem; letter-spacing: .1em; color: var(--accent-2);
+  margin-right: 8px; font-weight: 400; }
+figcaption .zoom { color: #5f7594; font-size: .72rem; margin-left: 6px; white-space: nowrap; }
+.shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; margin: 20px 0 24px; }
+.shots figure { margin: 0; }
+@media print { figure > a { box-shadow: none; } figcaption .zoom { display: none; } }
+
+/* 動線圖：這是手冊的論點，所以給它一個真的圖，不是條列 */
+.flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 20px 0 6px; }
+.flow .step { position: relative; border: 1px solid var(--frame); border-radius: 4px; padding: 14px 16px 15px;
+  background: linear-gradient(180deg, var(--panel-top), var(--panel-bot)); }
+.flow .step + .step { border-left: 0; }
+.flow .step:first-child { border-radius: 4px 0 0 4px; } .flow .step:last-child { border-radius: 0 4px 4px 0; }
+.flow .k { font-family: var(--mono); font-size: .66rem; letter-spacing: .18em; color: var(--accent-2); text-transform: uppercase; }
+.flow .t { font-family: var(--display); font-size: 1rem; margin: 6px 0 4px; color: var(--accent); }
+.flow .d { font-size: .8rem; color: var(--muted); line-height: 1.6; }
+.flow .step:not(:last-child)::after { content: "▸"; position: absolute; right: -9px; top: 50%; transform: translateY(-50%);
+  color: var(--accent); background: var(--bg); font-size: .8rem; z-index: 2; padding: 3px 1px; }
+@media (max-width: 820px) { .flow { grid-template-columns: 1fr; } .flow .step { border-left: 1px solid var(--frame) !important; border-radius: 4px !important; margin-bottom: 8px; } .flow .step::after { display: none !important; } }
+
+.pill { display: inline-block; font-size: .68rem; font-family: var(--mono); padding: 1px 7px; border-radius: 2px;
+  border: 1px solid var(--border-strong); color: var(--muted); white-space: nowrap; }
+.pill.ok { border-color: rgba(74,222,128,.5); color: var(--success); }
+.pill.hold { border-color: var(--amber); color: var(--amber); }
+.pill.no { border-color: var(--danger); color: #ff9ea1; }
+.ic { font-size: 1.05em; }
+
+/* ── 「執行 → 狀態追蹤 → 結果 → 下一步」四段卡（2026-08-24 使用者要求）──
+ * 每個功能一張，四列固定順序。用表格而不是四欄並排：
+ * 「下一步」那一格的字最長，四欄並排會被擠成一條窄柱。 */
+.fn { border: 1px solid var(--frame); border-radius: 4px; padding: 14px 18px 6px;
+  background: linear-gradient(180deg, var(--panel-top), var(--panel-bot));
+  box-shadow: 0 0 26px -8px rgba(41,125,224,.28), inset 0 1px 0 rgba(127,187,240,.06);
+  margin: 16px 0; }
+.fn > h3 { margin-top: 2px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.fn .fnk { font-family: var(--mono); font-size: .68rem; letter-spacing: .06em;
+  color: var(--muted); font-weight: 400; }
+.fn table.four { margin: 8px 0 4px; }
+table.four th { width: 82px; vertical-align: top; text-align: left; white-space: nowrap;
+  font-family: var(--mono); font-size: .68rem; letter-spacing: .1em; color: var(--accent-2);
+  border-bottom: 1px solid var(--border); padding: 8px 12px 8px 0; text-transform: none; }
+table.four td { border-bottom: 1px solid var(--border); padding: 8px 0; }
+table.four tr:last-child th, table.four tr:last-child td { border-bottom: 0; }
+.fn .seealso { font-size: .74rem; color: var(--muted); margin: 2px 0 10px; }
+@media print { .fn { background: none; box-shadow: none; border-color: #bbb; } }
+
+kbd { font-family: var(--mono); font-size: .76rem; border: 1px solid var(--border-strong); border-bottom-width: 2px;
+  border-radius: 3px; padding: 1px 6px; background: var(--code-bg); color: var(--title); }
+
+footer { grid-column: 2; margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: .78rem; }
+
+@media (max-width: 900px) {
+  .wrap { grid-template-columns: 1fr; gap: 0; padding: 0 18px 60px; }
+  nav { position: static; max-height: none; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  nav a { display: inline-block; }
+  footer { grid-column: 1; }
+}
+@media print {
+  body { background: #fff; color: #111; }
+  nav { display: none; } .wrap { display: block; max-width: none; }
+  .card, .flow .step { background: none; border-color: #bbb; box-shadow: none; }
+  h2, h3, .flow .t, nav .brand b { color: #000; }
+  a { color: #000; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav id="toc">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+      <path d="M16 1.9 27.7 8.6v14.8L16 30.1 4.3 23.4V8.6z" fill="rgba(127,187,240,.07)" stroke="#7fbbf0" stroke-width="1.35" stroke-linejoin="round"/>
+      <path d="M9.4 10.6h13.2v8.6h-6.9l-4 3.4v-3.4H9.4z" fill="none" stroke="#7fbbf0" stroke-width="1.25" stroke-linejoin="round"/>
+      <circle cx="13.1" cy="14.9" r="1.05" fill="#7fbbf0"/><circle cx="16" cy="14.9" r="1.05" fill="#7fbbf0"/><circle cx="18.9" cy="14.9" r="1.05" fill="#7fbbf0"/>
+    </svg>
+    <span><b>測試助手</b><small>User Manual</small></span>
+  </div>
+  <div class="grp">開始</div>
+  <a href="#what">這是什麼</a>
+  <a href="#start">五分鐘上手</a>
+  <div class="grp">怎麼工作</div>
+  <a href="#flow">一天長什麼樣</a>
+  <a href="#stages">每個功能的四段</a>
+  <a href="#runtest">跑一次測試</a>
+  <a href="#tasks">任務按鈕</a>
+  <a href="#chat">對話視窗</a>
+  <a href="#loop">產出去哪裡看</a>
+  <div class="grp">介面</div>
+  <a href="#screens">每一頁在做什麼</a>
+  <a href="#settings">設定</a>
+  <div class="grp">紀律</div>
+  <a href="#safety">安全邊界</a>
+  <a href="#trouble">卡住的時候</a>
+  <div class="grp">改成你自己的</div>
+  <a href="#extend">接新工具與新產品</a>
+  <div class="grp">附錄</div>
+  <a href="#usage">Claude 用量</a>
+</nav>
+
+<main>
+
+<header class="hero">
+  <div class="eyebrow">Test Assistant · 使用手冊</div>
+  <h1>你做判斷，它負責記得</h1>
+  <p class="lede">
+    測試助手把工作區裡散落的東西——測試案例、Bug 單、待辦、執行紀錄、規格文件——
+    收成一份<b>查得到的清單</b>。你按一個鈕，它就開一個<b>已經知道前因後果</b>的 Claude
+    去做事；做完的東西<b>自動存回檔案</b>，你只要在畫面上看結果。
+  </p>
+  <div class="meta">本機服務 · http://127.0.0.1:5300 · 每個人跑自己的一份，用自己的 Claude 帳號</div>
+  <div class="note" style="margin-top:16px">
+    <b>先想知道「整套東西怎麼運作」？</b>那一份是
+    <a href="intro.html"><b>AI 自動化測試框架 · 總覽</b></a> ——
+    四層架構、一件事從頭跑到尾的七站、人與 AI 的分界。
+    <b>本手冊講的是操作</b>：每一頁、每一顆按鈕、按下去會發生什麼。</div>
+  <div class="note" style="margin-top:20px">
+    <b>本手冊的每一張圖都是真的跑出來的。</b>
+    從一份<b>全新匯出的範本</b>開始：接上一個產品 → 寫案例 → 跑測試（含<b>真的失敗</b>那一輪）
+    → 起任務 → 問對話 → 開單 → 回填 JIRA。畫面上的數字都是那一輪的實際結果，不是示意圖。
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="what">
+  <h2><span class="n">01</span>這是什麼</h2>
+  <p class="sub">先講它<b>不</b>做什麼，比較不會用錯。</p>
+
+  <div class="flow">
+    <div class="step">
+      <div class="k">它擅長</div>
+      <div class="t">記得</div>
+      <div class="d">哪張單還沒開、哪份交接檔落後了、上次跑失敗的是哪幾條。這些<b>單一次對話看不到</b>。</div>
+    </div>
+    <div class="step">
+      <div class="k">它擅長</div>
+      <div class="t">開頭幫你講清楚</div>
+      <div class="d">按鈕 → 填幾格 → 開一個已經載好規範、已經知道產品狀況的 Claude。省掉每次重講一遍。</div>
+    </div>
+    <div class="step">
+      <div class="k">它不做</div>
+      <div class="t">代替你判斷</div>
+      <div class="d">是規格還是缺陷、樣本夠不夠、這批資料能不能刪——這些還是你的事。</div>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:20px">
+    <b>★ 它是一個範本，不是成品。</b>
+    你手上這一份的流程 —— 有哪些任務按鈕、有哪些工具、產品柱長什麼樣 ——
+    只是<b>一個能跑起來的開頭</b>；每個團隊的測試流程本來就不一樣，<b>本來就該改</b>。
+    畫面上的東西幾乎都是<b>宣告出來的</b>，不是寫死在平台裡：
+    一支工具是一份 <code>registry/&lt;id&gt;.tool.json</code>、
+    一顆任務按鈕是一份 <code>tasks/*.json</code>、
+    一個產品是 <code>config/products.json</code> 的一列。
+    <b>改這些檔就會改變畫面與流程，不必動平台程式</b>——
+    用不到的刪掉、缺的自己加、整條動線換成你們現在的做法都可以。
+    做法見 <a href="#extend">接新工具與新產品</a>。
+  </div>
+
+  <figure>
+    <a href="manual/overview.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/overview.jpg" width="1440" height="900" loading="lazy" alt="總覽畫面：頂部數字列、Claude 用量、任務按鈕、CRUX 產品柱、右側運行中與待辦卡">
+    </a>
+    <figcaption><b class="fig">圖 1-1</b><b>總覽</b>是開著不用管它的那一頁。
+    最上面一條分三段：<b>一眼看完就不用再看的數字</b>（案例 780、活躍 Bug 1、未完成待辦 1、健康 100）、
+    <b>Claude 額度</b>（5 小時窗口 29%、週額度 89%，每 5 分鐘自動更新，右上角 ↻ 可立刻重打；細節見<a href="#usage">附錄</a>）、<b>環境燈</b>；
+    下面一排是<b>任務按鈕</b>；中間的柱子是產品，柱腳是<b>對話入口</b>；
+    右欄由上而下是運行中、待辦與 Bug、助手提示、最近報告。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3>三件事它刻意不做</h3>
+  <table>
+    <thead><tr><th class="nw">不做</th><th>為什麼</th></tr></thead>
+    <tbody>
+      <tr><td class="nw">不寫 JIRA</td><td>只讀不寫。單子要不要開、怎麼寫，是你跟 RD 的事。</td></tr>
+      <tr><td class="nw">不替你決定提交</td>
+        <td><b>平台開的 session 能跑腳本、能寫檔，但 git 的寫入被擋下來</b>——
+        它們是無人看管的，而<b>索引是整個工作目錄共用的</b>：同一台機器上常同時開著好幾個 session，
+        一個去 <code>git add</code> 就會把<b>另一個 session</b> 正在改的東西一起暫存。<br>
+        它改完檔，<b>結果確認會列出「這段期間動了哪些檔」</b>，提交與否由你決定。<br>
+        ⚠️ <b>這不代表 Claude 不能幫你 commit</b> —— 你在終端機用的那個<b>會</b>，
+        只是<b>一定先問過你</b>、而且只送出自己動到的路徑。</td></tr>
+      <tr><td class="nw">不自己寫腳本邏輯</td><td>接產品、匯出範本、體檢都是按鈕，底下跑的是 <code>scripts/</code> 裡那幾支現成腳本。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>東西都放在哪</h3>
+  <p>手冊裡會一直看到「自動寫回檔案」。<b>那些檔案就是下面這些</b>——
+  平台只是<b>視圖</b>，資料是你打得開、改得動、用 git 追得到歷史的純文字檔。
+  <b>平台關掉，東西還在。</b></p>
+  <table>
+    <thead><tr><th class="nw">畫面上的</th><th class="nw">實際是什麼檔</th><th>備註</th></tr></thead>
+    <tbody>
+      <tr><td class="nw">Bug 清單</td><td class="nw"><code>docs/&lt;產品&gt;/bugs/*.md</code></td>
+        <td>一張單一個檔，開頭那段 frontmatter 就是狀態的<b>單一事實來源</b>。⛔ <b>整層不版控</b>（見下）</td></tr>
+      <tr><td class="nw">驗證報告</td><td class="nw"><code>docs/&lt;產品&gt;/bugs/_reports/</code></td><td>同上，不版控</td></tr>
+      <tr><td class="nw">待辦</td><td class="nw"><code>docs/&lt;產品&gt;/&lt;產品&gt;_驗證交接.md</code></td>
+        <td>交接<b>活文件</b>——每條產品線一份，收工時更新的就是它</td></tr>
+      <tr><td class="nw">文件</td><td class="nw"><code>docs/&lt;產品&gt;/*.md</code></td>
+        <td>寫完要登記到 <code>docs/INDEX.md</code>，否則<b>下次搜不到</b>（下一個 session、或三個月後的你）＝等於沒寫</td></tr>
+      <tr><td class="nw">測試案例</td><td class="nw"><code>tests/&lt;產品&gt;/test_*.py</code></td><td>就是 pytest，終端機也跑得動</td></tr>
+      <tr><td class="nw">執行紀錄</td><td class="nw"><code>tools/test_platform/logs/runs/&lt;run_id&gt;/</code></td><td>含輸出、Allure 結果</td></tr>
+      <tr><td class="nw">對話</td><td class="nw"><code>tools/test_platform/logs/sessions/&lt;id&gt;/</code></td><td>可在對話頁匯出成 markdown</td></tr>
+      <tr><td class="nw">（規範）</td><td class="nw"><code>.claude/skills/</code></td><td>任務按鈕載入的就是這些</td></tr>
+      <tr><td class="nw">（產品定義）</td><td class="nw"><code>config/products.json</code></td>
+        <td>★ <b>單一來源</b>——接產品那顆按鈕寫的就是它</td></tr>
+      <tr><td class="nw">（站台設定）</td><td class="nw"><code>config/environments.json</code></td>
+        <td>帳密另存 <code>config.local.json</code>，<b>不版控</b></td></tr>
+      <tr><td class="nw">Claude 用量<br>（token）</td><td class="nw"><code>~/.claude/projects/**/*.jsonl</code></td>
+        <td>Claude Code 自己留的對話紀錄，平台只<b>讀</b>不寫；統計結果快取在
+        <code>tools/test_platform/cache/</code></td></tr>
+      <tr><td class="nw">Claude 用量<br>（額度 %）</td><td class="nw">官方 API<br><code>~/.claude.json</code>（保底）</td>
+        <td>平台每 5 分鐘查一次；打不通才讀 <code>cachedUsageUtilization</code> 那份快照</td></tr>
+    </tbody>
+  </table>
+  <div class="warn"><b>⛔ <code>docs/&lt;產品&gt;/bugs/</code> 整層不進版控</b>——因為裡面有測試站帳密。
+  也就是說 <b>Bug 單與驗證報告只存在你自己的機器上</b>，換機器不會跟著走。
+  <b>對外的正式流通管道是 JIRA</b>，本地那一份是工作底稿。</div>
+  <p class="sub">完整的目錄結構見工作區根目錄的 <code>README.md</code>（「目錄地圖」一節）
+  與 <code>CLAUDE.md</code> §4——<b>本手冊不重複那一份</b>，抄第二份就會分岔。</p>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="start">
+  <h2><span class="n">02</span>五分鐘上手</h2>
+  <p class="sub">下面四張圖是連續的：第一次開 → 填表 → 試算 → 真的建好。</p>
+
+  <h3>① 裝環境（只要一次）</h3>
+<pre><code>powershell -File scripts\setup_test_env.ps1</code></pre>
+  <p>它會建好 <code>.venv</code>、裝套件、檢查 Python 與 Node，最後印一張總結表。<b>全部 OK 再往下走。</b></p>
+
+  <h3>② 啟動</h3>
+<pre><code>tools\test_platform\run_server.bat        <span style="color:#5f7594"># → http://127.0.0.1:5300</span></code></pre>
+  <div class="note"><b>為什麼只綁自己的電腦：</b>它會用<b>你的帳號</b>跑測試、用<b>你的 Claude</b> 講話。
+  每個人跑自己的一份，額度與權限才不會混在一起。</div>
+
+  <h3>③ 第一次開：它會告訴你接下來做什麼</h3>
+  <figure>
+    <a href="manual/first-run.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/first-run.jpg" width="1440" height="900" loading="lazy" alt="第一次開啟：三張引導卡，裝通用 memory、接一個產品、首次探索">
+    </a>
+    <figcaption><b class="fig">圖 2-1</b>一個產品都還沒接的時候，總覽<b>不會給你一張空的儀表板</b>，
+    而是三步引導。表頭寫著<b>「尚未接產品」</b>——這一格永遠告訴你<b>現在開的是哪一個工作區</b>，
+    同時開著原型和自己那一份時特別有用。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3>④ 接一個產品</h3>
+  <figure>
+    <a href="manual/new-product-form.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/new-product-form.jpg" width="1440" height="900" loading="lazy" alt="設定→工作區→接一個產品：七個欄位，只試算不寫檔開著">
+    </a>
+    <figcaption><b class="fig">圖 2-2</b><b>設定 → 工作區 → 接一個產品</b>。
+    七個欄位裡只有四個必填：<b>產品名</b>（給腳本與 Bug 單用，可中文）、<b>文件目錄名</b>、
+    <b>Bug 單前綴</b>（⛔ 選定就別再改，ID 配發後永不回收）、<b>英文代號</b>（同時是 skill 名與網址）。
+    右欄的<b>健康</b>先告訴你直譯器與工作目錄找得到。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <figure>
+    <a href="manual/new-product-dryrun.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/new-product-dryrun.jpg" width="1440" height="900" loading="lazy" alt="試算結果：每一行標著 dry，列出會建立的目錄與檔案">
+    </a>
+    <figcaption><b class="fig">圖 2-3</b><b>先留著「只試算不寫檔」跑一次。</b>
+    結果區會印出<b>它實際下的那一行命令</b>，以及每一個 <code>[dry]</code> 動作——
+    要建哪些目錄、寫哪幾份檔、註冊到哪裡。最下面還有<b>「接下來要人做的事」</b>
+    （腳本不做，因為需要判斷）。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <figure>
+    <a href="manual/new-product-done.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/new-product-done.jpg" width="1440" height="900" loading="lazy" alt="真的執行：建立目錄與檔案，並註冊到 config/products.json">
+    </a>
+    <figcaption><b class="fig">圖 2-4</b>確認無誤後把開關關掉再按一次<b>執行</b>。
+    <code>[dry]</code> 變成<b>建立／寫入／註冊</b>——目錄、產品 skill 骨架、交接檔、
+    <code>config/products.json</code>（產品定義的<b>單一來源</b>）都一次做好。
+    <b>重新整理</b>之後，總覽就換成儀表板了。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <div class="warn"><b>⛔ 不要手動建這些目錄。</b>漏掉任何一步（例如交接檔沒用對檔名結尾）
+  就不會被 <code>lint_docs</code> 檢查到，而那種漏洞平常看不出來。</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="flow">
+  <h2><span class="n">03</span>一天長什麼樣</h2>
+  <p class="sub">先看整體怎麼運作，後面每一節才知道自己在講哪一段。</p>
+
+  <h3>什麼是 skill</h3>
+  <p><b>skill 就是寫給 Claude 看的做事說明書。</b>一支 skill 講一件事該怎麼做：
+  怎麼開 Bug 單、怎麼設計案例、怎麼收尾。它們放在 <code>.claude/skills/</code>，
+  Claude 每次做事前會先讀對應的那一支。</p>
+  <div class="note"><b>為什麼這件事重要：</b>skill 寫得好，Claude 做出來的東西就穩定；
+  skill 沒寫，它就只能自由發揮。<b>平台的任務按鈕，本質上就是「幫你載入對的 skill」。</b>
+  你不用背它們的名字——按鈕已經配好了。</div>
+
+  <h3>一天的順序</h3>
+  <table>
+    <thead><tr><th class="nw">什麼時候</th><th class="nw">做什麼</th><th class="nw">按哪個鈕</th><th class="nw">背後的 skill</th></tr></thead>
+    <tbody>
+      <tr><td class="nw">早上</td><td>看今天做得了什麼</td><td class="nw"><span class="ic">🌅</span> 開工接手</td><td class="nw"><code>handoff</code></td></tr>
+      <tr><td class="nw" rowspan="3">白天</td><td>沒碰過的功能，先摸清楚</td><td class="nw"><span class="ic">🔭</span> 探索新功能</td><td class="nw"><code>testcase-design</code>＋<code>browser-ops</code></td></tr>
+      <tr><td>有規格可以比對，逐條驗</td><td class="nw"><span class="ic">📐</span> 需求驗證</td><td class="nw"><code>testcase-design</code>＋<code>bug-report</code></td></tr>
+      <tr><td>RD 說修好了，重驗一次</td><td class="nw"><span class="ic">🔍</span> 驗 JIRA 修復</td><td class="nw"><code>jira-verify</code></td></tr>
+      <tr><td class="nw">發現問題</td><td>開 Bug 單</td><td class="nw"><span class="ic">📝</span> 手動開 Bug 單</td><td class="nw"><code>bug-report</code></td></tr>
+      <tr><td class="nw">摸熟之後</td><td>把功能點寫成自動化案例</td><td class="nw"><span class="ic">✍️</span> 撰寫案例</td><td class="nw"><code>ui-test</code></td></tr>
+      <tr><td class="nw">下班前</td><td>檢查有沒有漏做的收尾</td><td class="nw"><span class="ic">🧾</span> 收尾體檢</td><td class="nw"><code>handoff</code>＋<code>writeback</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>每一支 skill 在管什麼</h3>
+  <p>下面這張表<b>不用背</b>——按鈕會自動載入對的那一支。想自己叫的話，在對話裡打
+  <code>載入 /handoff</code> 就行。</p>
+  <table>
+    <thead><tr><th class="nw">skill</th><th>管什麼</th></tr></thead>
+    <tbody>
+      <tr><td class="nw"><code>handoff</code></td><td><b>開工與收尾。</b>接手時該先看什麼、卡在哪、哪些測試資料不能刪；收工時要更新什麼。</td></tr>
+      <tr><td class="nw"><code>testcase-design</code></td><td><b>要測哪些、測到多深。</b>怎麼把一個功能拆成功能點、怎麼決定深度、期望值該從哪裡來。</td></tr>
+      <tr><td class="nw"><code>browser-ops</code></td><td><b>怎麼操作瀏覽器。</b>語意定位、特殊元件的輸入陷阱、多人同時用站台會互踢。</td></tr>
+      <tr><td class="nw"><code>ui-test</code></td><td><b>怎麼把案例寫成 pytest。</b>Page Object 放哪、命名怎麼取、跑完要產報告。</td></tr>
+      <tr><td class="nw"><code>bug-report</code></td><td><b>Bug 單怎麼寫。</b>編號怎麼配、欄位有哪些、開單前要先問自己哪三件事。</td></tr>
+      <tr><td class="nw"><code>jira-verify</code></td><td><b>重驗修復的流程。</b>抓單 → 對應本地單 → 走一次重現步驟 → 給結論。<br>⭐ 每張單還要驗<b>連帶影響（side effect）</b>，而且順序固定：<b>所有單的主訴求先驗完出報告，才回頭補驗 side effect</b>——波及面的清單要等主項驗完才會準。沒補驗的一律寫成交接檔。</td></tr>
+      <tr><td class="nw"><code>perf-test</code></td><td><b>壓測怎麼跑。</b>前置檢查、指標怎麼判、結論怎麼寫。</td></tr>
+      <tr><td class="nw"><code>writeback</code></td><td><b>學到的東西寫哪裡。</b>這則知識該進機制文件、還是交接檔、還是記憶。</td></tr>
+      <tr><td class="nw"><code>commit</code></td><td><b>提交的規矩。</b>同一台機器上好幾個 session 共用一份工作目錄時，怎麼只送出自己的東西。</td></tr>
+      <tr><td class="nw"><code>&lt;產品名&gt;</code></td><td><b>你自己的產品規範。</b>接產品時會建一份空的，內容要你自己填——探索完之後把「不能忘的規則」寫進去。</td></tr>
+    </tbody>
+  </table>
+  <div class="warn"><b>產品 skill 一開始是空的，這是刻意的。</b>沒有人比你更清楚你的產品。
+  探索完第一輪，就把「這個產品絕對不能搞錯的幾件事」寫進 <code>.claude/skills/&lt;產品&gt;/SKILL.md</code>——
+  之後每一次對話都會自動帶上。</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="stages">
+  <h2><span class="n">04</span>每個功能的四段</h2>
+  <p class="sub">
+    每一個功能都走同樣四段：<b>執行</b>（從哪裡按下去）→ <b>狀態追蹤</b>（跑的時候看哪裡）→
+    <b>結果</b>（跑完在哪看）→ <b>下一步</b>（拿這個結果可以做什麼）。
+  </p>
+
+  <div class="note"><b>怎麼用這一節：</b>先在這裡找到你要做的那件事，看完四段就知道整條路長什麼樣；
+  要看實拍畫面再往下翻到對應章節。<b>「下一步」那一格是重點</b>——
+  它回答的是「做完之後呢」，而那正是最容易斷掉的一段。</div>
+
+  <div class="fn">
+    <h3><span class="ic">▶</span> 跑自動化測試　<span class="fnk">工具 · UI 自動化測試</span></h3>
+    <table class="four">
+      <tr><th>執行</th><td><b>案例</b>頁勾選要跑的 → 底部<b>「執行選取（N）」</b>；
+        或到<b>工具 → UI 自動化測試</b>填參數後按<b>執行</b>。</td></tr>
+      <tr><th>狀態追蹤</th><td>自動跳到<b>執行頁</b>：四段進度（收集案例／執行中／產生 Allure／完成）、
+        百分比、<b>通過／失敗／略過</b>即時跳動、目前跑到哪一條、主控台尾巴。
+        總覽的<b>運行中</b>卡同步顯示。要停可以按<b>停止</b>或<b>強制終止</b>。</td></tr>
+      <tr><th>結果</th><td>同一頁變成完成狀態：通過幾條、失敗幾條，
+        <b>失敗案例</b>逐條列出錯誤訊息與<b>既有單</b>（這條是不是已經有 Bug 單了）。
+        另有<b>執行輸出</b>與<b>Allure 報告</b>。所有執行都收進<b>報告中心 → 執行紀錄</b>。</td></tr>
+      <tr><th>下一步</th><td><b>只重跑這 N 條</b>（不用整批重來）／
+        <b>從失敗 run 開單</b>（帶著 nodeid 與錯誤訊息起任務，先走開單前三問）／
+        <b>再跑一次</b>／看 <b>Allure</b> 追細節。</td></tr>
+    </table>
+    <p class="seealso">實拍 → <a href="#runtest">§05 跑一次測試</a></p>
+  </div>
+
+  <div class="fn">
+    <h3><span class="ic">🌅</span> 開工接手　<span class="fnk">任務 · handoff</span></h3>
+    <table class="four">
+      <tr><th>執行</th><td>總覽或產品頁 → <b>開工接手</b>。只有兩格：產品、今天想做什麼（可留白）。</td></tr>
+      <tr><th>狀態追蹤</th><td>對話視窗打開並開始串流：先出現<b>載入 skill</b>、<b>平台·get todos</b>
+        之類的工具標籤，底下是會動的三顆點——看得出它還在做事。</td></tr>
+      <tr><th>結果</th><td>一張「<b>剩下的量／卡在哪</b>」的表，加上結論。
+        發現交接檔本身缺東西時會交草稿，<b>平台當場落檔並取編號</b>
+        （畫面底下會出現「✅ 已自動寫入 …（編號 T2）」）。</td></tr>
+      <tr><th>下一步</th><td>照著清單直接按下一個任務鈕，或到<b>產品頁 → 待辦</b>逐項展開。</td></tr>
+    </table>
+    <p class="seealso">實拍 → <a href="#t-startday">§06 開工接手</a></p>
+  </div>
+
+  <div class="fn">
+    <h3><span class="ic">🔭</span> 探索新功能　<span class="fnk">任務 · testcase-design ＋ browser-ops</span></h3>
+    <table class="four">
+      <tr><th>執行</th><td>總覽或產品頁 → <b>探索新功能</b>。填產品、功能區塊、
+        <b>安全邊界</b>（可寫入／本次唯讀）、指定子帳號、風險假設。</td></tr>
+      <tr><th>狀態追蹤</th><td>對話視窗串流。探索會真的開瀏覽器操作，
+        所以工具標籤裡會看到<b>瀏覽器·click</b>、<b>瀏覽器·type</b> 這類動作。
+        總覽的<b>對話入口</b>會顯示「N 條進行中」。</td></tr>
+      <tr><th>結果</th><td>⭐ <b>產出會自動寫回檔案</b>：機制文件／覆蓋矩陣進
+        <code>docs/&lt;產品&gt;/</code> 並登記 <code>docs/INDEX.md</code>；
+        發現的缺陷進 <code>docs/&lt;產品&gt;/bugs/</code>；動過的測試資料寫進交接檔 §5。
+        到<b>產品頁 → 文件／Bug／待辦</b>就看得到。</td></tr>
+      <tr><th>下一步</th><td>把摸熟的功能點<b>寫成案例</b>（→ 撰寫案例）／
+        把「不能搞錯的規則」補進產品 skill／針對發現的缺陷去 JIRA 開單再<b>回填單號</b>。</td></tr>
+    </table>
+    <p class="seealso">實拍 → <a href="#t-explore">§06 探索新功能</a></p>
+  </div>
+
+  <div class="fn">
+    <h3><span class="ic">📐</span> 需求驗證　<span class="fnk">任務 · testcase-design ＋ bug-report</span></h3>
+    <table class="four">
+      <tr><th>執行</th><td>總覽或產品頁 → <b>需求驗證</b>。要指出<b>權威規格來源</b>
+        （需求單／規格文件／PM 裁示）與需求內容，逐條比對。</td></tr>
+      <tr><th>狀態追蹤</th><td>對話視窗串流。</td></tr>
+      <tr><th>結果</th><td>一份<b>驗證報告</b>寫進 <code>docs/&lt;產品&gt;/bugs/_reports/</code>，
+        到<b>報告中心 → 驗證報告</b>看；不符規格的部分開成 Bug 單。</td></tr>
+      <tr><th>下一步</th><td>報告可以<b>打勾標記已看過</b>（標題會加刪除線）／
+        把沒驗完的範圍留進交接檔／針對缺陷去 JIRA 開單。</td></tr>
+    </table>
+    <div class="warn"><b>⛔ 實測與文件不符時，先問「有沒有人說要改」。</b>
+    找得到變更聲明（RD 留言、PM 修訂、裁示）才更新文件；
+    只有「我量到不一樣」的話<b>那是缺陷，要開單</b>，不是改文件。
+    這是測試工作最嚴重的失誤型態——把缺陷改寫成規格之後，就再也沒有人會去驗它。</div>
+    <p class="seealso">實拍 → <a href="#t-req">§06 需求驗證</a></p>
+  </div>
+
+  <div class="fn">
+    <h3><span class="ic">✍️</span> 撰寫案例　<span class="fnk">任務 · ui-test</span></h3>
+    <table class="four">
+      <tr><th>執行</th><td>總覽或產品頁 → <b>撰寫案例</b>。填來源覆蓋矩陣與要轉成案例的功能點。</td></tr>
+      <tr><th>狀態追蹤</th><td>對話視窗串流。它會開瀏覽器<b>把案例真的跑一次</b>——
+        沒跑過的案例不算寫完。</td></tr>
+      <tr><th>結果</th><td>案例<b>自動寫進</b> <code>tests/&lt;產品&gt;/</code>，
+        寫完立刻用 <code>--collect-only</code> 檢查；<b>收不起來就自動還原</b>，不會留壞檔。
+        <b>案例</b>頁最上面會出現一條<b>「新寫入待確認」</b>，列出這批寫了哪幾條。</td></tr>
+      <tr><th>下一步</th><td>在案例頁<b>確認</b>那一批／直接勾起來<b>執行選取</b>跑一次／
+        把它掛到 Bug 單的 <code>regression</code> 欄（那一欄空著會被 lint 的 D10 抓）。</td></tr>
+    </table>
+    <p class="seealso">實拍 → <a href="#t-cases">§06 撰寫案例</a></p>
+  </div>
+
+  <div class="fn">
+    <h3><span class="ic">🔍</span> 驗 JIRA 修復　<span class="fnk">任務 · jira-verify</span></h3>
+    <table class="four">
+      <tr><th>執行</th><td>總覽或產品頁 → <b>驗 JIRA 修復</b>，填單號（可多筆）。</td></tr>
+      <tr><th>狀態追蹤</th><td>對話視窗串流；它會抓 JIRA 單、對應本地 Bug 單、走一次重現步驟。</td></tr>
+      <tr><th>結果</th><td>驗證報告（<b>報告中心 → 驗證報告</b>）＋ 本地單的
+        <code>status</code> 更新。<b>部分修復</b>時會<b>開新單承接殘留</b>，舊單維持原狀。<br>
+        ⭐ 報告固定三區塊：驗證項目／驗證過程與結果／<b>Side effect</b>。
+        第一份報告出來時 side effect 只列項標「待驗」——<b>那是刻意的</b>，
+        主項全部驗完才回頭補，否則每張單都停在「部分完成」，你沒辦法對任何一張下決定。</td></tr>
+      <tr><th>下一步</th><td>產品頁 → Bug → <b>待重驗</b>／<b>該關單</b>兩個篩選會跟著變；
+        修好但沒有回歸案例的會落到<b>缺回歸</b>——那就是下一批要寫的案例。<br>
+        還沒補驗的 side effect 會寫成交接檔，下次接手看得到。</td></tr>
+    </table>
+    <p class="seealso">實拍 → <a href="#t-jira">§06 驗 JIRA 修復</a></p>
+  </div>
+
+  <div class="fn">
+    <h3><span class="ic">🐞</span> 開 Bug 單（手動／從失敗 run）　<span class="fnk">任務 · bug-report</span></h3>
+    <table class="four">
+      <tr><th>執行</th><td><b>手動開 Bug 單</b>在總覽（填現象、期望、環境）；
+        <b>從失敗 run 開單</b>在執行頁的失敗結果區（run、nodeid、錯誤訊息<b>自動帶入</b>）。</td></tr>
+      <tr><th>狀態追蹤</th><td>對話視窗串流。它會先走<b>開單前三問</b>：
+        是規格還是缺陷／這現象是不是已經被查證過／樣本有沒有鑑別力。</td></tr>
+      <tr><th>結果</th><td>判定該開的才配號落單（<b>編號在寫檔那一刻才取</b>，不會撞號），
+        檔案進 <code>docs/&lt;產品&gt;/bugs/</code>。
+        ⭐ 判定<b>不該開</b>的話它會講清楚理由——這也是有效的結果。</td></tr>
+      <tr><th>下一步</th><td>產品頁 → Bug → 點那一列 → <b>複製開單資訊</b>貼到 JIRA →
+        開完回來<b>回填 JIRA 單號</b>，「漏開單」的數字當場少一個。</td></tr>
+    </table>
+    <p class="seealso">實拍 → <a href="#t-filebug">§06 開 Bug 單</a>、<a href="#loop">§08 回填 JIRA</a></p>
+  </div>
+
+  <div class="fn">
+    <h3><span class="ic">🧾</span> 收尾體檢　<span class="fnk">任務 · handoff ＋ writeback</span></h3>
+    <table class="four">
+      <tr><th>執行</th><td>總覽 → <b>收尾體檢</b>。沒有參數要填。</td></tr>
+      <tr><th>狀態追蹤</th><td>對話視窗串流；工具標籤會看到它把
+        <b>get runs／get drafts／get bugs／get todos</b> 都查過一輪。</td></tr>
+      <tr><th>結果</th><td>一份「<b>漏做了什麼</b>」的清單：交接檔落後幾天、
+        跑過的 run 沒有對應紀錄、待補回歸幾張、草稿沒收掉幾筆。
+        ⭐ 這是<b>單一個 session 看不到</b>的東西——它跨 session。</td></tr>
+      <tr><th>下一步</th><td>該補進交接檔的它會直接交草稿讓平台落檔；
+        它做不到的（改 Bug 單 frontmatter、撤掉草稿）會<b>明講要你做什麼</b>，然後才 commit。</td></tr>
+    </table>
+    <p class="seealso">實拍 → <a href="#t-handoff">§06 收尾體檢</a></p>
+  </div>
+
+  <div class="fn">
+    <h3><span class="ic">💬</span> 對話　<span class="fnk">問索引 · 起任務 · 提議執行</span></h3>
+    <table class="four">
+      <tr><th>執行</th><td>總覽主視覺腳下的<b>對話入口</b>，或左側 rail 的<b>對話</b>頁。</td></tr>
+      <tr><th>狀態追蹤</th><td>訊息底下的<b>工具標籤</b>告訴你它查了什麼（平台索引／讀檔／搜尋），
+        會動的三顆點表示還在跑。</td></tr>
+      <tr><th>結果</th><td>回覆本身；有查索引的話數字是<b>當下真的</b>，不是它記得的。</td></tr>
+      <tr><th>下一步</th><td>它會直接寫「到產品頁的 Bug 分頁看」這種指路，照著點就到了；
+        要它跑東西的話會出<b>確認卡</b>——<b>平台不會替你按</b>。</td></tr>
+    </table>
+    <p class="seealso">實拍 → <a href="#chat">§07 對話視窗</a></p>
+  </div>
+
+  <div class="fn">
+    <h3><span class="ic">⚙</span> 工作區操作　<span class="fnk">設定 → 工作區</span></h3>
+    <table class="four">
+      <tr><th>執行</th><td><b>設定 → 工作區</b>：接一個產品／裝通用 memory／清空原型產品／匯出範本給同事。</td></tr>
+      <tr><th>狀態追蹤</th><td>同步命令，按下去按鈕轉圈並<b>逐秒計時</b>，
+        旁邊寫明上限幾秒、離開頁面會中止。</td></tr>
+      <tr><th>結果</th><td>就地顯示，含<b>它實際下的那一行命令</b>與完整輸出；
+        離開再回來還原成<b>「上次執行」</b>，不會消失。</td></tr>
+      <tr><th>下一步</th><td>結果下方會出現<b>去哪裡</b>的按鈕（例如接完產品 → 去那個產品頁）。
+        ⛔ 平台不會自動跳轉——你可能還想看輸出。</td></tr>
+    </table>
+    <div class="warn"><b>兩個高風險命令會要你打字確認：</b>
+    <b>清空原型產品</b>與<b>匯出範本</b>都會刪東西（匯出會清空目標目錄）。</div>
+    <p class="seealso">實拍 → <a href="#start">§02 五分鐘上手</a></p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="runtest">
+  <h2><span class="n">05</span>跑一次測試</h2>
+  <p class="sub">四段走一次。下面是真的跑出來的兩輪：一輪全綠、一輪有失敗。</p>
+
+  <h3>執行：從案例頁勾</h3>
+  <figure>
+    <a href="manual/cases.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/cases.jpg" width="1440" height="900" loading="lazy" alt="案例瀏覽器：產品分頁、樹狀清單勾選、底部顯示已選幾條">
+    </a>
+    <figcaption><b class="fig">圖 5-1</b><b>案例</b>頁。最上面是<b>產品分頁</b>——
+    先把樹砍短再找（這裡共 735 條，CRUX 佔 4 條）。勾選之後底部顯示<b>「N 條已選」</b>與
+    <b>「執行選取」</b>。也可以用搜尋、標記（smoke／write_action）、只看需前置來篩。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <figure>
+    <a href="manual/run-form.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/run-form.jpg" width="1440" height="900" loading="lazy" alt="UI 自動化測試的參數表單，已勾選的案例被帶進來">
+    </a>
+    <figcaption><b class="fig">圖 5-2</b>按下去會帶到<b>工具 → UI 自動化測試</b>，
+    勾選的案例已經填好。這裡還可以選環境、要不要顯示瀏覽器視窗、要不要產 Allure。
+    右邊的<b>執行設定檔</b>可以把常用參數存起來下次直接叫。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3>狀態追蹤：跑的時候看得到進度</h3>
+  <figure>
+    <a href="manual/run-live.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/run-live.jpg" width="1440" height="900" loading="lazy" alt="執行中：四段進度、百分比、通過失敗略過即時數字、目前跑到哪一條">
+    </a>
+    <figcaption><b class="fig">圖 5-3</b><b>執行中。</b>
+    上面四段是<b>它自己宣告的階段</b>（收集案例／執行中／產生 Allure／完成），
+    左邊是百分比，右邊三個數字即時跳。中間那行寫著<b>現在跑到哪一條</b>。
+    右上角有<b>停止</b>與<b>強制終止</b>。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3>結果 ＋ 下一步：全綠的那一輪</h3>
+  <figure>
+    <a href="manual/run-done.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/run-done.jpg" width="1440" height="900" loading="lazy" alt="執行完成：通過 10 失敗 0，可看執行輸出與 Allure 報告">
+    </a>
+    <figcaption><b class="fig">圖 5-4</b>通過 10、失敗 0。
+    <b>下一步</b>只有<b>再跑一次</b>與<b>執行輸出／Allure 報告</b>——
+    沒有失敗就不會出現開單相關的按鈕。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3>結果 ＋ 下一步：有失敗的那一輪 ⭐</h3>
+  <figure>
+    <a href="manual/run-failed.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/run-failed.jpg" width="1440" height="900" loading="lazy" alt="有失敗的執行結果：失敗案例逐條列出，附只重跑這一條與從失敗 run 開單">
+    </a>
+    <figcaption><b class="fig">圖 5-5</b><b>這一張才是重點。</b>通過 3、失敗 1，
+    <b>失敗案例</b>區逐條列出：案例名稱、<b>錯誤訊息</b>、以及<b>既有單</b>那一欄
+    （這條失敗是不是已經有 Bug 單了）。下面三個是「下一步」：
+    <b>只重跑這 1 條</b>、<b>開單</b>、<b>從失敗 run 開單</b>。
+    ⚠️ 旁邊那句提醒不是裝飾——<b>測試失敗 ≠ 缺陷</b>，先確認不是測試碼或環境問題。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3>所有執行都收在報告中心</h3>
+  <figure>
+    <a href="manual/reports-runs.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/reports-runs.jpg" width="1440" height="900" loading="lazy" alt="報告中心的執行紀錄分頁：兩次執行、通過率趨勢">
+    </a>
+    <figcaption><b class="fig">圖 5-6</b><b>報告中心</b>有兩個分頁：
+    <b>驗證報告</b>（寫給人看的那一份，排第一）與<b>執行紀錄</b>（機器產出的原始資料）。
+    上面是通過率趨勢，下面逐筆列出 run、工具、產品、結果、時長。
+    勾兩筆可以<b>對比</b>。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="tasks">
+  <h2><span class="n">06</span>任務按鈕</h2>
+  <p class="sub">七顆按鈕，每一顆問的東西不一樣。下面逐一實拍。</p>
+
+  <div class="note"><b>每一顆的表單最底下都有一區「執行設定」</b>可以挑<b>模型</b>（預設 Sonnet）。
+  ⚠️ 模型在 session 建立時決定、<b>中途不能切</b>——要換就重開一次任務。
+  日常查詢用 Sonnet 就夠；要它做比較重的判斷（跨檔推理、規格比對）再換 Opus。</div>
+
+  <h3 id="t-startday"><span class="ic">🌅</span> 開工接手</h3>
+  <figure>
+    <a href="manual/task-startday.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/task-startday.jpg" width="1440" height="900" loading="lazy" alt="開工接手的表單：產品、今天想做什麼、模型">
+    </a>
+    <figcaption><b class="fig">圖 6-1</b><b>執行。</b>只有兩格，而且第二格可以留白。
+    填了的話它會先回答「這件事現在做不做得了、缺什麼」。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+  <figure>
+    <a href="manual/task-startday-result.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/task-startday-result.jpg" width="1440" height="900" loading="lazy" alt="開工接手的結果：剩下的量與卡在哪的表、草稿、已自動寫入交接檔">
+    </a>
+    <figcaption><b class="fig">圖 6-2</b><b>結果 ＋ 下一步。</b>
+    上面是「<b>剩下的量／卡在哪</b>」的表，下面它交了一份草稿要補交接檔的
+    <b>§5 測試資料現況</b>——因為 CRUX-001 的重現資料<b>不能被當成殘留清掉</b>。
+    最底下<b>「✅ 已自動寫入 docs/CRUX/CRUX_驗證交接.md」</b>就是落檔完成。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3 id="t-explore"><span class="ic">🔭</span> 探索新功能</h3>
+  <figure>
+    <a href="manual/task-explore.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/task-explore.jpg" width="1440" height="900" loading="lazy" alt="探索新功能的表單：產品、功能區塊、安全邊界、指定子帳號、風險假設">
+    </a>
+    <figcaption><b class="fig">圖 6-3</b><b>一次探一個區塊就好。</b>
+    <b>安全邊界</b>預設是「可寫入」——唯讀只驗得到「讀得到的東西」，
+    會改狀態的規則一條都驗不了。<b>指定子帳號</b>選填但強烈建議填：
+    站台通常是「同帳號他處登入即踢掉前者」，兩個任務同時跑就會互踢。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3 id="t-req"><span class="ic">📐</span> 需求驗證</h3>
+  <figure>
+    <a href="manual/task-requirement.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/task-requirement.jpg" width="1440" height="900" loading="lazy" alt="需求驗證的表單：報告主題、規格來源、需求內容">
+    </a>
+    <figcaption><b class="fig">圖 6-4</b>三個必填裡最重要的是<b>規格來源</b>——
+    它是「這條到底該是什麼」的<b>權威依據</b>。來源指不清楚的話，
+    實測與文件不符時就沒有辦法判斷該開單還是該改文件。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3 id="t-cases"><span class="ic">✍️</span> 撰寫案例</h3>
+  <figure>
+    <a href="manual/task-writecases.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/task-writecases.jpg" width="1440" height="900" loading="lazy" alt="撰寫案例的表單：來源覆蓋矩陣、要轉成案例的功能點">
+    </a>
+    <figcaption><b class="fig">圖 6-5</b><b>來源覆蓋矩陣</b>填的是「這些案例是從哪一份盤點來的」，
+    <b>功能點</b>是這次要轉成案例的範圍。寫完它會<b>真的跑一次</b>，
+    收不起來就自動還原。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3 id="t-jira"><span class="ic">🔍</span> 驗 JIRA 修復</h3>
+  <figure>
+    <a href="manual/task-jira.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/task-jira.jpg" width="1440" height="900" loading="lazy" alt="驗 JIRA 修復的表單：單號可多筆">
+    </a>
+    <figcaption><b class="fig">圖 6-6</b>單號可以一次填多筆（逗號分隔）。
+    ⚠️ 這顆要先在<b>設定 → JIRA 憑證</b>設好帳密才抓得到單；
+    沒設定的話 Bug 面板會顯示「JIRA：未設定」而不是報錯。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3 id="t-filebug"><span class="ic">📝</span> 手動開 Bug 單</h3>
+  <figure>
+    <a href="manual/task-filebug.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/task-filebug.jpg" width="1440" height="900" loading="lazy" alt="手動開 Bug 單的表單：現象、期望、環境">
+    </a>
+    <figcaption><b class="fig">圖 6-7</b><b>現象</b>是必填，寫「看到什麼」而不是「為什麼」。
+    成因留給 RD——寫進單裡反而會把人帶偏。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3><span class="ic">🐞</span> 從失敗 run 開單（實跑一次）</h3>
+  <figure>
+    <a href="manual/task-form.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/task-form.jpg" width="1440" height="900" loading="lazy" alt="從失敗 run 開單的任務表單：run、失敗的案例、錯誤訊息都已帶入">
+    </a>
+    <figcaption><b class="fig">圖 6-8</b><b>執行。</b>從執行頁按<b>「從失敗 run 開單」</b>進來，
+    run、失敗的案例、錯誤訊息<b>都已經帶好了</b>。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+  <figure>
+    <a href="manual/task-running.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/task-running.jpg" width="1440" height="900" loading="lazy" alt="任務執行中：對話視窗打開，顯示載入 skill 標籤與跳動的載入點">
+    </a>
+    <figcaption><b class="fig">圖 6-9</b><b>狀態追蹤。</b>對話視窗自動打開並開始串流。
+    最上面那條<b>任務提示</b>可以點開看平台實際送出去的完整指令；
+    上方下拉寫著<b>「從失敗 run 開單 · sonnet · N 則」</b>——用哪個模型一目瞭然。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+  <figure>
+    <a href="manual/task-result.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/task-result.jpg" width="1440" height="900" loading="lazy" alt="任務結果：開單前三問的答案與結論不該開單">
+    </a>
+    <figcaption><b class="fig">圖 6-10</b><b>結果——而且它判定「不該開單」。</b>
+    三問逐條回答：①是規格還是缺陷 ②是不是已經被查證過 ③樣本有沒有鑑別力，
+    最後給結論。<b>這就是「測試失敗 ≠ 缺陷」實際運作的樣子</b>：
+    它沒有因為有一條紅燈就生一張單出來。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3 id="t-handoff"><span class="ic">🧾</span> 收尾體檢（實跑一次）</h3>
+  <figure>
+    <a href="manual/task-handoffcheck.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/task-handoffcheck.jpg" width="1440" height="900" loading="lazy" alt="收尾體檢的結果：逐節核對交接檔，結論與要你做的兩件事">
+    </a>
+    <figcaption><b class="fig">圖 6-11</b>它把交接檔<b>逐節核對</b>過
+    （§1 blocker／§2 待辦／§5 測試資料），結論是「這次沒有新的交接檔內容要寫」。
+    ⭐ 剩下兩件<b>它做不到的</b>會明講要你做什麼——
+    改 Bug 單的 <code>regression</code> 欄、把重複草稿撤掉。
+    <b>它不會假裝自己做得到。</b><span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3>對話頁：所有任務都在這裡</h3>
+  <figure>
+    <a href="manual/sessions.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/sessions.jpg" width="1440" height="900" loading="lazy" alt="對話列表：每個 session 的標題、模型、訊息數、最後活動、關聯">
+    </a>
+    <figcaption><b class="fig">圖 6-12</b>每一次任務都是一個 session，
+    列著<b>標題／模型／訊息數／最後活動／關聯的產品或 run</b>。
+    <b>關閉</b>是結束程序但紀錄留著、可續接；<b>刪除</b>才是真的沒了。
+    也可以<b>分叉</b>（從某個狀態長出另一條）或<b>匯出</b>成 markdown。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <div class="note"><b>寫入型任務不會直接改你的檔案。</b>
+  它們產出<b>草稿</b>，由平台落檔並配號——
+  這樣「同時開兩個任務」不會撞號，也不會有人在你不知情的時候動 git。</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="chat">
+  <h2><span class="n">07</span>對話視窗</h2>
+  <p class="sub">不確定要按哪個鈕的時候，直接問。</p>
+
+  <figure>
+    <a href="manual/chat-ask.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/chat-ask.jpg" width="1440" height="900" loading="lazy" alt="置中的大對話視窗，輸入框裡打了一個問題">
+    </a>
+    <figcaption><b class="fig">圖 7-1</b>從總覽主視覺腳下的<b>對話入口</b>打開。
+    上方下拉可以切換既有 session（顯示標題·模型·幾則），
+    <b>＋ 新對話</b>時可以挑模型。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <figure>
+    <a href="manual/chat-answer.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/chat-answer.jpg" width="1440" height="900" loading="lazy" alt="回覆：列出未修復的單與缺回歸狀態，底下有工具標籤">
+    </a>
+    <figcaption><b class="fig">圖 7-2</b>回覆底下的<b>工具標籤</b>
+    （載入 skill／找檔／讀檔）說明它查了什麼。
+    ⭐ 注意它<b>先載入產品 skill 再查</b>——所以答案帶著產品脈絡，
+    而數字是<b>當下真的</b>，不是它記得的。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3>可以問什麼</h3>
+  <table>
+    <thead><tr><th class="nw">想知道</th><th>可以這樣問</th></tr></thead>
+    <tbody>
+      <tr><td class="nw">現在的狀況</td><td>「還有幾張沒修的單？」「哪些修好了但沒補回歸案例？」「交接檔落後了嗎？」</td></tr>
+      <tr><td class="nw">找東西</td><td>「跟賠率有關的案例有哪些？」「上次那個問題的單號是多少？」</td></tr>
+      <tr><td class="nw">要它做事</td><td>「重跑上次失敗的那幾條」——會出<b>確認卡</b>，你按了才跑。</td></tr>
+    </tbody>
+  </table>
+  <div class="warn"><b>⛔ 它只會「提議」，不會自己執行。</b>
+  要跑東西一律出確認卡，人按下去才動。這條沒有例外。</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="loop">
+  <h2><span class="n">08</span>產出去哪裡看</h2>
+  <p class="sub">整個平台就是為了這一條線。</p>
+
+  <div class="flow">
+    <div class="step"><div class="k">Step 1</div><div class="t">它去做</div>
+      <div class="d">你按一個任務鈕，它帶著規範與產品狀況去做事。</div></div>
+    <div class="step"><div class="k">Step 2</div><div class="t">自動存檔</div>
+      <div class="d">Bug 單、待辦、文件、驗證報告、測試案例——直接寫回檔案。</div></div>
+    <div class="step"><div class="k">Step 3</div><div class="t">你在畫面上看</div>
+      <div class="d">Bug 列表、待辦分頁、報告中心、案例瀏覽器。<b>不是另外給你一份待審清單。</b></div></div>
+  </div>
+
+  <div class="note"><b>設計原則：</b>用 AI 是為了讓你少做事，不是多一份「審核」的工作。
+  所以低風險的產出<b>一律自動存</b>，你事後看。只有兩種情況會停下來等你。</div>
+
+  <h3>哪些自動、哪些要你按</h3>
+  <table>
+    <thead><tr><th class="nw">產出</th><th class="nw">怎麼處理</th><th>為什麼</th></tr></thead>
+    <tbody>
+      <tr><td class="nw">它自己判定的缺陷</td><td class="nw"><span class="pill ok">自動開單</span></td>
+        <td>開單前它已經自問過三件事（是規格還是缺陷／有沒有人查過了／樣本夠不夠）。編號一樣是當下才取，不會撞號。</td></tr>
+      <tr><td class="nw">待辦、文件、驗證報告</td><td class="nw"><span class="pill ok">自動</span></td>
+        <td>寫錯了刪掉就好。</td></tr>
+      <tr><td class="nw">測試案例</td><td class="nw"><span class="pill ok">自動寫檔</span></td>
+        <td>寫完立刻檢查跑不跑得起來，跑不起來就<b>自動還原</b>，不會留壞檔。案例頁會列出這批讓你確認。</td></tr>
+      <tr><td class="nw"><b>測試跑失敗</b>生出來的 Bug 草稿</td><td class="nw"><span class="pill hold">留草稿</span></td>
+        <td><b>測試失敗不等於有缺陷。</b>同樣那幾條會一直失敗，自動開單會洗出一堆假單。</td></tr>
+      <tr><td class="nw">整份蓋掉既有文件</td><td class="nw"><span class="pill hold">要你按</span></td>
+        <td>會蓋掉<b>先前寫進去的內容</b> —— 可能是你自己，也可能是另一個 session 剛寫的。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>實際走一次：Bug 開到 JIRA 之後把單號記回來</h3>
+  <p>這是最常做的一條。四張圖是連續的。</p>
+
+  <figure>
+    <a href="manual/product-bugs.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/product-bugs.jpg" width="1440" height="900" loading="lazy" alt="產品頁的 Bug 分頁：兩張單，交叉標記顯示漏開單與缺回歸">
+    </a>
+    <figcaption><b class="fig">圖 8-1</b><b>產品頁 → Bug</b> 分頁。
+    右上那排是四個<b>交叉篩選</b>：<b>待重驗</b>（RD 說修好了）、
+    <b>漏開單</b>（本地有、JIRA 還沒開）、<b>該關單</b>、<b>缺回歸</b>（修好了但沒補案例）。
+    清單<b>由新到舊</b>排。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <figure>
+    <a href="manual/bug-detail.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/bug-detail.jpg" width="1440" height="900" loading="lazy" alt="Bug 明細視窗，JIRA 欄是破折號，右下角有回填 JIRA 單號按鈕">
+    </a>
+    <figcaption><b class="fig">圖 8-2</b>點任何一列看內容。<code>JIRA</code> 那欄是 <code>—</code>，
+    表示還沒開。先按<b>「複製開單資訊」</b>貼到 JIRA 開單；
+    <b>「看全文」</b>可以直接讀整份單。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <figure>
+    <a href="manual/jira-fill.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/jira-fill.jpg" width="1440" height="900" loading="lazy" alt="回填 JIRA 單號的輸入視窗">
+    </a>
+    <figcaption><b class="fig">圖 8-3</b>JIRA 開完之後回來按<b>「回填 JIRA 單號」</b>，把單號打進去。
+    ⛔ 平台<b>不會</b>替你開 JIRA——開單一律在 JIRA 網頁上做。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <figure>
+    <a href="manual/jira-filled.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/jira-filled.jpg" width="1440" height="900" loading="lazy" alt="回填之後：漏開單的數字歸零，那一列的 JIRA 欄出現單號">
+    </a>
+    <figcaption><b class="fig">圖 8-4</b><b>結果。</b>「漏開單」<b>當場從 1 變 0</b>，
+    那一列的 JIRA 欄也同時出現單號。不用重新整理。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3>待辦與測試資料</h3>
+  <figure>
+    <a href="manual/product-todos.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/product-todos.jpg" width="1440" height="900" loading="lazy" alt="產品頁的待辦分頁，列出交接檔裡的未完成項目">
+    </a>
+    <figcaption><b class="fig">圖 8-5</b><b>產品頁 → 待辦</b>讀的是<b>交接活文件</b>。
+    ⚠️ 這裡也是<b>「哪些測試資料不能刪」</b>的地方——
+    據以開單的資料要保留到單子關掉為止，清掉的話那張單就不可重現了。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <h3>其他產出去哪裡看</h3>
+  <table>
+    <thead><tr><th class="nw">產出</th><th>去哪裡看</th></tr></thead>
+    <tbody>
+      <tr><td class="nw">驗證報告</td><td>報告中心 → <b>驗證報告</b> 分頁（看過可以打勾，標題會加刪除線）</td></tr>
+      <tr><td class="nw">待辦、動過哪些測試資料</td><td>產品頁 → <b>待辦</b> 分頁</td></tr>
+      <tr><td class="nw">文件</td><td>產品頁 → <b>文件</b> 分頁（可以直接點開看，支援原始碼檢視）</td></tr>
+      <tr><td class="nw">測試案例</td><td><b>案例</b>頁；新寫入的那一批會在最上面等你確認</td></tr>
+      <tr><td class="nw">執行紀錄</td><td>報告中心 → <b>執行紀錄</b>；總覽右欄的<b>最近報告</b>也看得到</td></tr>
+      <tr><td class="nw">任務講了什麼</td><td><b>對話</b>頁；每個 session 都可以匯出成 markdown</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="screens">
+  <h2><span class="n">09</span>每一頁在做什麼</h2>
+  <p class="sub">左邊那排圖示由上而下。</p>
+
+  <table>
+    <thead><tr><th class="nw">頁面</th><th>什麼時候來這裡</th></tr></thead>
+    <tbody>
+      <tr><td class="nw"><b>總覽</b></td><td>開著不用管它。要看「現在整體怎麼樣」「有什麼在跑」「該做什麼」。任務按鈕也在這裡。</td></tr>
+      <tr><td class="nw"><b>工具</b></td><td>要跑一支工具（測試、壓測…）。卡片上標著危險等級。</td></tr>
+      <tr><td class="nw"><b>案例</b></td><td>要找案例、要挑幾條來跑、要確認剛寫進來的那一批。</td></tr>
+      <tr><td class="nw"><b>報告</b></td><td>要看驗證報告或翻執行紀錄。</td></tr>
+      <tr><td class="nw"><b>對話</b></td><td>要問東西，或回頭看某個任務講了什麼。</td></tr>
+      <tr><td class="nw"><b>註冊表</b></td><td>要接一支新工具，或確認某支工具是怎麼宣告的。</td></tr>
+      <tr><td class="nw"><b>設定</b></td><td>Claude 連線、JIRA 憑證、工作區操作、設定檔編輯。</td></tr>
+      <tr><td class="nw"><b>產品頁</b></td><td>從總覽點產品柱進來。單一產品的規格／案例／缺陷／待辦／文件／健康度全在這裡。</td></tr>
+    </tbody>
+  </table>
+
+  <figure>
+    <a href="manual/tools.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/tools.jpg" width="1440" height="900" loading="lazy" alt="工具看板，卡片上標了危險等級與上次執行時間">
+    </a>
+    <figcaption><b class="fig">圖 9-1</b><b>工具</b>頁依產品分欄。
+    每張卡標著<b>危險等級</b>（本機唯讀／會寫入／高風險）與<b>上次執行</b>是什麼時候。
+    正在跑的卡片會有掃描線。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <figure>
+    <a href="manual/product.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/product.jpg" width="1440" height="900" loading="lazy" alt="產品頁總覽：五個指標、知識雷達、工具、待辦摘要">
+    </a>
+    <figcaption><b class="fig">圖 9-2</b><b>產品頁</b>有六個分頁。
+    總覽的五個指標分別是規格覆蓋／測試案例／缺陷／驗證紀錄／健康度，
+    <b>點下去會跳到對應的分頁</b>。左邊的<b>知識雷達</b>五圈由內而外是
+    規格／案例／缺陷／紀錄／健康——哪一圈短就是哪一塊還沒補。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <figure>
+    <a href="manual/registry.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/registry.jpg" width="1440" height="900" loading="lazy" alt="註冊表：工具卡片與接入新工具的說明">
+    </a>
+    <figcaption><b class="fig">圖 9-3</b><b>註冊表</b>列出每一支工具是怎麼宣告的
+    （kind、產品、命令、併發、危險等級）。上方的<b>「＋ 接一支新工具」</b>
+    會產生骨架並<b>當場驗證</b>，收不下就不寫檔。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="settings">
+  <h2><span class="n">10</span>設定</h2>
+  <p class="sub">四個分頁：Claude、JIRA 憑證、工作區、設定檔。</p>
+
+  <figure>
+    <a href="manual/settings-claude.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/settings-claude.jpg" width="1440" height="900" loading="lazy" alt="Claude 上線檢查：執行檔、版本、登入狀態與怎麼上線的說明">
+    </a>
+    <figcaption><b class="fig">圖 10-1</b><b>Claude</b> 分頁是<b>唯讀、零額度</b>的上線檢查：
+    找到哪一支執行檔、版本、登入了沒。右邊直接寫著<b>怎麼上線</b>的兩條路
+    （VSCode 擴充／終端機 <code>claude install</code>）。
+    ⚠️ 這一頁要跑三個外部指令，所以會轉幾秒——那是正常的。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <figure>
+    <a href="manual/settings-jira.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/settings-jira.jpg" width="1440" height="900" loading="lazy" alt="JIRA 憑證分頁：每欄只顯示已設定或未設定">
+    </a>
+    <figcaption><b class="fig">圖 10-2</b><b>JIRA 憑證</b>。
+    ⛔ <b>已存的密碼永遠不會回傳到瀏覽器</b>——這一頁只顯示「已設定／未設定」＋最後更新時間。
+    兩個測試按鈕都是唯讀的：<b>連線測試</b>驗帳密還活著，<b>附件測試</b>驗
+    session cookie 還沒過期（那是最常壞的一環）。
+    沒有 JIRA 也沒關係，Bug 面板會顯示「未設定」而不是報錯。<span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+
+  <figure>
+    <a href="manual/settings-files.jpg" target="_blank" title="點開看原尺寸" style="max-width:1440px">
+      <img src="manual/settings-files.jpg" width="1440" height="900" loading="lazy" alt="設定檔編輯器：左邊選檔、右邊編輯，右上角顯示 JSON 是否有效">
+    </a>
+    <figcaption><b class="fig">圖 10-3</b><b>設定檔</b>分頁可以直接改三份 JSON：
+    測試環境（程式讀）、產品定義（單一來源）、平台設定。
+    右上角<b>即時檢查 JSON</b>，打錯會告訴你錯在第幾行並把儲存鍵變灰；
+    存檔會<b>自動備份</b>，而且只改你動到的那幾行——不會把整份重排。
+    <span class="zoom">（點圖放大）</span></figcaption>
+  </figure>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="safety">
+  <h2><span class="n">11</span>安全邊界</h2>
+  <p class="sub">這一節不長，但每一條都是有代價才學到的。</p>
+
+  <table>
+    <thead><tr><th class="nw">對象</th><th class="nw">可以做什麼</th><th>說明</th></tr></thead>
+    <tbody>
+      <tr><td class="nw">測試環境的 Web／UI</td><td class="nw"><span class="pill ok">直接做</span></td>
+        <td>下注、改設定、建帳號都可以。為了取證而寫入是測試的常態，逐次請示只會拖慢。</td></tr>
+      <tr><td class="nw">測試環境的資料庫</td><td class="nw"><span class="pill no">一律唯讀</span></td>
+        <td>查詢可以，改值不行。DB 改值會繞過所有應用層邏輯，<b>改出來的狀態未必是系統真的能產生的狀態</b>——那樣驗到的結論可能根本不成立。</td></tr>
+      <tr><td class="nw">預備／正式環境</td><td class="nw"><span class="pill no">不碰</span></td>
+        <td>預備環境通常已經給客戶試用了。要用需要逐次授權，且授權只適用那一次。</td></tr>
+      <tr><td class="nw">會影響別人的操作</td><td class="nw"><span class="pill hold">先問</span></td>
+        <td>開獎、結算、反結算、關盤這類會波及其他人的動作。判準是<b>「會不會影響到別人」</b>，不是操作本身危不危險。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>平台自己的界線</h3>
+  <table>
+    <thead><tr><th class="nw">它拿不到</th><th>為什麼</th></tr></thead>
+    <tbody>
+      <tr><td class="nw"><code>git</code> 的寫入</td>
+        <td><b>2026-08-25 起 session 有 shell 與寫檔</b>——沒有的話它跑不了 <code>stamp_shots.py</code>
+        搬截圖、跑不了 <code>lint_docs.py</code> 收尾、也沒法當下取號，<b>等於做不到規範</b>。
+        改成擋真正該擋的兩件事：<b>git 的寫入</b>（add／commit／stash／push）與
+        <b>刪到自己工作目錄以外</b>。唯讀的 <code>git status</code>／<code>diff</code>／<code>log</code> 照用。</td></tr>
+      <tr><td class="nw">配號這一步</td><td>Bug 單的<b>配號仍由平台在落檔那一刻執行</b>——這樣配號才會落在「寫檔那一刻」，兩個任務同時跑也不會撞。</td></tr>
+      <tr><td class="nw">git 索引</td><td>索引是<b>整個工作目錄共用的</b>，而同一台機器上常同時開著好幾個 session ——
+        一個去暫存，就會把別的 session 正在改的東西一起帶走。<b>要不要提交一律由人點頭。</b></td></tr>
+      <tr><td class="nw">寫 JIRA</td><td>只讀不寫。</td></tr>
+    </tbody>
+  </table>
+
+  <div class="stop"><b>⛔ 用完把測試資料還原——但有一個例外。</b>
+  <b>據以開立 Bug 單的資料要保留</b>，那批資料就是那張單的重現環境。
+  還原掉的話，RD 照著重現步驟走會看不到現象。保留到單子關掉為止，
+  並在交接檔的<b>測試資料現況</b>登記「刻意保留、屬哪一張單」。
+  <br>⭐ 上面圖 6-2 的<b>開工接手</b>就是在做這件事——它主動要求把 CRUX-001 的重現資料登記起來。</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="trouble">
+  <h2><span class="n">12</span>卡住的時候</h2>
+
+  <table>
+    <thead><tr><th class="nw">現象</th><th>怎麼辦</th></tr></thead>
+    <tbody>
+      <tr><td class="nw">開不起來</td>
+        <td>先跑 <code>scripts\setup_test_env.ps1</code> 看總結表——平台需要 flask／psutil／requests。</td></tr>
+      <tr><td class="nw">任務按鈕是灰的</td>
+        <td>找不到 <code>claude</code> 執行檔。到<b>設定 → Claude</b> 看它說什麼，那一頁直接寫著怎麼裝。<b>其餘功能照用</b>——不接對話也可以只用索引與執行。</td></tr>
+      <tr><td class="nw">畫面上的數字都不動了</td>
+        <td>表頭會變紅並寫<b>「平台已斷線 —— 畫面上的資料是舊的」</b>。服務重開之後會自動連回並跳提示。</td></tr>
+      <tr><td class="nw">接完產品但看不到</td>
+        <td>重新整理一次。儀表板是開頁時載入的。</td></tr>
+      <tr><td class="nw">跑完發現一堆紅的</td>
+        <td>先看<b>失敗案例</b>那一區的<b>既有單</b>欄——已經有單的就不是新壞的。<b>測試失敗 ≠ 缺陷</b>，先確認不是測試碼或環境問題。</td></tr>
+      <tr><td class="nw">執行中途離開頁面</td>
+        <td><b>run 型不受影響</b>（它在背景跑，回來還看得到）。<b>同步命令會中止</b>——按鈕旁邊有寫。</td></tr>
+      <tr><td class="nw">平台被關掉時正在跑東西</td>
+        <td>下次啟動會自動收拾：那些執行標成<b>已停止 · 中斷</b>而不是「失敗」，進度<b>保留原樣</b>——這樣你才看得出它跑到哪裡被打斷。</td></tr>
+      <tr><td class="nw">兩個人搶同一組測試帳號</td>
+        <td>站台通常是「同帳號他處登入即踢掉前者」，症狀是<b>令牌過期</b>。跑測試前先確認用的子帳號跟別人分開，任務表單的<b>指定子帳號</b>就是為此。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="extend">
+  <h2><span class="n">13</span>接新工具與新產品</h2>
+  <p class="sub">⭐ <b>這一節是整份手冊裡最該用到的一節。</b>
+  範本給的那幾顆按鈕與那一支工具只是開頭 —— 下面三件事<b>都不必改平台程式</b>，
+  各自改一份 JSON 就會反映到畫面上。</p>
+
+  <h3>再接一個產品</h3>
+  <p><b>設定 → 工作區 → 接一個產品</b>，跟第一次一模一樣（見 <a href="#start">五分鐘上手</a>）。
+  接幾個都可以，儀表板會多一根柱子。</p>
+
+  <h3>接一支自己的工具</h3>
+  <p>工具是<b>宣告出來的，不是寫死在平台裡的</b>。在
+  <code>tools/test_platform/registry/</code> 放一份 <code>&lt;id&gt;.tool.json</code>，
+  說清楚「怎麼跑、要問哪些參數、結果怎麼顯示」，它就會出現在工具頁——<b>不必改平台程式</b>。</p>
+  <table>
+    <thead><tr><th class="nw">宣告什麼</th><th>意思</th></tr></thead>
+    <tbody>
+      <tr><td class="nw"><code>kind</code></td><td><code>cli</code>／<code>pytest</code>／<code>http</code>——它是哪一種東西。</td></tr>
+      <tr><td class="nw"><code>commands[]</code></td><td>每個命令的固定命令列前綴，加上要問人的欄位。</td></tr>
+      <tr><td class="nw"><code>mode</code></td><td><code>run</code>（長時間，會進報告中心、可監控可停止）或 <code>sync</code>（秒級到分鐘級，結果就地顯示）。</td></tr>
+      <tr><td class="nw"><code>next[]</code></td><td>⭐ <b>跑完之後可以去哪</b>——就是本手冊講的「下一步」。沒宣告的話跑完就只是一段文字。</td></tr>
+      <tr><td class="nw"><code>danger</code></td><td>會寫入測試站的標 high，介面才會要人打字確認。</td></tr>
+      <tr><td class="nw"><code>gate</code></td><td>跑之前的提醒（前置條件、會跟誰搶站台）。<b>只提示不硬擋</b>。</td></tr>
+    </tbody>
+  </table>
+  <p>不想從頭寫的話，<b>註冊表</b>頁的<b>「＋ 接一支新工具」</b>會產生骨架並當場驗證。
+  ⚠️ 骨架建好之後<b>還是要自己補欄位</b>——平台不會替你猜，猜出來的欄位會變成「填了不生效」。</p>
+
+  <h3>加一顆自己的任務按鈕</h3>
+  <p>任務也是宣告式的。內建的放在 <code>tools/test_platform/tasks/</code>，
+  你自己加的放 <code>tasks/custom/</code>——<b>兩者載入方式一樣</b>，
+  分開只是為了讓範本更新時不會把你的東西算成差異。
+  一顆任務要宣告：要載哪幾支 skill、要問哪些欄位、送出去的提示長什麼樣、
+  額外放行哪些工具，以及<b>可選的預設模型</b>。</p>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section id="usage">
+  <h2><span class="n">14</span>附錄：Claude 用量</h2>
+  <p class="sub">總覽最上面那條的中間一段。<b>與測試流程無關</b>——
+  只是順手讓你知道額度還剩多少，不看也不影響任何功能。</p>
+
+  <h3>兩種用量，兩種缺點</h3>
+  <p>它同時給你<b>兩種</b>用量，因為兩種各有各的缺點：</p>
+  <table>
+    <thead><tr><th class="nw">看到什麼</th><th class="nw">哪來的</th><th>優點／缺點</th></tr></thead>
+    <tbody>
+      <tr><td class="nw"><b>額度百分比</b><br>5 小時窗口、週額度</td>
+        <td class="nw">平台<b>即時</b>查<br><code>/api/oauth/usage</code><br><span class="tiny">（打不通就退回<br><code>~/.claude.json</code> 的快照）</span></td>
+        <td>✅ <b>有分母</b>，是官方回報的水位，還帶重置時間<br>
+            ⚠️ 走的是<b>未公開端點</b>，改版就可能失效</td></tr>
+      <tr><td class="nw"><b>token 數字</b><br>近 5 小時、今日、近 7／30 天</td>
+        <td class="nw"><code>~/.claude/projects/</code><br>的對話紀錄</td>
+        <td>✅ 分得出<b>模型與工作區</b><br>
+            ⚠️ <b>沒有分母</b>——看得出「燒了多少」，看不出「離上限多遠」</td></tr>
+    </tbody>
+  </table>
+  <p>正常情況顯示<b>百分比 ＋ 進度條 ＋ 倒數</b>（≥70% 轉琥珀、≥90% 轉紅）。
+  額度<b>每 5 分鐘</b>自動更新一次；右上角的 <b>↻</b> 可以<b>立刻重打</b>，不必等。
+  角標是你的額度層級（例：<code>Max 5×</code>）。點整段進 <b>設定 → Claude</b> 看完整明細。</p>
+  <div class="warn"><b>⛔ 這條會讀你的 OAuth token。</b>
+  平台從 <code>~/.claude/.credentials.json</code> 取 token 去查<b>你自己帳號</b>的用量 ——
+  token <b>只在記憶體流動：不回傳瀏覽器、不落檔、不進 log、不進錯誤訊息</b>（有測試釘住這四條）。
+  不想要就在 <code>platform_config.local.json</code> 設 <code>claude.live_quota: false</code>，
+  它會退回下面那條路。</div>
+  <div class="note"><b>⚡ 退回本機快照時怎麼辦：在 Claude Code 裡打一次 <code>/usage</code>。</b>
+  那份快照是 Claude Code 自己抓的，<b>不會自己更新</b>（實測曾 54.5 小時沒動）——
+  <code>/usage</code> 是本機指令、<b>不消耗額度</b>，打完按 ↻ 就會看到新數字。
+  <b>⛔ 別指望背景 session 去刷</b>：實測 <code>claude -p "/usage"</code> 不會更新快照
+  （slash 指令在 print 模式不執行），定時起 session 只是<b>為了看額度而消耗額度</b>。</div>
+  <div class="warn"><b>⛔ 兩種用量不要互相換算。</b>
+  額度的計費權重不是 token 的簡單相加。另外額度是<b>帳號</b>層級的，
+  token 統計因此涵蓋這台機器上<b>所有</b>工作區，不只這一份。</div>
+</section>
+
+<footer>
+  測試助手使用手冊 · 本手冊隨平台一起發送，內容以你手上這一份為準<br>
+  平台文件：<code>tools/test_platform/docs/</code>　·　工作區規範：<code>CLAUDE.md</code>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

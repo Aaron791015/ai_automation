@@ -1,0 +1,73 @@
+{
+  "id": "explore",
+  "label": "探索新功能",
+  "icon": "🔭",
+  "order": 1,
+  "subtitle": "還沒碰過的功能區塊 —— 先寫 charter，再五來源交叉盤點",
+  "skills": [
+    "testcase-design",
+    "browser-ops"
+  ],
+  "scope": "product",
+  "entry": [
+    "overview",
+    "product"
+  ],
+  "writes": "draft",
+  "allowed_tools": [
+    "mcp__playwright",
+    "mcp__playwright2"
+  ],
+  "fields": [
+    {
+      "key": "product",
+      "type": "select",
+      "label": "產品",
+      "required": true,
+      "options_from": {
+        "source": "products"
+      }
+    },
+    {
+      "key": "area",
+      "type": "text",
+      "label": "功能區塊",
+      "required": true,
+      "placeholder": "例：賠率變動設置 / 分類帳報表",
+      "help": "一個區塊就好 —— 探索的時間盒是 60~90 分鐘"
+    },
+    {
+      "key": "boundary",
+      "type": "select",
+      "label": "安全邊界",
+      "default": "write",
+      "options": [
+        {
+          "value": "write",
+          "label": "可寫入 QAT（已預先授權）"
+        },
+        {
+          "value": "readonly",
+          "label": "本次唯讀（只看不改）"
+        }
+      ],
+      "help": "⭐ 預設可寫入 —— 唯讀只驗得到「讀得到的東西」，會改狀態的規則一條都驗不了。⛔ STG 不在選項裡（需逐次授權，見 CLAUDE.md §5）"
+    },
+    {
+      "key": "account",
+      "type": "text",
+      "label": "指定子帳號",
+      "placeholder": "例：netsub2",
+      "help": "選填但強烈建議填 —— 站台是「同帳號他處登入即踢掉前者」。留白時 session 自己依 config/environments.md 挑，兩個任務同時跑就可能互踢"
+    },
+    {
+      "key": "hypothesis",
+      "type": "textarea",
+      "label": "風險假設",
+      "rows": 2,
+      "placeholder": "我預期哪裡會出問題，為什麼",
+      "help": "選填。寫得出來的話，探索會更有方向"
+    }
+  ],
+  "prompt_template": "載入 `/{product_skill}` 與 `testcase-design`。\n\n我要探索 **{area}**（產品：{product}）。\n指定子帳號：**{account}**（有指定就用它登入，不要自己換一組）。\n風險假設：{hypothesis}\n\n## 安全邊界：{boundary_label}\n\n{boundary_rules}\n\n## 怎麼探\n\n照 `testcase-design` §10 的探索方法論走：\n\n1. 先寫 charter（§10.1），列出這次要回答的問題。⭐ **範圍以上面那個功能區塊為界，不設時間** —— 做完為止，⛔ 不要為了趕時間草率收工，也不要自己加時間限制\n2. 五來源交叉盤點功能點（§1）\n3. 標風險類別並推出目標深度（§3）\n4. ⭐ **目標深度 L3／L4 的功能點要實際操作過才算驗到** —— 只讀畫面與 API 回應最多到 L2。\n   邊界允許寫入時，該建資料就建、該送出就送出、該驗算就把實際值與期望值都記下來。\n5. 收工時對照 charter 回答四件事（涵蓋了什麼／發現什麼／還有什麼沒探／被什麼阻塞）\n\n⭐ **盤點頁面資料時，一支 `evaluate` 把要的值一次取齊**（欄位名、筆數、合計、對不上的那幾筆），不要一個值一支。探索是這個平台最長的任務，一個值一支的話光重讀就把額度吃掉一半。\n\n## 產出：交草稿，不要自己寫檔\n\n⛔ **你不能寫 repo 裡的檔案**（你手上有 `Write`，但產出一律走草稿）——\n**但站台的操作不在此限**，依上面的安全邊界執行。\n產出用下列固定區塊交給我，**平台會在人確認後寫檔並配號**。\n\n### ① 知識產出（機制文件／覆蓋矩陣）\n\n````\nkind     doc\nproduct  {product}\npath     檔名，例：樂透_開獎機制.md（會寫進 docs/<產品目錄>/）\ntitle    一句話說明這份文件在講什麼\nwhy      為什麼需要這一份（給我判斷要不要寫）\nindex_section  要登記到 docs/INDEX.md 的哪一個子節（先讀 docs/INDEX.md 看該產品有哪幾節，照抄標題）\nindex_desc     登記在索引裡的描述 —— ⚠️ 要**涵蓋這份文件的實際內容**，不是一句籠統的話\nbody     完整的 markdown 內容（含檔頭職責邊界與快速索引）\n````\n⭐ **`index_section`／`index_desc` 不可省** —— 平台寫檔時會照它登記 `docs/INDEX.md`。\n沒登記的文件別人依關鍵字搜尋不到，**等於沒寫**（`writeback` 的四個必做第一條）。\n\n### ② 缺陷（先走 `bug-report` §3.9 的開單前三問，判定該開的才交，**不要自己配號**）\n\n````\ntitle      一句話講現象（不寫成因）\nmodule     模組\nseverity   高／中／低\nsteps      重現步驟，**5 步以內**（`bug-report` §4）\nexpected   期望值（附規格依據）\nactual     實際值\nevidence   佐證位置（截圖檔名／API 回應／算式明細）\nprechecks  開單前三問的**答案**（is_spec／already_known／sample_power）\n````\n\n### ③ 測試資料異動（**動過站台就一定要交這一筆**）\n\n````\nkind     handover\nproduct  {product}\nsection  data\ntitle    一句話（例：探索賠率變動設置建立的三筆設定）\nwhy      為什麼要登記\ncells    對象（建立/修改了什麼）| 站台與帳號 | 狀態（還原了沒；刻意保留的寫明屬哪一張單）| 記於（本次任務）\n         ⚠️ 欄位順序以交接檔 §5 該表的表頭為準，平台會對齊欄數\n````\n\n### ④ 還沒驗完、或需要人裁定的事（選填）\n\n````\nkind     handover\nproduct  {product}\nsection  todo\ntitle    一句話\nwhy      為什麼留給下一個人\ncells    待辦內容 | 為什麼還沒做 | 下一步\n````\n\n### ⑤ 產品 skill 要補的（**指路**，不是知識本體）\n\n⛔ 知識本體走 ①。skill 只放「使用者會怎麼問 → 去哪看 ＋ 一句話的坑」，一列最多兩行。\n\n**意圖對照 —— 平台自動寫入**\n\n````\nkind     skill\nproduct  {product}\nsection  intent\ngroup    接到哪一張分類表（先讀該 skill 的意圖對照表照抄標題；只有一張就留空）\ntitle    一句話說明補了什麼\nwhy      為什麼要補這一列\ncells    使用者會怎麼問？ | `檔名.md` §節 —— 一句話的坑\n````\n\n**必記的不變量 —— ⏸️ 進待寫清單等人確認**\n\n````\nkind     skill\nproduct  {product}\nsection  invariant\ntitle    一句話\nwhy      **為什麼不知道就會做錯**（人放行與否的唯一依據）\ncells    不變量（一句話講死） | 不知道的後果\n````\n\n⚠️ 判準是「不知道它會不會做出錯的東西」——只是查得到就好的，走 ①。\n⛔ 「這是規格不是缺陷」不要自己判，那是使用者的裁定。\n"
+}

@@ -1,0 +1,83 @@
+{
+  "id": "verify_requirement",
+  "label": "需求驗證",
+  "icon": "📐",
+  "order": 2,
+  "subtitle": "有規格可比的那一種 —— 逐項判 PASS／FAIL，產出需求驗證報告",
+  "skills": [
+    "testcase-design",
+    "browser-ops",
+    "bug-report"
+  ],
+  "scope": "product",
+  "entry": [
+    "overview",
+    "product"
+  ],
+  "writes": "draft",
+  "allowed_tools": [
+    "mcp__playwright",
+    "mcp__playwright2"
+  ],
+  "fields": [
+    {
+      "key": "product",
+      "type": "select",
+      "label": "產品",
+      "required": true,
+      "options_from": {
+        "source": "products"
+      }
+    },
+    {
+      "key": "topic",
+      "type": "text",
+      "label": "報告主題",
+      "required": true,
+      "placeholder": "例：CRUX-883綜合報表",
+      "help": "⭐ 會成為報告檔名的一部分（`需求驗證報告_<主題>_<日期>.md`）—— 檔名由平台在寫檔當下取，撞名自動加「_第N批」"
+    },
+    {
+      "key": "source",
+      "type": "text",
+      "label": "規格來源",
+      "required": true,
+      "placeholder": "例：JIRA CRUX-883 / docs/七星/附錄1計算公式.docx / PM 2026-08-20 郵件",
+      "help": "⭐ 判 FAIL 的依據就是它 —— 沒有權威來源的話，這是「探索」不是「需求驗證」"
+    },
+    {
+      "key": "requirement",
+      "type": "textarea",
+      "label": "需求內容",
+      "required": true,
+      "rows": 8,
+      "placeholder": "把規格原文貼進來（條列最好，一條一件事）",
+      "help": "貼原文，不要自己改寫 —— 改寫過的規格會讓判準跟著漂"
+    },
+    {
+      "key": "boundary",
+      "type": "select",
+      "label": "安全邊界",
+      "default": "write",
+      "options": [
+        {
+          "value": "write",
+          "label": "可寫入 QAT（已預先授權）"
+        },
+        {
+          "value": "readonly",
+          "label": "本次唯讀（只看不改）"
+        }
+      ],
+      "help": "⭐ 需求驗證幾乎一定要寫入 —— 「送出後會怎樣」讀不出來"
+    },
+    {
+      "key": "account",
+      "type": "text",
+      "label": "指定子帳號",
+      "placeholder": "例：netsub2",
+      "help": "選填但強烈建議填 —— 同帳號他處登入會踢掉前者"
+    }
+  ],
+  "prompt_template": "載入 `/{product_skill}`、`testcase-design` 與 `bug-report`。\n\n我要驗證這份需求有沒有照規格實作（產品：{product}）。\n\n**規格來源（判 FAIL 的依據）**：{source}\n**報告主題**：{topic}\n指定子帳號：**{account}**（有指定就用它登入，不要自己換一組）。\n\n### 需求內容（原文）\n\n{requirement}\n\n## 安全邊界：{boundary_label}\n\n{boundary_rules}\n\n## 怎麼驗\n\n⭐ **範圍以上面那份需求為界，不設時間** —— 每一項都驗完為止，⛔ 不要為了趕時間把沒驗完的標成 PASS。\n\n1. **先把需求拆成可判定的驗證項** —— 每一項都要寫得出「期望值是什麼、依據規格哪一句」。\n   拆不出期望值的句子，標成「規格不明，需 PM／SA 裁定」，⛔ **不要自己補一個期望值**。\n2. **逐項實測**（在上面的邊界內），每一項都記下：\n   · 實際值 vs 期望值　· 算式明細或組成來源（`CLAUDE.md` §5「案例須留驗證過程與佐證」）\n   · 用了哪些資料、哪個站台與帳號\n3. **判定**：PASS／FAIL／BLOCKED（驗不下去的寫清楚卡在哪）。\n   ⛔ **不確定不可以寫 PASS** —— 沒驗到就是 BLOCKED，不是通過。\n4. ⭐ **實測與文件／規格不符時，先回答一個問題：「這次有沒有人說要改？」**\n   · **有**變更聲明（RD 在單上說已改／PM 修訂需求／使用者裁示）→ 照新值判，並寫明依據（誰、何時、在哪說的）\n   · **沒有** → **這是缺陷**：判 FAIL、交 Bug 草稿。\n     ⛔ **絕對不要改任何文件，也不要把實測結果寫成新規格** ——\n     把缺陷改寫成規格是本工作區列為最嚴重的失誤型態（`CLAUDE.md`「實測與文件不符時」）。\n5. 分不清的時候，**一律當缺陷先立單**（本地 Bug 單成本極低，漏掉的缺陷會被文件更新洗掉）。\n\n## 產出：交草稿，不要自己寫檔\n\n⛔ **你不能寫 repo 裡的檔案**（你手上有 `Write`，但產出一律走草稿）——\n**但站台的操作不在此限**，依上面的安全邊界執行。\n\n### ① 需求驗證報告（**一定要交這一筆**）\n\n````\nkind     report\nproduct  {product}\ntopic    {topic}\ntitle    一句話說明這份報告驗了什麼\nwhy      給我判斷要不要寫檔的一句話\nbody     完整 markdown：\n         · 摘要（幾項 PASS／FAIL／BLOCKED、能不能發）\n         · 逐項判定表（項目 | 規格依據 | 期望值 | 實際值 | 判定）\n         · 每一項 FAIL 的算式明細或佐證\n         · 未驗完的範圍與原因\n````\n⛔ **不要自己拼檔名** —— 平台會在寫檔當下用 `scripts/new_bug_doc.py` 取，撞名自動加「_第N批」。\n\n### ② 缺陷（每一條 FAIL 一筆；先走開單前三問，**不要自己配號**）\n\n````\ntitle      一句話講現象（不寫成因）\nmodule     模組\nseverity   高／中／低\nsteps      重現步驟，**5 步以內**\nexpected   期望值（附規格依據 —— 就是上面那份來源）\nactual     實際值\nevidence   佐證位置（截圖檔名／API 回應／算式明細）\nprechecks  開單前三問的**答案**（is_spec／already_known／sample_power）\n````\n\n### ③ 測試資料異動（**動過站台就一定要交這一筆**）\n\n````\nkind     handover\nproduct  {product}\nsection  data\ntitle    一句話\nwhy      為什麼要登記\ncells    對象（建立/修改了什麼）| 站台與帳號 | 狀態（還原了沒；刻意保留的寫明屬哪一張單）| 記於（本次任務）\n         ⚠️ 欄位順序以交接檔 §5 該表的表頭為準，平台會對齊欄數\n````\n\n### ④ 待驗項與等裁定（有就交）\n\n````\nkind     handover\nproduct  {product}\nsection  todo_ext\ntitle    一句話（規格不明、等 PM／SA 裁定的項目用這一節）\nwhy      為什麼卡在這裡\ncells    要裁定的問題 | 卡在誰身上 | 影響哪幾項驗證\n````\n（**還沒驗完、但自己就能接著做**的，`section` 改成 `todo`。）\n\n### ⑤ 產品 skill 要補的（**指路**，不是知識本體）\n\n⛔ 知識本體走 ①。skill 只放「使用者會怎麼問 → 去哪看 ＋ 一句話的坑」，一列最多兩行。\n\n**意圖對照 —— 平台自動寫入**\n\n````\nkind     skill\nproduct  {product}\nsection  intent\ngroup    接到哪一張分類表（先讀該 skill 的意圖對照表照抄標題；只有一張就留空）\ntitle    一句話說明補了什麼\nwhy      為什麼要補這一列\ncells    使用者會怎麼問？ | `檔名.md` §節 —— 一句話的坑\n````\n\n**必記的不變量 —— ⏸️ 進待寫清單等人確認**\n\n````\nkind     skill\nproduct  {product}\nsection  invariant\ntitle    一句話\nwhy      **為什麼不知道就會做錯**（人放行與否的唯一依據）\ncells    不變量（一句話講死） | 不知道的後果\n````\n\n⚠️ 判準是「不知道它會不會做出錯的東西」——只是查得到就好的，走 ①。\n⛔ 「這是規格不是缺陷」不要自己判，那是使用者的裁定。\n"
+}

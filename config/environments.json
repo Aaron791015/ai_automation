@@ -1,0 +1,17 @@
+{
+  "_comment": "程式讀取用的結構化環境設定（僅 QAT/STG 測試站，依 config/README.md 政策可版控）；人讀版見 environments.md。敏感/prod 設定放 config.local.json（同結構深度合併覆蓋）。",
+  "connectivity_check": [],
+  "xzh": {
+    "_comment": "【新綜合】英國天天彩／香港六合彩／賓果六合彩三彩種共用同一站台與帳密（2026-08-26 使用者提供；前台網址仍待確認）。⛔ 正式環境與 token 一律不要寫在這裡。",
+    "qat": {
+      "backend_platform_url": "http://platform.snotra.qat/auth/sign-in",
+      "backend_company_url": "http://b1.c1.snotra.qat/auth/sign-in",
+      "frontend_url": "<前台網址，待確認>",
+      "admin": {
+        "username": "aaron01",
+        "password": "Aa111111"
+      },
+      "note": "登入後台（平台／公司皆同帳密）會要求二次驗證(2FA)；QAT 環境目前任意輸入 6 位數字即可通過。若日後改動請更新本檔。"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "_comment": [
+    "測試平台設定（版控）。敏感或個人覆寫請放 platform_config.local.json（不版控）。",
+    "host 刻意預設 127.0.0.1：同事各自跑自己的實例、用自己的 Claude 帳號。",
+    "",
+    "平台一律真的執行 —— 沒有模擬模式（2026-08-23 移除）。"
+  ],
+  "host": "127.0.0.1",
+  "port": 5300,
+  "poll_seconds": 2,
+  "recent_run_keep_minutes": 15,
+  "jira_cache_minutes": 30,
+  "claude": {
+    "executable": null,
+    "default_model": "sonnet",
+    "fallback_model": "sonnet",
+    "_compact_comment": [
+      "compact_tokens：邊界壓縮門檻 —— 只在「回覆結束、交還給人」那一刻換一份較短的",
+      "工作記憶（core/session_compact.py）。0 ＝ 關閉；個別任務可用 tasks/*.json 覆寫。",
+      "autocompact_tokens：交給 claude CLI 的安全網，只擋「單段失控」（一則訊息內跑",
+      "幾百輪、中間沒有邊界），刻意設得很高。⛔ 調低就退化成『途中壓縮』，會壓掉還沒",
+      "寫成草稿的量測值。CLI 只收 100k~1M，超範圍會夾住。"
+    ],
+    "compact_tokens": 150000,
+    "autocompact_tokens": 500000
+  },
+  "ui": {
+    "motion": true
+  }
+}

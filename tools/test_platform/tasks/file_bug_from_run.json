@@ -1,0 +1,37 @@
+{
+  "id": "file_bug_from_run",
+  "label": "從失敗 run 開單",
+  "icon": "🐞",
+  "order": 5,
+  "subtitle": "帶著 nodeid 與錯誤訊息，走開單前三問",
+  "skills": [
+    "bug-report"
+  ],
+  "scope": "product",
+  "entry": [
+    "run"
+  ],
+  "writes": "draft",
+  "fields": [
+    {
+      "key": "run_id",
+      "type": "text",
+      "label": "run",
+      "required": true,
+      "help": "由結果頁自動帶入"
+    },
+    {
+      "key": "nodeid",
+      "type": "text",
+      "label": "失敗的案例",
+      "required": true
+    },
+    {
+      "key": "message",
+      "type": "textarea",
+      "label": "錯誤訊息",
+      "rows": 3
+    }
+  ],
+  "prompt_template": "載入 `bug-report`。\n\n平台的 run `{run_id}` 有一條失敗：\n· 案例：`{nodeid}`\n· 錯誤：{message}\n\n⚠️ **測試失敗 ≠ 缺陷** —— 可能是測試碼壞了、環境沒起來、或資料被別的 session 動過。\n請先走 §3.9 的**開單前三問**（是規格還是缺陷／是否已被查證過／樣本有沒有鑑別力），把**三問的答案一併回報**，讓我看得出你為什麼判定該開。\n\n⛔ 你**不能寫 repo 裡的檔案、也不要配號** —— 判定該開的話整理成草稿，我在平台上按開單時才會 `gen_bug_index --next-id`。\n\n判定該開的話，用這個結構交草稿（**平台會照這些欄位組單，缺的寫「待補」，不替你編**）：\n\n````\ntitle      一句話講現象（不寫成因）\nmodule     模組\nseverity   高／中／低\nsteps      重現步驟，**5 步以內**（從這條案例的操作推導，不要照抄 pytest 呼叫）\nexpected   期望值（附規格依據）\nactual     實際值（就是上面那段錯誤訊息代表的現象，用人看得懂的話寫）\nevidence   佐證位置（run 連結／console 輸出／allure 附件）\nprechecks  開單前三問的**答案**（is_spec／already_known／sample_power）\n````\n\n判定**不該開**的話，直接說明理由就好 —— 不要為了交差硬生一張單。\n"
+}
