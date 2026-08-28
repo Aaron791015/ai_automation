@@ -99,7 +99,9 @@ class SystemSettingPage:
     # 欄位是標準 Element Plus `el-switch`（role=switch），無 accessible name
     # （同一列右邊「開啟飛單選項明細設定」也是一個 switch，兩者都不帶 name，只能靠欄位順序區分，
     # 不能用 get_by_role("switch", name=...)）。
-    # 抽查全部 68 個玩法列（含「仓位型」與「占成型」兩種自留口徑）發現：
+    # 抽查全部 70 個玩法列（含「仓位型」與「占成型」兩種自留口徑）發現：
+    # ⚠️ 2026-08-28 用「cell 數＝6」精確計數才發現：先前這裡與相關文件記錄的
+    # 「68 個玩法列」是誤算，實際是 70 個（見 B16 `row_count()` 的檔頭說明），已一併更正。
     # 「自動飛單」這顆 switch **每一列在當下都是 disabled**（`input.disabled===true`）。
     #
     # ⚠️⚠️ 2026-08-26 追加驗證，更正先前的誤判：**這不是「環境整個鎖死」，是兩個開關的
@@ -183,3 +185,77 @@ class SystemSettingPage:
         row = self.page.get_by_role("row").filter(has_text=row_name_prefix).first
         row.wait_for(state="visible", timeout=15000)
         return row.inner_text()
+
+    # ---- 飛單設置：結構性掃描與 2026-08-28 複掃新增方法（B8/B9/B10/B16）----
+    #
+    # ⚠️⚠️ 2026-08-28 MCP 唯讀+寫入實測發現一個與 K1/K3/K5/K6 大表格不同的行為：
+    # 「最小飛單額」欄位**每次按 Enter 就立刻送出 API 並持久化**，不需要再按頁面下方的
+    # 「保存」按鈕——已用「填入 999999999 → Enter → reload 頁面」三方確認新值仍在，
+    # 證實不是前端暫存。這跟同一頁「開啟飛單選項明細設定」（純前端切換，不點保存不會送出，
+    # 見上面 `set_lay_off_detail_mode` 的註解）是兩種完全不同的持久化模式，
+    # 呼叫端**不要**在改完 `set_min_lay_off_amount` 後又去按 `save()`（那是給一般表單欄位用的）。
+    #
+    # ⚠️ 邊界值實測（同一輪）：負數（如 `-5`）會被前端拒絕、Enter 後欄位打回原值，
+    # 不會送出任何 API；超大值（如 `999999999`）會被接受並直接持久化。
+    def group_toggle_labels(self) -> list[str]:
+        """讀取飛單設置表格目前可收合分組的按鈕文字（如「連碼」「連肖」…）。"""
+        return self.page.get_by_role("button", name="收起当前行").locator("..").all_inner_texts()
+
+    def row_count(self) -> int:
+        """表格目前渲染的玩法資料列數。
+
+        ⚠️ 不能用「總列數 - 表頭 - 分組列數」推算——2026-08-28 實測這樣算不出正確數字
+        （分組展開/收合、巢狀列渲染方式跟預期不同）。改用**資料列本身的結構特徵**：
+        玩法資料列固定是 6 個 `cell`（玩法／自留口徑／每選項自留上限／自動飛單／
+        最小飛單額／開啟飛單選項明細設定），分組收合列只有 1 個 cell（「收起當前行 <分組名>」），
+        表頭列的 `columnheader` 不算 `cell`——用 cell 數＝6 篩選，不受分組展開狀態影響。
+        """
+        rows = self.page.get_by_role("row")
+        count = 0
+        for i in range(rows.count()):
+            if rows.nth(i).get_by_role("cell").count() == 6:
+                count += 1
+        return count
+
+    def min_lay_off_amount(self, row_name_prefix: str) -> str:
+        """讀取指定玩法列「最小飛單額」目前顯示值（未點擊前的 button 文字）。"""
+        row = self.page.get_by_role("row").filter(has_text=row_name_prefix).first
+        return row.get_by_role("cell").nth(4).inner_text()
+
+    def is_min_lay_off_amount_editable(self, row_name_prefix: str) -> bool:
+        """讀取指定玩法列「最小飛單額」欄位目前是否為可編輯的 button（未點擊前的顯示態）。
+
+        ⚠️ 這欄跟「每選項自留上限」不同——所有 70 列的「最小飛單額」目前都恆是
+        可點擊的 button（2026-08-28 已抽查特码列確認），不像「每選項自留上限」
+        只有 `一比五`／`一比六` 兩列是 button、其餘 68 列是純文字。
+        """
+        row = self.page.get_by_role("row").filter(has_text=row_name_prefix).first
+        cell = row.get_by_role("cell").nth(4)
+        return cell.get_by_role("button").count() > 0
+
+    def set_min_lay_off_amount(self, row_name_prefix: str, value: str) -> str:
+        """把指定玩法列「最小飛單額」改成 `value`（點格→輸入→Enter），回傳 Enter 後畫面顯示的值。
+
+        ⚠️ 見本方法群組上方註解——這欄按 Enter 就即時持久化，**不需要**也**不要**呼叫 `save()`。
+        回傳值可用來判斷輸入是否被前端拒絕（拒絕時會打回原值，不等於 `value`）。
+        """
+        row = self.page.get_by_role("row").filter(has_text=row_name_prefix).first
+        cell = row.get_by_role("cell").nth(4)
+        cell.get_by_role("button").click()
+        field = cell.get_by_role("spinbutton")
+        field.fill(value)
+        field.press("Enter")
+        self.page.wait_for_timeout(500)
+        return cell.inner_text()
+
+    def is_cap_editable(self, row_name_prefix: str) -> bool:
+        """讀取指定玩法列「每選項自留上限」欄位目前是否為可編輯 button。
+
+        ⚠️ 2026-08-28 發現：這是判斷該列是否處於「解鎖」狀態的旁證欄位之一——
+        68 列鎖定狀態下是純文字（不可編輯），只有 `一比五`／`一比六`（目前唯二解鎖的例外列）
+        是 button。跟 `is_auto_lay_off_toggleable()` 一起讀，兩者狀態應該一致
+        （同時可編輯／同時鎖定），若不一致代表這個假說不成立，需要重新調查（見交接檔 T17）。
+        """
+        row = self.page.get_by_role("row").filter(has_text=row_name_prefix).first
+        cell = row.get_by_role("cell").nth(2)
+        return cell.get_by_role("button").count() > 0

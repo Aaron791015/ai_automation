@@ -2,6 +2,7 @@
 """跟單管理案例（案例清單 F1、H4）。"""
 from __future__ import annotations
 
+import allure
 import pytest
 
 from xzh_qa.pages.copy_bet_page import CopyBetPage
@@ -12,8 +13,15 @@ def test_existing_copy_bet_group_displayed(company_page):
     """H4 現況記錄：既有跟單群組「M2E2E」的欄位顯示正確（唯讀，不建立新群組）。"""
     page = company_page
     cbp = CopyBetPage(page)
-    cbp.goto()
-    text = cbp.group_row_text("M2E2E")
+    with allure.step("導覽到跟單管理頁"):
+        cbp.goto()
+    with allure.step("讀取群組「M2E2E」該列的文字"):
+        text = cbp.group_row_text("M2E2E")
+    allure.attach(
+        f"該列實際文字：{text!r}\n期望包含：跟單比例 50%、狀態「停用」",
+        name="跟單群組 M2E2E 欄位現況",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert "50" in text, "跟單比例應顯示 50%"
     assert "停用" in text
 
@@ -31,4 +39,5 @@ def test_existing_copy_bet_group_displayed(company_page):
     "欄位結構與已知限制見該檔檔頭說明，供之後补齊前置條件（會員安全碼、帳號 ID 查詢方式）後直接使用。"
 )
 def test_create_copy_bet_group(company_page):
-    pass
+    with allure.step("略過：前置條件未備妥（會員安全碼、帳號內部 ID 查詢方式皆未探索，見上方 skip 原因）"):
+        pass

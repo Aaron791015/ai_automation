@@ -22,9 +22,18 @@ from xzh_qa.pages.dashboard_page import AgentHierarchyPage
 def _check(company_page, level: str) -> None:
     page = company_page
     ah = AgentHierarchyPage(page)
-    ah.goto()
-    ah.switch_tab(level)
-    assert ah.tab_label_count(level) == ah.table_total_count()
+    with allure.step(f"導覽到「用户管理」頁，切換到「{level}」子頁面"):
+        ah.goto()
+        ah.switch_tab(level)
+    with allure.step("讀取分頁標籤人數與表格「共 N 条」的數字"):
+        tab_count = ah.tab_label_count(level)
+        table_count = ah.table_total_count()
+    allure.attach(
+        f"分頁標籤人數：{tab_count}\n表格「共 N 条」：{table_count}（期望：兩者相等）",
+        name=f"{level} 分頁人數 vs 表格筆數",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert tab_count == table_count
 
 
 @allure.suite("一级代理")
@@ -66,11 +75,18 @@ def test_level1_agent_subordinate_breakdown_sum_matches(company_page):
     以 `aaa111`（各層 1 人，合計 9）與 `tc1001`（各層 1 人＋会员 3 人，合計 11）交叉驗證過）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
     account = "aaa111"
-    collapsed_total = ah.row_collapsed_subordinate_count(account)
-    ah.expand_level_columns()
-    breakdown_sum = ah.row_level_breakdown_sum(account, tier="一级代理")
+    with allure.step(f"導覽到「用户管理→一级代理」，讀取「{account}」收合狀態的「下级」欄總數"):
+        ah.goto()
+        collapsed_total = ah.row_collapsed_subordinate_count(account)
+    with allure.step("點「展开 »」，讀取同一列「二级代理～会员」逐層人數欄並加總"):
+        ah.expand_level_columns()
+        breakdown_sum = ah.row_level_breakdown_sum(account, tier="一级代理")
+    allure.attach(
+        f"收合狀態「下级」欄總數：{collapsed_total}\n逐層人數加總：{breakdown_sum}（期望：兩者相等）",
+        name=f"{account} 逐層人數加總 vs 下级欄總數",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert breakdown_sum == collapsed_total
 
 
@@ -92,9 +108,17 @@ def test_level1_agent_search_by_account(company_page):
     `e2ea1` 不可再引用（原本此案例用 `tc1001` 當搜尋樣本，已改為 `aaa111`）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.search_account("aaa111")
-    assert ah.row_account_names() == ["aaa111"]
+    with allure.step("導覽到「用户管理→一级代理」"):
+        ah.goto()
+    with allure.step("在「账号/昵称」輸入既有帳號「aaa111」並送出"):
+        ah.search_account("aaa111")
+        names = ah.row_account_names()
+    allure.attach(
+        f"篩選結果實際帳號：{names}（期望：['aaa111']）",
+        name="一级代理帳號搜尋結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert names == ["aaa111"]
 
 
 @allure.suite("一级代理")
@@ -119,7 +143,8 @@ def test_level1_agent_cash_mode_shows_withdraw_action(company_page):
 
     oracle 來源：B 級（正反向都驗）。⚠️ 目前 skip，見上方 skip reason。
     """
-    pass
+    with allure.step("略過：现金模式測試帳號尚未建立（見上方 skip 原因）"):
+        pass
 
 
 @allure.suite("一级代理")
@@ -138,11 +163,18 @@ def test_level1_agent_table_columns_present(company_page):
     2026-08-28 探索當下實際欄位即基準）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    assert ah.column_headers() == [
-        "账号", "昵称", "盘口", "额度", "余额", "上级",
-        "一级代理", "下级", "状态", "在线状态", "操作",
-    ]
+    with allure.step("導覽到「用户管理→一级代理」"):
+        ah.goto()
+    with allure.step("讀取表格欄位標題（不展開「公司～会员」逐層欄）"):
+        headers = ah.column_headers()
+    expected = ["账号", "昵称", "盘口", "额度", "余额", "上级",
+                "一级代理", "下级", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected}",
+        name="一级代理表格欄位",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected
 
 
 @allure.suite("一级代理")
@@ -162,8 +194,16 @@ def test_level1_agent_status_filter_options(company_page):
     篩選結果是否正確收斂，那條案例留待有對應樣本時再補（testcase-design §6②邊界樣本）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    assert ah.status_options() == ["启用", "停用", "停押"]
+    with allure.step("導覽到「用户管理→一级代理」"):
+        ah.goto()
+    with allure.step("點開「状态」下拉"):
+        options = ah.status_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['启用', '停用', '停押']）",
+        name="一级代理狀態下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["启用", "停用", "停押"]
 
 
 @allure.suite("一级代理")
@@ -183,12 +223,27 @@ def test_level1_agent_search_boundary(company_page):
     oracle 來源：B 級（自檢一致性——查無結果與清空後的行為都是系統自身邏輯）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.search_account("不存在的帳號xyz999")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→一级代理」"):
+        ah.goto()
+    with allure.step("輸入一個確定不存在的帳號關鍵字並送出"):
+        ah.search_account("不存在的帳號xyz999")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"查無結果時實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}（期望：顯示）",
+        name="一级代理搜尋查無結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
-    ah.search_account("")
-    assert len(ah.row_account_names()) == 11
+    with allure.step("清空輸入框並再次送出"):
+        ah.search_account("")
+        names = ah.row_account_names()
+    allure.attach(
+        f"清空後實際筆數：{len(names)}（期望：11）",
+        name="一级代理搜尋清空後恢復",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert len(names) == 11
 
 
 @allure.suite("一级代理")
@@ -208,9 +263,18 @@ def test_level1_agent_direct_members_button(company_page):
     oracle 來源：B 級（現況記錄，非正確性判斷——類比案例清單 A4 的記法）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.open_direct_members("aaa111")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→一级代理」"):
+        ah.goto()
+    with allure.step("點「aaa111」列的「直属会员」"):
+        ah.open_direct_members("aaa111")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}"
+        "（期望：顯示——aaa111 的下線是間接下線，非直屬會員，現況記錄非缺陷）",
+        name="aaa111 直属会员現況",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
 
 @allure.suite("一级代理")
@@ -230,12 +294,21 @@ def test_level1_agent_operators_dialog(company_page):
     oracle 來源：B 級（結構快照＋現況記錄）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    dialog = ah.open_operators_dialog("aaa111")
-    assert dialog.locator("thead th").all_inner_texts() == [
-        "账号", "昵称", "操作员组", "状态", "在线状态", "操作",
-    ]
-    assert "暂无数据" in dialog.inner_text()
+    with allure.step("導覽到「用户管理→一级代理」"):
+        ah.goto()
+    with allure.step("點「aaa111」列的「操作员」，讀取彈窗欄位與內容"):
+        dialog = ah.open_operators_dialog("aaa111")
+        headers = dialog.locator("thead th").all_inner_texts()
+        dialog_text = dialog.inner_text()
+    expected_headers = ["账号", "昵称", "操作员组", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected_headers}\n"
+        f"是否含「暂无数据」：{'暂无数据' in dialog_text}（期望：True，現況記錄）",
+        name="aaa111 操作员彈窗結構",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected_headers
+    assert "暂无数据" in dialog_text
 
 
 @allure.suite("一级代理")
@@ -258,17 +331,31 @@ def test_level1_agent_logs_page(company_page):
     oracle 來源：B 級（結構快照＋自檢：兩個子頁籤都應有資料，不是空狀態）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.open_logs_page("aaa111")
-
-    op_headers = ah.logs_table_headers()
+    with allure.step("導覽到「用户管理→一级代理」，點「aaa111」列的「日志」（預設落在「操作日志」）"):
+        ah.goto()
+        ah.open_logs_page("aaa111")
+        op_headers = ah.logs_table_headers()
+        op_row_count = ah.logs_row_count()
+    allure.attach(
+        f"操作日志欄位：{op_headers}（期望包含：操作动作、变更项）\n筆數：{op_row_count}（期望：>= 1）",
+        name="aaa111 操作日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert "操作动作" in op_headers and "变更项" in op_headers
-    assert ah.logs_row_count() >= 1
+    assert op_row_count >= 1
 
-    ah.switch_logs_tab("登录日志")
-    login_headers = ah.logs_table_headers()
-    assert login_headers == ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
-    assert ah.logs_row_count() >= 1
+    with allure.step("切換到「登录日志」子頁籤"):
+        ah.switch_logs_tab("登录日志")
+        login_headers = ah.logs_table_headers()
+        login_row_count = ah.logs_row_count()
+    expected_login_headers = ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    allure.attach(
+        f"登录日志欄位：{login_headers}（期望：{expected_login_headers}）\n筆數：{login_row_count}（期望：>= 1）",
+        name="aaa111 登录日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert login_headers == expected_login_headers
+    assert login_row_count >= 1
 
 
 @allure.suite("二级代理")
@@ -456,12 +543,19 @@ def test_level2_agent_subordinate_breakdown_sum_matches(company_page):
     oracle 來源：B 級（自檢不變量）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("二级代理")
-    account = "aaa222"
-    collapsed_total = ah.row_collapsed_subordinate_count(account)
-    ah.expand_level_columns()
-    breakdown_sum = ah.row_level_breakdown_sum(account, tier="二级代理")
+    with allure.step("導覽到「用户管理→二级代理」，讀取「aaa222」收合狀態的「下级」欄總數"):
+        ah.goto()
+        ah.switch_tab("二级代理")
+        account = "aaa222"
+        collapsed_total = ah.row_collapsed_subordinate_count(account)
+    with allure.step("點「展开 »」，讀取同一列逐層人數欄並加總"):
+        ah.expand_level_columns()
+        breakdown_sum = ah.row_level_breakdown_sum(account, tier="二级代理")
+    allure.attach(
+        f"收合狀態「下级」欄總數：{collapsed_total}\n逐層人數加總：{breakdown_sum}（期望：兩者相等）",
+        name=f"{account} 逐層人數加總 vs 下级欄總數",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert breakdown_sum == collapsed_total
 
 
@@ -473,10 +567,18 @@ def test_level2_agent_search_by_account(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("二级代理")
-    ah.search_account("aaa222")
-    assert ah.row_account_names() == ["aaa222"]
+    with allure.step("導覽到「用户管理→二级代理」"):
+        ah.goto()
+        ah.switch_tab("二级代理")
+    with allure.step("在「账号/昵称」輸入既有帳號「aaa222」並送出"):
+        ah.search_account("aaa222")
+        names = ah.row_account_names()
+    allure.attach(
+        f"篩選結果實際帳號：{names}（期望：['aaa222']）",
+        name="二级代理帳號搜尋結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert names == ["aaa222"]
 
 
 @allure.suite("二级代理")
@@ -487,12 +589,18 @@ def test_level2_agent_table_columns_present(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("二级代理")
-    assert ah.column_headers() == [
-        "账号", "昵称", "盘口", "额度", "余额", "上级",
-        "二级代理", "下级", "状态", "在线状态", "操作",
-    ]
+    with allure.step("導覽到「用户管理→二级代理」"):
+        ah.goto()
+        ah.switch_tab("二级代理")
+    with allure.step("讀取表格欄位標題（不展開逐層欄）"):
+        headers = ah.column_headers()
+    expected = ["账号", "昵称", "盘口", "额度", "余额", "上级", "二级代理", "下级", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected}",
+        name="二级代理表格欄位",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected
 
 
 @allure.suite("二级代理")
@@ -503,9 +611,17 @@ def test_level2_agent_status_filter_options(company_page):
     oracle 來源：B 級（結構快照）。⚠️ 只驗下拉選單本身，不驗篩選結果——理由同一级代理 C8。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("二级代理")
-    assert ah.status_options() == ["启用", "停用", "停押"]
+    with allure.step("導覽到「用户管理→二级代理」"):
+        ah.goto()
+        ah.switch_tab("二级代理")
+    with allure.step("點開「状态」下拉"):
+        options = ah.status_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['启用', '停用', '停押']）",
+        name="二级代理狀態下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["启用", "停用", "停押"]
 
 
 @allure.suite("二级代理")
@@ -516,13 +632,28 @@ def test_level2_agent_search_boundary(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("二级代理")
-    ah.search_account("不存在的帳號xyz999")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→二级代理」"):
+        ah.goto()
+        ah.switch_tab("二级代理")
+    with allure.step("輸入一個確定不存在的帳號關鍵字並送出"):
+        ah.search_account("不存在的帳號xyz999")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"查無結果時實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}（期望：顯示）",
+        name="二级代理搜尋查無結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
-    ah.search_account("")
-    assert len(ah.row_account_names()) == 6
+    with allure.step("清空輸入框並再次送出"):
+        ah.search_account("")
+        names = ah.row_account_names()
+    allure.attach(
+        f"清空後實際筆數：{len(names)}（期望：6）",
+        name="二级代理搜尋清空後恢復",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert len(names) == 6
 
 
 @allure.suite("二级代理")
@@ -536,10 +667,19 @@ def test_level2_agent_direct_members_button(company_page):
     oracle 來源：B 級（現況記錄，非正確性判斷）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("二级代理")
-    ah.open_direct_members("aaa222")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→二级代理」"):
+        ah.goto()
+        ah.switch_tab("二级代理")
+    with allure.step("點「aaa222」列的「直属会员」"):
+        ah.open_direct_members("aaa222")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}"
+        "（期望：顯示——aaa222 的下線是間接下線，非直屬會員，現況記錄非缺陷）",
+        name="aaa222 直属会员現況",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
 
 @allure.suite("二级代理")
@@ -550,13 +690,22 @@ def test_level2_agent_operators_dialog(company_page):
     oracle 來源：B 級（結構快照＋現況記錄）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("二级代理")
-    dialog = ah.open_operators_dialog("aaa222")
-    assert dialog.locator("thead th").all_inner_texts() == [
-        "账号", "昵称", "操作员组", "状态", "在线状态", "操作",
-    ]
-    assert "暂无数据" in dialog.inner_text()
+    with allure.step("導覽到「用户管理→二级代理」"):
+        ah.goto()
+        ah.switch_tab("二级代理")
+    with allure.step("點「aaa222」列的「操作员」，讀取彈窗欄位與內容"):
+        dialog = ah.open_operators_dialog("aaa222")
+        headers = dialog.locator("thead th").all_inner_texts()
+        dialog_text = dialog.inner_text()
+    expected_headers = ["账号", "昵称", "操作员组", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected_headers}\n"
+        f"是否含「暂无数据」：{'暂无数据' in dialog_text}（期望：True，現況記錄）",
+        name="aaa222 操作员彈窗結構",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected_headers
+    assert "暂无数据" in dialog_text
 
 
 @allure.suite("二级代理")
@@ -567,16 +716,28 @@ def test_level2_agent_logs_page(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("二级代理")
-    ah.open_logs_page("aaa222")
-
-    op_headers = ah.logs_table_headers()
+    with allure.step("導覽到「用户管理→二级代理」，點「aaa222」列的「日志」（預設落在「操作日志」）"):
+        ah.goto()
+        ah.switch_tab("二级代理")
+        ah.open_logs_page("aaa222")
+        op_headers = ah.logs_table_headers()
+    allure.attach(
+        f"操作日志欄位：{op_headers}（期望包含：操作动作、变更项）",
+        name="aaa222 操作日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert "操作动作" in op_headers and "变更项" in op_headers
 
-    ah.switch_logs_tab("登录日志")
-    login_headers = ah.logs_table_headers()
-    assert login_headers == ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    with allure.step("切換到「登录日志」子頁籤"):
+        ah.switch_logs_tab("登录日志")
+        login_headers = ah.logs_table_headers()
+    expected_login_headers = ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    allure.attach(
+        f"登录日志欄位：{login_headers}（期望：{expected_login_headers}）",
+        name="aaa222 登录日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert login_headers == expected_login_headers
 
 
 @allure.suite("三级代理")
@@ -590,12 +751,19 @@ def test_level3_agent_subordinate_breakdown_sum_matches(company_page):
     oracle 來源：B 級（自檢不變量）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("三级代理")
-    account = "aaa333"
-    collapsed_total = ah.row_collapsed_subordinate_count(account)
-    ah.expand_level_columns()
-    breakdown_sum = ah.row_level_breakdown_sum(account, tier="三级代理")
+    with allure.step("導覽到「用户管理→三级代理」，讀取「aaa333」收合狀態的「下级」欄總數"):
+        ah.goto()
+        ah.switch_tab("三级代理")
+        account = "aaa333"
+        collapsed_total = ah.row_collapsed_subordinate_count(account)
+    with allure.step("點「展开 »」，讀取同一列逐層人數欄並加總"):
+        ah.expand_level_columns()
+        breakdown_sum = ah.row_level_breakdown_sum(account, tier="三级代理")
+    allure.attach(
+        f"收合狀態「下级」欄總數：{collapsed_total}\n逐層人數加總：{breakdown_sum}（期望：兩者相等）",
+        name=f"{account} 逐層人數加總 vs 下级欄總數",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert breakdown_sum == collapsed_total
 
 
@@ -607,10 +775,18 @@ def test_level3_agent_search_by_account(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("三级代理")
-    ah.search_account("aaa333")
-    assert ah.row_account_names() == ["aaa333"]
+    with allure.step("導覽到「用户管理→三级代理」"):
+        ah.goto()
+        ah.switch_tab("三级代理")
+    with allure.step("在「账号/昵称」輸入既有帳號「aaa333」並送出"):
+        ah.search_account("aaa333")
+        names = ah.row_account_names()
+    allure.attach(
+        f"篩選結果實際帳號：{names}（期望：['aaa333']）",
+        name="三级代理帳號搜尋結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert names == ["aaa333"]
 
 
 @allure.suite("三级代理")
@@ -621,12 +797,18 @@ def test_level3_agent_table_columns_present(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("三级代理")
-    assert ah.column_headers() == [
-        "账号", "昵称", "盘口", "额度", "余额", "上级",
-        "三级代理", "下级", "状态", "在线状态", "操作",
-    ]
+    with allure.step("導覽到「用户管理→三级代理」"):
+        ah.goto()
+        ah.switch_tab("三级代理")
+    with allure.step("讀取表格欄位標題（不展開逐層欄）"):
+        headers = ah.column_headers()
+    expected = ["账号", "昵称", "盘口", "额度", "余额", "上级", "三级代理", "下级", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected}",
+        name="三级代理表格欄位",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected
 
 
 @allure.suite("三级代理")
@@ -637,9 +819,17 @@ def test_level3_agent_status_filter_options(company_page):
     oracle 來源：B 級（結構快照）。⚠️ 只驗下拉選單本身，不驗篩選結果——理由同一级代理 C8。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("三级代理")
-    assert ah.status_options() == ["启用", "停用", "停押"]
+    with allure.step("導覽到「用户管理→三级代理」"):
+        ah.goto()
+        ah.switch_tab("三级代理")
+    with allure.step("點開「状态」下拉"):
+        options = ah.status_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['启用', '停用', '停押']）",
+        name="三级代理狀態下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["启用", "停用", "停押"]
 
 
 @allure.suite("三级代理")
@@ -650,13 +840,28 @@ def test_level3_agent_search_boundary(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("三级代理")
-    ah.search_account("不存在的帳號xyz999")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→三级代理」"):
+        ah.goto()
+        ah.switch_tab("三级代理")
+    with allure.step("輸入一個確定不存在的帳號關鍵字並送出"):
+        ah.search_account("不存在的帳號xyz999")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"查無結果時實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}（期望：顯示）",
+        name="三级代理搜尋查無結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
-    ah.search_account("")
-    assert len(ah.row_account_names()) == 3
+    with allure.step("清空輸入框並再次送出"):
+        ah.search_account("")
+        names = ah.row_account_names()
+    allure.attach(
+        f"清空後實際筆數：{len(names)}（期望：3）",
+        name="三级代理搜尋清空後恢復",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert len(names) == 3
 
 
 @allure.suite("三级代理")
@@ -670,10 +875,19 @@ def test_level3_agent_direct_members_button(company_page):
     oracle 來源：B 級（現況記錄，非正確性判斷）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("三级代理")
-    ah.open_direct_members("aaa333")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→三级代理」"):
+        ah.goto()
+        ah.switch_tab("三级代理")
+    with allure.step("點「aaa333」列的「直属会员」"):
+        ah.open_direct_members("aaa333")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}"
+        "（期望：顯示——aaa333 的下線是間接下線，非直屬會員，現況記錄非缺陷）",
+        name="aaa333 直属会员現況",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
 
 @allure.suite("三级代理")
@@ -684,13 +898,22 @@ def test_level3_agent_operators_dialog(company_page):
     oracle 來源：B 級（結構快照＋現況記錄）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("三级代理")
-    dialog = ah.open_operators_dialog("aaa333")
-    assert dialog.locator("thead th").all_inner_texts() == [
-        "账号", "昵称", "操作员组", "状态", "在线状态", "操作",
-    ]
-    assert "暂无数据" in dialog.inner_text()
+    with allure.step("導覽到「用户管理→三级代理」"):
+        ah.goto()
+        ah.switch_tab("三级代理")
+    with allure.step("點「aaa333」列的「操作员」，讀取彈窗欄位與內容"):
+        dialog = ah.open_operators_dialog("aaa333")
+        headers = dialog.locator("thead th").all_inner_texts()
+        dialog_text = dialog.inner_text()
+    expected_headers = ["账号", "昵称", "操作员组", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected_headers}\n"
+        f"是否含「暂无数据」：{'暂无数据' in dialog_text}（期望：True，現況記錄）",
+        name="aaa333 操作员彈窗結構",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected_headers
+    assert "暂无数据" in dialog_text
 
 
 @allure.suite("三级代理")
@@ -701,16 +924,28 @@ def test_level3_agent_logs_page(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("三级代理")
-    ah.open_logs_page("aaa333")
-
-    op_headers = ah.logs_table_headers()
+    with allure.step("導覽到「用户管理→三级代理」，點「aaa333」列的「日志」（預設落在「操作日志」）"):
+        ah.goto()
+        ah.switch_tab("三级代理")
+        ah.open_logs_page("aaa333")
+        op_headers = ah.logs_table_headers()
+    allure.attach(
+        f"操作日志欄位：{op_headers}（期望包含：操作动作、变更项）",
+        name="aaa333 操作日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert "操作动作" in op_headers and "变更项" in op_headers
 
-    ah.switch_logs_tab("登录日志")
-    login_headers = ah.logs_table_headers()
-    assert login_headers == ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    with allure.step("切換到「登录日志」子頁籤"):
+        ah.switch_logs_tab("登录日志")
+        login_headers = ah.logs_table_headers()
+    expected_login_headers = ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    allure.attach(
+        f"登录日志欄位：{login_headers}（期望：{expected_login_headers}）",
+        name="aaa333 登录日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert login_headers == expected_login_headers
 
 
 @allure.suite("四级代理")
@@ -724,12 +959,19 @@ def test_level4_agent_subordinate_breakdown_sum_matches(company_page):
     oracle 來源：B 級（自檢不變量）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("四级代理")
-    account = "aaa444"
-    collapsed_total = ah.row_collapsed_subordinate_count(account)
-    ah.expand_level_columns()
-    breakdown_sum = ah.row_level_breakdown_sum(account, tier="四级代理")
+    with allure.step("導覽到「用户管理→四级代理」，讀取「aaa444」收合狀態的「下级」欄總數"):
+        ah.goto()
+        ah.switch_tab("四级代理")
+        account = "aaa444"
+        collapsed_total = ah.row_collapsed_subordinate_count(account)
+    with allure.step("點「展开 »」，讀取同一列逐層人數欄並加總"):
+        ah.expand_level_columns()
+        breakdown_sum = ah.row_level_breakdown_sum(account, tier="四级代理")
+    allure.attach(
+        f"收合狀態「下级」欄總數：{collapsed_total}\n逐層人數加總：{breakdown_sum}（期望：兩者相等）",
+        name=f"{account} 逐層人數加總 vs 下级欄總數",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert breakdown_sum == collapsed_total
 
 
@@ -741,10 +983,18 @@ def test_level4_agent_search_by_account(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("四级代理")
-    ah.search_account("aaa444")
-    assert ah.row_account_names() == ["aaa444"]
+    with allure.step("導覽到「用户管理→四级代理」"):
+        ah.goto()
+        ah.switch_tab("四级代理")
+    with allure.step("在「账号/昵称」輸入既有帳號「aaa444」並送出"):
+        ah.search_account("aaa444")
+        names = ah.row_account_names()
+    allure.attach(
+        f"篩選結果實際帳號：{names}（期望：['aaa444']）",
+        name="四级代理帳號搜尋結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert names == ["aaa444"]
 
 
 @allure.suite("四级代理")
@@ -755,12 +1005,18 @@ def test_level4_agent_table_columns_present(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("四级代理")
-    assert ah.column_headers() == [
-        "账号", "昵称", "盘口", "额度", "余额", "上级",
-        "四级代理", "下级", "状态", "在线状态", "操作",
-    ]
+    with allure.step("導覽到「用户管理→四级代理」"):
+        ah.goto()
+        ah.switch_tab("四级代理")
+    with allure.step("讀取表格欄位標題（不展開逐層欄）"):
+        headers = ah.column_headers()
+    expected = ["账号", "昵称", "盘口", "额度", "余额", "上级", "四级代理", "下级", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected}",
+        name="四级代理表格欄位",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected
 
 
 @allure.suite("四级代理")
@@ -771,9 +1027,17 @@ def test_level4_agent_status_filter_options(company_page):
     oracle 來源：B 級（結構快照）。⚠️ 只驗下拉選單本身，不驗篩選結果——理由同一级代理 C8。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("四级代理")
-    assert ah.status_options() == ["启用", "停用", "停押"]
+    with allure.step("導覽到「用户管理→四级代理」"):
+        ah.goto()
+        ah.switch_tab("四级代理")
+    with allure.step("點開「状态」下拉"):
+        options = ah.status_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['启用', '停用', '停押']）",
+        name="四级代理狀態下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["启用", "停用", "停押"]
 
 
 @allure.suite("四级代理")
@@ -784,13 +1048,28 @@ def test_level4_agent_search_boundary(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("四级代理")
-    ah.search_account("不存在的帳號xyz999")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→四级代理」"):
+        ah.goto()
+        ah.switch_tab("四级代理")
+    with allure.step("輸入一個確定不存在的帳號關鍵字並送出"):
+        ah.search_account("不存在的帳號xyz999")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"查無結果時實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}（期望：顯示）",
+        name="四级代理搜尋查無結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
-    ah.search_account("")
-    assert len(ah.row_account_names()) == 2
+    with allure.step("清空輸入框並再次送出"):
+        ah.search_account("")
+        names = ah.row_account_names()
+    allure.attach(
+        f"清空後實際筆數：{len(names)}（期望：2）",
+        name="四级代理搜尋清空後恢復",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert len(names) == 2
 
 
 @allure.suite("四级代理")
@@ -804,10 +1083,19 @@ def test_level4_agent_direct_members_button(company_page):
     oracle 來源：B 級（現況記錄，非正確性判斷）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("四级代理")
-    ah.open_direct_members("aaa444")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→四级代理」"):
+        ah.goto()
+        ah.switch_tab("四级代理")
+    with allure.step("點「aaa444」列的「直属会员」"):
+        ah.open_direct_members("aaa444")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}"
+        "（期望：顯示——aaa444 的下線是間接下線，非直屬會員，現況記錄非缺陷）",
+        name="aaa444 直属会员現況",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
 
 @allure.suite("四级代理")
@@ -818,13 +1106,22 @@ def test_level4_agent_operators_dialog(company_page):
     oracle 來源：B 級（結構快照＋現況記錄）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("四级代理")
-    dialog = ah.open_operators_dialog("aaa444")
-    assert dialog.locator("thead th").all_inner_texts() == [
-        "账号", "昵称", "操作员组", "状态", "在线状态", "操作",
-    ]
-    assert "暂无数据" in dialog.inner_text()
+    with allure.step("導覽到「用户管理→四级代理」"):
+        ah.goto()
+        ah.switch_tab("四级代理")
+    with allure.step("點「aaa444」列的「操作员」，讀取彈窗欄位與內容"):
+        dialog = ah.open_operators_dialog("aaa444")
+        headers = dialog.locator("thead th").all_inner_texts()
+        dialog_text = dialog.inner_text()
+    expected_headers = ["账号", "昵称", "操作员组", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected_headers}\n"
+        f"是否含「暂无数据」：{'暂无数据' in dialog_text}（期望：True，現況記錄）",
+        name="aaa444 操作员彈窗結構",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected_headers
+    assert "暂无数据" in dialog_text
 
 
 @allure.suite("四级代理")
@@ -835,16 +1132,28 @@ def test_level4_agent_logs_page(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("四级代理")
-    ah.open_logs_page("aaa444")
-
-    op_headers = ah.logs_table_headers()
+    with allure.step("導覽到「用户管理→四级代理」，點「aaa444」列的「日志」（預設落在「操作日志」）"):
+        ah.goto()
+        ah.switch_tab("四级代理")
+        ah.open_logs_page("aaa444")
+        op_headers = ah.logs_table_headers()
+    allure.attach(
+        f"操作日志欄位：{op_headers}（期望包含：操作动作、变更项）",
+        name="aaa444 操作日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert "操作动作" in op_headers and "变更项" in op_headers
 
-    ah.switch_logs_tab("登录日志")
-    login_headers = ah.logs_table_headers()
-    assert login_headers == ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    with allure.step("切換到「登录日志」子頁籤"):
+        ah.switch_logs_tab("登录日志")
+        login_headers = ah.logs_table_headers()
+    expected_login_headers = ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    allure.attach(
+        f"登录日志欄位：{login_headers}（期望：{expected_login_headers}）",
+        name="aaa444 登录日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert login_headers == expected_login_headers
 
 
 @allure.suite("五级代理")
@@ -858,12 +1167,19 @@ def test_level5_agent_subordinate_breakdown_sum_matches(company_page):
     oracle 來源：B 級（自檢不變量）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("五级代理")
-    account = "aaa555"
-    collapsed_total = ah.row_collapsed_subordinate_count(account)
-    ah.expand_level_columns()
-    breakdown_sum = ah.row_level_breakdown_sum(account, tier="五级代理")
+    with allure.step("導覽到「用户管理→五级代理」，讀取「aaa555」收合狀態的「下级」欄總數"):
+        ah.goto()
+        ah.switch_tab("五级代理")
+        account = "aaa555"
+        collapsed_total = ah.row_collapsed_subordinate_count(account)
+    with allure.step("點「展开 »」，讀取同一列逐層人數欄並加總"):
+        ah.expand_level_columns()
+        breakdown_sum = ah.row_level_breakdown_sum(account, tier="五级代理")
+    allure.attach(
+        f"收合狀態「下级」欄總數：{collapsed_total}\n逐層人數加總：{breakdown_sum}（期望：兩者相等）",
+        name=f"{account} 逐層人數加總 vs 下级欄總數",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert breakdown_sum == collapsed_total
 
 
@@ -875,10 +1191,18 @@ def test_level5_agent_search_by_account(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("五级代理")
-    ah.search_account("aaa555")
-    assert ah.row_account_names() == ["aaa555"]
+    with allure.step("導覽到「用户管理→五级代理」"):
+        ah.goto()
+        ah.switch_tab("五级代理")
+    with allure.step("在「账号/昵称」輸入既有帳號「aaa555」並送出"):
+        ah.search_account("aaa555")
+        names = ah.row_account_names()
+    allure.attach(
+        f"篩選結果實際帳號：{names}（期望：['aaa555']）",
+        name="五级代理帳號搜尋結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert names == ["aaa555"]
 
 
 @allure.suite("五级代理")
@@ -889,12 +1213,18 @@ def test_level5_agent_table_columns_present(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("五级代理")
-    assert ah.column_headers() == [
-        "账号", "昵称", "盘口", "额度", "余额", "上级",
-        "五级代理", "下级", "状态", "在线状态", "操作",
-    ]
+    with allure.step("導覽到「用户管理→五级代理」"):
+        ah.goto()
+        ah.switch_tab("五级代理")
+    with allure.step("讀取表格欄位標題（不展開逐層欄）"):
+        headers = ah.column_headers()
+    expected = ["账号", "昵称", "盘口", "额度", "余额", "上级", "五级代理", "下级", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected}",
+        name="五级代理表格欄位",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected
 
 
 @allure.suite("五级代理")
@@ -905,9 +1235,17 @@ def test_level5_agent_status_filter_options(company_page):
     oracle 來源：B 級（結構快照）。⚠️ 只驗下拉選單本身，不驗篩選結果——理由同一级代理 C8。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("五级代理")
-    assert ah.status_options() == ["启用", "停用", "停押"]
+    with allure.step("導覽到「用户管理→五级代理」"):
+        ah.goto()
+        ah.switch_tab("五级代理")
+    with allure.step("點開「状态」下拉"):
+        options = ah.status_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['启用', '停用', '停押']）",
+        name="五级代理狀態下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["启用", "停用", "停押"]
 
 
 @allure.suite("五级代理")
@@ -918,13 +1256,28 @@ def test_level5_agent_search_boundary(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("五级代理")
-    ah.search_account("不存在的帳號xyz999")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→五级代理」"):
+        ah.goto()
+        ah.switch_tab("五级代理")
+    with allure.step("輸入一個確定不存在的帳號關鍵字並送出"):
+        ah.search_account("不存在的帳號xyz999")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"查無結果時實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}（期望：顯示）",
+        name="五级代理搜尋查無結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
-    ah.search_account("")
-    assert len(ah.row_account_names()) == 2
+    with allure.step("清空輸入框並再次送出"):
+        ah.search_account("")
+        names = ah.row_account_names()
+    allure.attach(
+        f"清空後實際筆數：{len(names)}（期望：2）",
+        name="五级代理搜尋清空後恢復",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert len(names) == 2
 
 
 @allure.suite("五级代理")
@@ -938,10 +1291,19 @@ def test_level5_agent_direct_members_button(company_page):
     oracle 來源：B 級（現況記錄，非正確性判斷）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("五级代理")
-    ah.open_direct_members("aaa555")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→五级代理」"):
+        ah.goto()
+        ah.switch_tab("五级代理")
+    with allure.step("點「aaa555」列的「直属会员」"):
+        ah.open_direct_members("aaa555")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}"
+        "（期望：顯示——aaa555 的下線是間接下線，非直屬會員，現況記錄非缺陷）",
+        name="aaa555 直属会员現況",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
 
 @allure.suite("五级代理")
@@ -952,13 +1314,22 @@ def test_level5_agent_operators_dialog(company_page):
     oracle 來源：B 級（結構快照＋現況記錄）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("五级代理")
-    dialog = ah.open_operators_dialog("aaa555")
-    assert dialog.locator("thead th").all_inner_texts() == [
-        "账号", "昵称", "操作员组", "状态", "在线状态", "操作",
-    ]
-    assert "暂无数据" in dialog.inner_text()
+    with allure.step("導覽到「用户管理→五级代理」"):
+        ah.goto()
+        ah.switch_tab("五级代理")
+    with allure.step("點「aaa555」列的「操作员」，讀取彈窗欄位與內容"):
+        dialog = ah.open_operators_dialog("aaa555")
+        headers = dialog.locator("thead th").all_inner_texts()
+        dialog_text = dialog.inner_text()
+    expected_headers = ["账号", "昵称", "操作员组", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected_headers}\n"
+        f"是否含「暂无数据」：{'暂无数据' in dialog_text}（期望：True，現況記錄）",
+        name="aaa555 操作员彈窗結構",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected_headers
+    assert "暂无数据" in dialog_text
 
 
 @allure.suite("五级代理")
@@ -969,16 +1340,28 @@ def test_level5_agent_logs_page(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("五级代理")
-    ah.open_logs_page("aaa555")
-
-    op_headers = ah.logs_table_headers()
+    with allure.step("導覽到「用户管理→五级代理」，點「aaa555」列的「日志」（預設落在「操作日志」）"):
+        ah.goto()
+        ah.switch_tab("五级代理")
+        ah.open_logs_page("aaa555")
+        op_headers = ah.logs_table_headers()
+    allure.attach(
+        f"操作日志欄位：{op_headers}（期望包含：操作动作、变更项）",
+        name="aaa555 操作日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert "操作动作" in op_headers and "变更项" in op_headers
 
-    ah.switch_logs_tab("登录日志")
-    login_headers = ah.logs_table_headers()
-    assert login_headers == ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    with allure.step("切換到「登录日志」子頁籤"):
+        ah.switch_logs_tab("登录日志")
+        login_headers = ah.logs_table_headers()
+    expected_login_headers = ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    allure.attach(
+        f"登录日志欄位：{login_headers}（期望：{expected_login_headers}）",
+        name="aaa555 登录日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert login_headers == expected_login_headers
 
 
 @allure.suite("六级代理")
@@ -992,12 +1375,19 @@ def test_level6_agent_subordinate_breakdown_sum_matches(company_page):
     oracle 來源：B 級（自檢不變量）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("六级代理")
-    account = "aaa666"
-    collapsed_total = ah.row_collapsed_subordinate_count(account)
-    ah.expand_level_columns()
-    breakdown_sum = ah.row_level_breakdown_sum(account, tier="六级代理")
+    with allure.step("導覽到「用户管理→六级代理」，讀取「aaa666」收合狀態的「下级」欄總數"):
+        ah.goto()
+        ah.switch_tab("六级代理")
+        account = "aaa666"
+        collapsed_total = ah.row_collapsed_subordinate_count(account)
+    with allure.step("點「展开 »」，讀取同一列逐層人數欄並加總"):
+        ah.expand_level_columns()
+        breakdown_sum = ah.row_level_breakdown_sum(account, tier="六级代理")
+    allure.attach(
+        f"收合狀態「下级」欄總數：{collapsed_total}\n逐層人數加總：{breakdown_sum}（期望：兩者相等）",
+        name=f"{account} 逐層人數加總 vs 下级欄總數",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert breakdown_sum == collapsed_total
 
 
@@ -1009,10 +1399,18 @@ def test_level6_agent_search_by_account(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("六级代理")
-    ah.search_account("aaa666")
-    assert ah.row_account_names() == ["aaa666"]
+    with allure.step("導覽到「用户管理→六级代理」"):
+        ah.goto()
+        ah.switch_tab("六级代理")
+    with allure.step("在「账号/昵称」輸入既有帳號「aaa666」並送出"):
+        ah.search_account("aaa666")
+        names = ah.row_account_names()
+    allure.attach(
+        f"篩選結果實際帳號：{names}（期望：['aaa666']）",
+        name="六级代理帳號搜尋結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert names == ["aaa666"]
 
 
 @allure.suite("六级代理")
@@ -1023,12 +1421,18 @@ def test_level6_agent_table_columns_present(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("六级代理")
-    assert ah.column_headers() == [
-        "账号", "昵称", "盘口", "额度", "余额", "上级",
-        "六级代理", "下级", "状态", "在线状态", "操作",
-    ]
+    with allure.step("導覽到「用户管理→六级代理」"):
+        ah.goto()
+        ah.switch_tab("六级代理")
+    with allure.step("讀取表格欄位標題（不展開逐層欄）"):
+        headers = ah.column_headers()
+    expected = ["账号", "昵称", "盘口", "额度", "余额", "上级", "六级代理", "下级", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected}",
+        name="六级代理表格欄位",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected
 
 
 @allure.suite("六级代理")
@@ -1039,9 +1443,17 @@ def test_level6_agent_status_filter_options(company_page):
     oracle 來源：B 級（結構快照）。⚠️ 只驗下拉選單本身，不驗篩選結果——理由同一级代理 C8。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("六级代理")
-    assert ah.status_options() == ["启用", "停用", "停押"]
+    with allure.step("導覽到「用户管理→六级代理」"):
+        ah.goto()
+        ah.switch_tab("六级代理")
+    with allure.step("點開「状态」下拉"):
+        options = ah.status_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['启用', '停用', '停押']）",
+        name="六级代理狀態下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["启用", "停用", "停押"]
 
 
 @allure.suite("六级代理")
@@ -1052,13 +1464,28 @@ def test_level6_agent_search_boundary(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("六级代理")
-    ah.search_account("不存在的帳號xyz999")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→六级代理」"):
+        ah.goto()
+        ah.switch_tab("六级代理")
+    with allure.step("輸入一個確定不存在的帳號關鍵字並送出"):
+        ah.search_account("不存在的帳號xyz999")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"查無結果時實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}（期望：顯示）",
+        name="六级代理搜尋查無結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
-    ah.search_account("")
-    assert len(ah.row_account_names()) == 2
+    with allure.step("清空輸入框並再次送出"):
+        ah.search_account("")
+        names = ah.row_account_names()
+    allure.attach(
+        f"清空後實際筆數：{len(names)}（期望：2）",
+        name="六级代理搜尋清空後恢復",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert len(names) == 2
 
 
 @allure.suite("六级代理")
@@ -1072,10 +1499,19 @@ def test_level6_agent_direct_members_button(company_page):
     oracle 來源：B 級（現況記錄，非正確性判斷）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("六级代理")
-    ah.open_direct_members("aaa666")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→六级代理」"):
+        ah.goto()
+        ah.switch_tab("六级代理")
+    with allure.step("點「aaa666」列的「直属会员」"):
+        ah.open_direct_members("aaa666")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}"
+        "（期望：顯示——aaa666 的下線是間接下線，非直屬會員，現況記錄非缺陷）",
+        name="aaa666 直属会员現況",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
 
 @allure.suite("六级代理")
@@ -1086,13 +1522,22 @@ def test_level6_agent_operators_dialog(company_page):
     oracle 來源：B 級（結構快照＋現況記錄）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("六级代理")
-    dialog = ah.open_operators_dialog("aaa666")
-    assert dialog.locator("thead th").all_inner_texts() == [
-        "账号", "昵称", "操作员组", "状态", "在线状态", "操作",
-    ]
-    assert "暂无数据" in dialog.inner_text()
+    with allure.step("導覽到「用户管理→六级代理」"):
+        ah.goto()
+        ah.switch_tab("六级代理")
+    with allure.step("點「aaa666」列的「操作员」，讀取彈窗欄位與內容"):
+        dialog = ah.open_operators_dialog("aaa666")
+        headers = dialog.locator("thead th").all_inner_texts()
+        dialog_text = dialog.inner_text()
+    expected_headers = ["账号", "昵称", "操作员组", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected_headers}\n"
+        f"是否含「暂无数据」：{'暂无数据' in dialog_text}（期望：True，現況記錄）",
+        name="aaa666 操作员彈窗結構",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected_headers
+    assert "暂无数据" in dialog_text
 
 
 @allure.suite("六级代理")
@@ -1103,16 +1548,28 @@ def test_level6_agent_logs_page(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("六级代理")
-    ah.open_logs_page("aaa666")
-
-    op_headers = ah.logs_table_headers()
+    with allure.step("導覽到「用户管理→六级代理」，點「aaa666」列的「日志」（預設落在「操作日志」）"):
+        ah.goto()
+        ah.switch_tab("六级代理")
+        ah.open_logs_page("aaa666")
+        op_headers = ah.logs_table_headers()
+    allure.attach(
+        f"操作日志欄位：{op_headers}（期望包含：操作动作、变更项）",
+        name="aaa666 操作日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert "操作动作" in op_headers and "变更项" in op_headers
 
-    ah.switch_logs_tab("登录日志")
-    login_headers = ah.logs_table_headers()
-    assert login_headers == ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    with allure.step("切換到「登录日志」子頁籤"):
+        ah.switch_logs_tab("登录日志")
+        login_headers = ah.logs_table_headers()
+    expected_login_headers = ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    allure.attach(
+        f"登录日志欄位：{login_headers}（期望：{expected_login_headers}）",
+        name="aaa666 登录日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert login_headers == expected_login_headers
 
 
 @allure.suite("七级代理")
@@ -1126,12 +1583,19 @@ def test_level7_agent_subordinate_breakdown_sum_matches(company_page):
     oracle 來源：B 級（自檢不變量）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("七级代理")
-    account = "aaa777"
-    collapsed_total = ah.row_collapsed_subordinate_count(account)
-    ah.expand_level_columns()
-    breakdown_sum = ah.row_level_breakdown_sum(account, tier="七级代理")
+    with allure.step("導覽到「用户管理→七级代理」，讀取「aaa777」收合狀態的「下级」欄總數"):
+        ah.goto()
+        ah.switch_tab("七级代理")
+        account = "aaa777"
+        collapsed_total = ah.row_collapsed_subordinate_count(account)
+    with allure.step("點「展开 »」，讀取同一列逐層人數欄並加總"):
+        ah.expand_level_columns()
+        breakdown_sum = ah.row_level_breakdown_sum(account, tier="七级代理")
+    allure.attach(
+        f"收合狀態「下级」欄總數：{collapsed_total}\n逐層人數加總：{breakdown_sum}（期望：兩者相等）",
+        name=f"{account} 逐層人數加總 vs 下级欄總數",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert breakdown_sum == collapsed_total
 
 
@@ -1143,10 +1607,18 @@ def test_level7_agent_search_by_account(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("七级代理")
-    ah.search_account("aaa777")
-    assert ah.row_account_names() == ["aaa777"]
+    with allure.step("導覽到「用户管理→七级代理」"):
+        ah.goto()
+        ah.switch_tab("七级代理")
+    with allure.step("在「账号/昵称」輸入既有帳號「aaa777」並送出"):
+        ah.search_account("aaa777")
+        names = ah.row_account_names()
+    allure.attach(
+        f"篩選結果實際帳號：{names}（期望：['aaa777']）",
+        name="七级代理帳號搜尋結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert names == ["aaa777"]
 
 
 @allure.suite("七级代理")
@@ -1157,12 +1629,18 @@ def test_level7_agent_table_columns_present(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("七级代理")
-    assert ah.column_headers() == [
-        "账号", "昵称", "盘口", "额度", "余额", "上级",
-        "七级代理", "下级", "状态", "在线状态", "操作",
-    ]
+    with allure.step("導覽到「用户管理→七级代理」"):
+        ah.goto()
+        ah.switch_tab("七级代理")
+    with allure.step("讀取表格欄位標題（不展開逐層欄）"):
+        headers = ah.column_headers()
+    expected = ["账号", "昵称", "盘口", "额度", "余额", "上级", "七级代理", "下级", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected}",
+        name="七级代理表格欄位",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected
 
 
 @allure.suite("七级代理")
@@ -1173,9 +1651,17 @@ def test_level7_agent_status_filter_options(company_page):
     oracle 來源：B 級（結構快照）。⚠️ 只驗下拉選單本身，不驗篩選結果——理由同一级代理 C8。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("七级代理")
-    assert ah.status_options() == ["启用", "停用", "停押"]
+    with allure.step("導覽到「用户管理→七级代理」"):
+        ah.goto()
+        ah.switch_tab("七级代理")
+    with allure.step("點開「状态」下拉"):
+        options = ah.status_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['启用', '停用', '停押']）",
+        name="七级代理狀態下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["启用", "停用", "停押"]
 
 
 @allure.suite("七级代理")
@@ -1186,13 +1672,28 @@ def test_level7_agent_search_boundary(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("七级代理")
-    ah.search_account("不存在的帳號xyz999")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→七级代理」"):
+        ah.goto()
+        ah.switch_tab("七级代理")
+    with allure.step("輸入一個確定不存在的帳號關鍵字並送出"):
+        ah.search_account("不存在的帳號xyz999")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"查無結果時實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}（期望：顯示）",
+        name="七级代理搜尋查無結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
-    ah.search_account("")
-    assert len(ah.row_account_names()) == 2
+    with allure.step("清空輸入框並再次送出"):
+        ah.search_account("")
+        names = ah.row_account_names()
+    allure.attach(
+        f"清空後實際筆數：{len(names)}（期望：2）",
+        name="七级代理搜尋清空後恢復",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert len(names) == 2
 
 
 @allure.suite("七级代理")
@@ -1206,10 +1707,19 @@ def test_level7_agent_direct_members_button(company_page):
     oracle 來源：B 級（現況記錄，非正確性判斷）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("七级代理")
-    ah.open_direct_members("aaa777")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→七级代理」"):
+        ah.goto()
+        ah.switch_tab("七级代理")
+    with allure.step("點「aaa777」列的「直属会员」"):
+        ah.open_direct_members("aaa777")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}"
+        "（期望：顯示——aaa777 的下線是間接下線，非直屬會員，現況記錄非缺陷）",
+        name="aaa777 直属会员現況",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
 
 @allure.suite("七级代理")
@@ -1220,13 +1730,22 @@ def test_level7_agent_operators_dialog(company_page):
     oracle 來源：B 級（結構快照＋現況記錄）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("七级代理")
-    dialog = ah.open_operators_dialog("aaa777")
-    assert dialog.locator("thead th").all_inner_texts() == [
-        "账号", "昵称", "操作员组", "状态", "在线状态", "操作",
-    ]
-    assert "暂无数据" in dialog.inner_text()
+    with allure.step("導覽到「用户管理→七级代理」"):
+        ah.goto()
+        ah.switch_tab("七级代理")
+    with allure.step("點「aaa777」列的「操作员」，讀取彈窗欄位與內容"):
+        dialog = ah.open_operators_dialog("aaa777")
+        headers = dialog.locator("thead th").all_inner_texts()
+        dialog_text = dialog.inner_text()
+    expected_headers = ["账号", "昵称", "操作员组", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected_headers}\n"
+        f"是否含「暂无数据」：{'暂无数据' in dialog_text}（期望：True，現況記錄）",
+        name="aaa777 操作员彈窗結構",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected_headers
+    assert "暂无数据" in dialog_text
 
 
 @allure.suite("七级代理")
@@ -1237,16 +1756,28 @@ def test_level7_agent_logs_page(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("七级代理")
-    ah.open_logs_page("aaa777")
-
-    op_headers = ah.logs_table_headers()
+    with allure.step("導覽到「用户管理→七级代理」，點「aaa777」列的「日志」（預設落在「操作日志」）"):
+        ah.goto()
+        ah.switch_tab("七级代理")
+        ah.open_logs_page("aaa777")
+        op_headers = ah.logs_table_headers()
+    allure.attach(
+        f"操作日志欄位：{op_headers}（期望包含：操作动作、变更项）",
+        name="aaa777 操作日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert "操作动作" in op_headers and "变更项" in op_headers
 
-    ah.switch_logs_tab("登录日志")
-    login_headers = ah.logs_table_headers()
-    assert login_headers == ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    with allure.step("切換到「登录日志」子頁籤"):
+        ah.switch_logs_tab("登录日志")
+        login_headers = ah.logs_table_headers()
+    expected_login_headers = ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    allure.attach(
+        f"登录日志欄位：{login_headers}（期望：{expected_login_headers}）",
+        name="aaa777 登录日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert login_headers == expected_login_headers
 
 
 @allure.suite("八级代理")
@@ -1260,12 +1791,19 @@ def test_level8_agent_subordinate_breakdown_sum_matches(company_page):
     oracle 來源：B 級（自檢不變量）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("八级代理")
-    account = "aaa888"
-    collapsed_total = ah.row_collapsed_subordinate_count(account)
-    ah.expand_level_columns()
-    breakdown_sum = ah.row_level_breakdown_sum(account, tier="八级代理")
+    with allure.step("導覽到「用户管理→八级代理」，讀取「aaa888」收合狀態的「下级」欄總數"):
+        ah.goto()
+        ah.switch_tab("八级代理")
+        account = "aaa888"
+        collapsed_total = ah.row_collapsed_subordinate_count(account)
+    with allure.step("點「展开 »」，讀取同一列逐層人數欄並加總"):
+        ah.expand_level_columns()
+        breakdown_sum = ah.row_level_breakdown_sum(account, tier="八级代理")
+    allure.attach(
+        f"收合狀態「下级」欄總數：{collapsed_total}\n逐層人數加總：{breakdown_sum}（期望：兩者相等）",
+        name=f"{account} 逐層人數加總 vs 下级欄總數",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert breakdown_sum == collapsed_total
 
 
@@ -1277,10 +1815,18 @@ def test_level8_agent_search_by_account(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("八级代理")
-    ah.search_account("aaa888")
-    assert ah.row_account_names() == ["aaa888"]
+    with allure.step("導覽到「用户管理→八级代理」"):
+        ah.goto()
+        ah.switch_tab("八级代理")
+    with allure.step("在「账号/昵称」輸入既有帳號「aaa888」並送出"):
+        ah.search_account("aaa888")
+        names = ah.row_account_names()
+    allure.attach(
+        f"篩選結果實際帳號：{names}（期望：['aaa888']）",
+        name="八级代理帳號搜尋結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert names == ["aaa888"]
 
 
 @allure.suite("八级代理")
@@ -1291,12 +1837,18 @@ def test_level8_agent_table_columns_present(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("八级代理")
-    assert ah.column_headers() == [
-        "账号", "昵称", "盘口", "额度", "余额", "上级",
-        "八级代理", "下级", "状态", "在线状态", "操作",
-    ]
+    with allure.step("導覽到「用户管理→八级代理」"):
+        ah.goto()
+        ah.switch_tab("八级代理")
+    with allure.step("讀取表格欄位標題（不展開逐層欄）"):
+        headers = ah.column_headers()
+    expected = ["账号", "昵称", "盘口", "额度", "余额", "上级", "八级代理", "下级", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected}",
+        name="八级代理表格欄位",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected
 
 
 @allure.suite("八级代理")
@@ -1307,9 +1859,17 @@ def test_level8_agent_status_filter_options(company_page):
     oracle 來源：B 級（結構快照）。⚠️ 只驗下拉選單本身，不驗篩選結果——理由同一级代理 C8。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("八级代理")
-    assert ah.status_options() == ["启用", "停用", "停押"]
+    with allure.step("導覽到「用户管理→八级代理」"):
+        ah.goto()
+        ah.switch_tab("八级代理")
+    with allure.step("點開「状态」下拉"):
+        options = ah.status_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['启用', '停用', '停押']）",
+        name="八级代理狀態下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["启用", "停用", "停押"]
 
 
 @allure.suite("八级代理")
@@ -1320,13 +1880,28 @@ def test_level8_agent_search_boundary(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("八级代理")
-    ah.search_account("不存在的帳號xyz999")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→八级代理」"):
+        ah.goto()
+        ah.switch_tab("八级代理")
+    with allure.step("輸入一個確定不存在的帳號關鍵字並送出"):
+        ah.search_account("不存在的帳號xyz999")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"查無結果時實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}（期望：顯示）",
+        name="八级代理搜尋查無結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
-    ah.search_account("")
-    assert len(ah.row_account_names()) == 2
+    with allure.step("清空輸入框並再次送出"):
+        ah.search_account("")
+        names = ah.row_account_names()
+    allure.attach(
+        f"清空後實際筆數：{len(names)}（期望：2）",
+        name="八级代理搜尋清空後恢復",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert len(names) == 2
 
 
 @allure.suite("八级代理")
@@ -1340,10 +1915,19 @@ def test_level8_agent_direct_members_button(company_page):
     oracle 來源：B 級（現況記錄，非正確性判斷）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("八级代理")
-    ah.open_direct_members("aaa888")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→八级代理」"):
+        ah.goto()
+        ah.switch_tab("八级代理")
+    with allure.step("點「aaa888」列的「直属会员」"):
+        ah.open_direct_members("aaa888")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}"
+        "（期望：顯示——aaa888 的下線是間接下線，非直屬會員，現況記錄非缺陷）",
+        name="aaa888 直属会员現況",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
 
 @allure.suite("八级代理")
@@ -1354,13 +1938,22 @@ def test_level8_agent_operators_dialog(company_page):
     oracle 來源：B 級（結構快照＋現況記錄）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("八级代理")
-    dialog = ah.open_operators_dialog("aaa888")
-    assert dialog.locator("thead th").all_inner_texts() == [
-        "账号", "昵称", "操作员组", "状态", "在线状态", "操作",
-    ]
-    assert "暂无数据" in dialog.inner_text()
+    with allure.step("導覽到「用户管理→八级代理」"):
+        ah.goto()
+        ah.switch_tab("八级代理")
+    with allure.step("點「aaa888」列的「操作员」，讀取彈窗欄位與內容"):
+        dialog = ah.open_operators_dialog("aaa888")
+        headers = dialog.locator("thead th").all_inner_texts()
+        dialog_text = dialog.inner_text()
+    expected_headers = ["账号", "昵称", "操作员组", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected_headers}\n"
+        f"是否含「暂无数据」：{'暂无数据' in dialog_text}（期望：True，現況記錄）",
+        name="aaa888 操作员彈窗結構",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected_headers
+    assert "暂无数据" in dialog_text
 
 
 @allure.suite("八级代理")
@@ -1371,16 +1964,28 @@ def test_level8_agent_logs_page(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("八级代理")
-    ah.open_logs_page("aaa888")
-
-    op_headers = ah.logs_table_headers()
+    with allure.step("導覽到「用户管理→八级代理」，點「aaa888」列的「日志」（預設落在「操作日志」）"):
+        ah.goto()
+        ah.switch_tab("八级代理")
+        ah.open_logs_page("aaa888")
+        op_headers = ah.logs_table_headers()
+    allure.attach(
+        f"操作日志欄位：{op_headers}（期望包含：操作动作、变更项）",
+        name="aaa888 操作日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert "操作动作" in op_headers and "变更项" in op_headers
 
-    ah.switch_logs_tab("登录日志")
-    login_headers = ah.logs_table_headers()
-    assert login_headers == ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    with allure.step("切換到「登录日志」子頁籤"):
+        ah.switch_logs_tab("登录日志")
+        login_headers = ah.logs_table_headers()
+    expected_login_headers = ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    allure.attach(
+        f"登录日志欄位：{login_headers}（期望：{expected_login_headers}）",
+        name="aaa888 登录日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert login_headers == expected_login_headers
 
 
 @allure.suite("九级代理")
@@ -1394,12 +1999,19 @@ def test_level9_agent_subordinate_breakdown_sum_matches(company_page):
     oracle 來源：B 級（自檢不變量）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("九级代理")
-    account = "aaa999"
-    collapsed_total = ah.row_collapsed_subordinate_count(account)
-    ah.expand_level_columns()
-    breakdown_sum = ah.row_level_breakdown_sum(account, tier="九级代理")
+    with allure.step("導覽到「用户管理→九级代理」，讀取「aaa999」收合狀態的「下级」欄總數"):
+        ah.goto()
+        ah.switch_tab("九级代理")
+        account = "aaa999"
+        collapsed_total = ah.row_collapsed_subordinate_count(account)
+    with allure.step("點「展开 »」，讀取同一列逐層人數欄並加總"):
+        ah.expand_level_columns()
+        breakdown_sum = ah.row_level_breakdown_sum(account, tier="九级代理")
+    allure.attach(
+        f"收合狀態「下级」欄總數：{collapsed_total}\n逐層人數加總：{breakdown_sum}（期望：兩者相等）",
+        name=f"{account} 逐層人數加總 vs 下级欄總數",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert breakdown_sum == collapsed_total
 
 
@@ -1411,10 +2023,18 @@ def test_level9_agent_search_by_account(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("九级代理")
-    ah.search_account("aaa999")
-    assert ah.row_account_names() == ["aaa999"]
+    with allure.step("導覽到「用户管理→九级代理」"):
+        ah.goto()
+        ah.switch_tab("九级代理")
+    with allure.step("在「账号/昵称」輸入既有帳號「aaa999」並送出"):
+        ah.search_account("aaa999")
+        names = ah.row_account_names()
+    allure.attach(
+        f"篩選結果實際帳號：{names}（期望：['aaa999']）",
+        name="九级代理帳號搜尋結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert names == ["aaa999"]
 
 
 @allure.suite("九级代理")
@@ -1425,12 +2045,18 @@ def test_level9_agent_table_columns_present(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("九级代理")
-    assert ah.column_headers() == [
-        "账号", "昵称", "盘口", "额度", "余额", "上级",
-        "九级代理", "下级", "状态", "在线状态", "操作",
-    ]
+    with allure.step("導覽到「用户管理→九级代理」"):
+        ah.goto()
+        ah.switch_tab("九级代理")
+    with allure.step("讀取表格欄位標題（不展開逐層欄）"):
+        headers = ah.column_headers()
+    expected = ["账号", "昵称", "盘口", "额度", "余额", "上级", "九级代理", "下级", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected}",
+        name="九级代理表格欄位",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected
 
 
 @allure.suite("九级代理")
@@ -1441,9 +2067,17 @@ def test_level9_agent_status_filter_options(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("九级代理")
-    assert ah.status_options() == ["启用", "停用", "停押"]
+    with allure.step("導覽到「用户管理→九级代理」"):
+        ah.goto()
+        ah.switch_tab("九级代理")
+    with allure.step("點開「状态」下拉"):
+        options = ah.status_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['启用', '停用', '停押']）",
+        name="九级代理狀態下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["启用", "停用", "停押"]
 
 
 @allure.suite("九级代理")
@@ -1454,13 +2088,28 @@ def test_level9_agent_search_boundary(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("九级代理")
-    ah.search_account("不存在的帳號xyz999")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→九级代理」"):
+        ah.goto()
+        ah.switch_tab("九级代理")
+    with allure.step("輸入一個確定不存在的帳號關鍵字並送出"):
+        ah.search_account("不存在的帳號xyz999")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"查無結果時實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}（期望：顯示）",
+        name="九级代理搜尋查無結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
-    ah.search_account("")
-    assert len(ah.row_account_names()) == 2
+    with allure.step("清空輸入框並再次送出"):
+        ah.search_account("")
+        names = ah.row_account_names()
+    allure.attach(
+        f"清空後實際筆數：{len(names)}（期望：2）",
+        name="九级代理搜尋清空後恢復",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert len(names) == 2
 
 
 @allure.suite("九级代理")
@@ -1471,13 +2120,22 @@ def test_level9_agent_operators_dialog(company_page):
     oracle 來源：B 級（結構快照＋現況記錄）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("九级代理")
-    dialog = ah.open_operators_dialog("aaa999")
-    assert dialog.locator("thead th").all_inner_texts() == [
-        "账号", "昵称", "操作员组", "状态", "在线状态", "操作",
-    ]
-    assert "暂无数据" in dialog.inner_text()
+    with allure.step("導覽到「用户管理→九级代理」"):
+        ah.goto()
+        ah.switch_tab("九级代理")
+    with allure.step("點「aaa999」列的「操作员」，讀取彈窗欄位與內容"):
+        dialog = ah.open_operators_dialog("aaa999")
+        headers = dialog.locator("thead th").all_inner_texts()
+        dialog_text = dialog.inner_text()
+    expected_headers = ["账号", "昵称", "操作员组", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected_headers}\n"
+        f"是否含「暂无数据」：{'暂无数据' in dialog_text}（期望：True，現況記錄）",
+        name="aaa999 操作员彈窗結構",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected_headers
+    assert "暂无数据" in dialog_text
 
 
 @allure.suite("九级代理")
@@ -1488,16 +2146,28 @@ def test_level9_agent_logs_page(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("九级代理")
-    ah.open_logs_page("aaa999")
-
-    op_headers = ah.logs_table_headers()
+    with allure.step("導覽到「用户管理→九级代理」，點「aaa999」列的「日志」（預設落在「操作日志」）"):
+        ah.goto()
+        ah.switch_tab("九级代理")
+        ah.open_logs_page("aaa999")
+        op_headers = ah.logs_table_headers()
+    allure.attach(
+        f"操作日志欄位：{op_headers}（期望包含：操作动作、变更项）",
+        name="aaa999 操作日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert "操作动作" in op_headers and "变更项" in op_headers
 
-    ah.switch_logs_tab("登录日志")
-    login_headers = ah.logs_table_headers()
-    assert login_headers == ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    with allure.step("切換到「登录日志」子頁籤"):
+        ah.switch_logs_tab("登录日志")
+        login_headers = ah.logs_table_headers()
+    expected_login_headers = ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    allure.attach(
+        f"登录日志欄位：{login_headers}（期望：{expected_login_headers}）",
+        name="aaa999 登录日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert login_headers == expected_login_headers
 
 
 @allure.suite("九级代理")
@@ -1517,9 +2187,17 @@ def test_level9_agent_no_direct_members_button(company_page):
     避免之後有人以為「一级代理有的按鈕，其餘代理層級應該也都有」而誤判為缺陷）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("九级代理")
-    assert ah.row_action_names("aaa999") == ["编辑", "操作员", "日志"]
+    with allure.step("導覽到「用户管理→九级代理」"):
+        ah.goto()
+        ah.switch_tab("九级代理")
+    with allure.step("讀取「aaa999」列操作欄的按鈕清單"):
+        actions = ah.row_action_names("aaa999")
+    allure.attach(
+        f"實際按鈕：{actions}（期望：['编辑', '操作员', '日志']，不含「直属会员」）",
+        name="九级代理操作欄按鈕",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert actions == ["编辑", "操作员", "日志"]
 
 
 @allure.suite("会员")
@@ -1530,10 +2208,18 @@ def test_member_search_by_account(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("会员")
-    ah.search_account("aaa010")
-    assert ah.row_account_names() == ["aaa010"]
+    with allure.step("導覽到「用户管理→会员」"):
+        ah.goto()
+        ah.switch_tab("会员")
+    with allure.step("在「账号/昵称」輸入既有帳號「aaa010」並送出"):
+        ah.search_account("aaa010")
+        names = ah.row_account_names()
+    allure.attach(
+        f"篩選結果實際帳號：{names}（期望：['aaa010']）",
+        name="会员帳號搜尋結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert names == ["aaa010"]
 
 
 @allure.suite("会员")
@@ -1547,12 +2233,18 @@ def test_member_table_columns_present(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("会员")
-    assert ah.column_headers() == [
-        "账号", "昵称", "盘口", "额度", "余额", "上级",
-        "状态", "在线状态", "操作",
-    ]
+    with allure.step("導覽到「用户管理→会员」"):
+        ah.goto()
+        ah.switch_tab("会员")
+    with allure.step("讀取表格欄位標題"):
+        headers = ah.column_headers()
+    expected = ["账号", "昵称", "盘口", "额度", "余额", "上级", "状态", "在线状态", "操作"]
+    allure.attach(
+        f"實際欄位：{headers}\n期望欄位：{expected}",
+        name="会员表格欄位",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert headers == expected
 
 
 @allure.suite("会员")
@@ -1563,9 +2255,17 @@ def test_member_status_filter_options(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("会员")
-    assert ah.status_options() == ["启用", "停用", "停押"]
+    with allure.step("導覽到「用户管理→会员」"):
+        ah.goto()
+        ah.switch_tab("会员")
+    with allure.step("點開「状态」下拉"):
+        options = ah.status_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['启用', '停用', '停押']）",
+        name="会员狀態下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["启用", "停用", "停押"]
 
 
 @allure.suite("会员")
@@ -1576,13 +2276,28 @@ def test_member_search_boundary(company_page):
     oracle 來源：B 級（自檢一致性）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("会员")
-    ah.search_account("不存在的帳號xyz999")
-    assert ah.shows_no_data()
+    with allure.step("導覽到「用户管理→会员」"):
+        ah.goto()
+        ah.switch_tab("会员")
+    with allure.step("輸入一個確定不存在的帳號關鍵字並送出"):
+        ah.search_account("不存在的帳號xyz999")
+        no_data = ah.shows_no_data()
+    allure.attach(
+        f"查無結果時實際：{'顯示「暂无数据」' if no_data else '沒有顯示「暂无数据」'}（期望：顯示）",
+        name="会员搜尋查無結果",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert no_data
 
-    ah.search_account("")
-    assert len(ah.row_account_names()) == 17
+    with allure.step("清空輸入框並再次送出"):
+        ah.search_account("")
+        names = ah.row_account_names()
+    allure.attach(
+        f"清空後實際筆數：{len(names)}（期望：17）",
+        name="会员搜尋清空後恢復",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert len(names) == 17
 
 
 @allure.suite("会员")
@@ -1593,16 +2308,28 @@ def test_member_logs_page(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("会员")
-    ah.open_logs_page("aaa010")
-
-    op_headers = ah.logs_table_headers()
+    with allure.step("導覽到「用户管理→会员」，點「aaa010」列的「日志」（預設落在「操作日志」）"):
+        ah.goto()
+        ah.switch_tab("会员")
+        ah.open_logs_page("aaa010")
+        op_headers = ah.logs_table_headers()
+    allure.attach(
+        f"操作日志欄位：{op_headers}（期望包含：操作动作、变更项）",
+        name="aaa010 操作日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
     assert "操作动作" in op_headers and "变更项" in op_headers
 
-    ah.switch_logs_tab("登录日志")
-    login_headers = ah.logs_table_headers()
-    assert login_headers == ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    with allure.step("切換到「登录日志」子頁籤"):
+        ah.switch_logs_tab("登录日志")
+        login_headers = ah.logs_table_headers()
+    expected_login_headers = ["IP 地址", "登录时间", "登出时间", "持续时长", "登出原因"]
+    allure.attach(
+        f"登录日志欄位：{login_headers}（期望：{expected_login_headers}）",
+        name="aaa010 登录日志",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert login_headers == expected_login_headers
 
 
 @allure.suite("会员")
@@ -1622,9 +2349,17 @@ def test_member_no_agent_only_buttons(company_page):
     oracle 來源：B 級（結構快照——避免之後有人以為會員也該有「操作员」按鈕而誤判為缺陷）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("会员")
-    assert ah.row_action_names("aaa010") == ["编辑", "日志"]
+    with allure.step("導覽到「用户管理→会员」"):
+        ah.goto()
+        ah.switch_tab("会员")
+    with allure.step("讀取「aaa010」列操作欄的按鈕清單"):
+        actions = ah.row_action_names("aaa010")
+    allure.attach(
+        f"實際按鈕：{actions}（期望：['编辑', '日志']，不含「直属会员」「操作员」）",
+        name="会员操作欄按鈕",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert actions == ["编辑", "日志"]
 
 
 # ============================================================================
@@ -1645,9 +2380,17 @@ def test_level1_agent_money_type_filter_options(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("一级代理")
-    assert ah.money_type_options() == ["信用", "现金"]
+    with allure.step("導覽到「用户管理」頁，切換到「一级代理」子頁面"):
+        ah.goto()
+        ah.switch_tab("一级代理")
+    with allure.step("點開「资金模式」下拉"):
+        options = ah.money_type_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['信用', '现金']）",
+        name="一级代理資金模式下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["信用", "现金"]
 
 
 @allure.suite("二级代理")
@@ -1662,9 +2405,17 @@ def test_level2_agent_money_type_filter_options(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("二级代理")
-    assert ah.money_type_options() == ["信用", "现金"]
+    with allure.step("導覽到「用户管理」頁，切換到「二级代理」子頁面"):
+        ah.goto()
+        ah.switch_tab("二级代理")
+    with allure.step("點開「资金模式」下拉"):
+        options = ah.money_type_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['信用', '现金']）",
+        name="二级代理資金模式下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["信用", "现金"]
 
 
 @allure.suite("三级代理")
@@ -1679,9 +2430,17 @@ def test_level3_agent_money_type_filter_options(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("三级代理")
-    assert ah.money_type_options() == ["信用", "现金"]
+    with allure.step("導覽到「用户管理」頁，切換到「三级代理」子頁面"):
+        ah.goto()
+        ah.switch_tab("三级代理")
+    with allure.step("點開「资金模式」下拉"):
+        options = ah.money_type_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['信用', '现金']）",
+        name="三级代理資金模式下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["信用", "现金"]
 
 
 @allure.suite("四级代理")
@@ -1696,9 +2455,17 @@ def test_level4_agent_money_type_filter_options(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("四级代理")
-    assert ah.money_type_options() == ["信用", "现金"]
+    with allure.step("導覽到「用户管理」頁，切換到「四级代理」子頁面"):
+        ah.goto()
+        ah.switch_tab("四级代理")
+    with allure.step("點開「资金模式」下拉"):
+        options = ah.money_type_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['信用', '现金']）",
+        name="四级代理資金模式下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["信用", "现金"]
 
 
 @allure.suite("五级代理")
@@ -1713,9 +2480,17 @@ def test_level5_agent_money_type_filter_options(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("五级代理")
-    assert ah.money_type_options() == ["信用", "现金"]
+    with allure.step("導覽到「用户管理」頁，切換到「五级代理」子頁面"):
+        ah.goto()
+        ah.switch_tab("五级代理")
+    with allure.step("點開「资金模式」下拉"):
+        options = ah.money_type_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['信用', '现金']）",
+        name="五级代理資金模式下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["信用", "现金"]
 
 
 @allure.suite("六级代理")
@@ -1730,9 +2505,17 @@ def test_level6_agent_money_type_filter_options(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("六级代理")
-    assert ah.money_type_options() == ["信用", "现金"]
+    with allure.step("導覽到「用户管理」頁，切換到「六级代理」子頁面"):
+        ah.goto()
+        ah.switch_tab("六级代理")
+    with allure.step("點開「资金模式」下拉"):
+        options = ah.money_type_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['信用', '现金']）",
+        name="六级代理資金模式下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["信用", "现金"]
 
 
 @allure.suite("七级代理")
@@ -1747,9 +2530,17 @@ def test_level7_agent_money_type_filter_options(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("七级代理")
-    assert ah.money_type_options() == ["信用", "现金"]
+    with allure.step("導覽到「用户管理」頁，切換到「七级代理」子頁面"):
+        ah.goto()
+        ah.switch_tab("七级代理")
+    with allure.step("點開「资金模式」下拉"):
+        options = ah.money_type_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['信用', '现金']）",
+        name="七级代理資金模式下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["信用", "现金"]
 
 
 @allure.suite("八级代理")
@@ -1764,9 +2555,17 @@ def test_level8_agent_money_type_filter_options(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("八级代理")
-    assert ah.money_type_options() == ["信用", "现金"]
+    with allure.step("導覽到「用户管理」頁，切換到「八级代理」子頁面"):
+        ah.goto()
+        ah.switch_tab("八级代理")
+    with allure.step("點開「资金模式」下拉"):
+        options = ah.money_type_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['信用', '现金']）",
+        name="八级代理資金模式下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["信用", "现金"]
 
 
 @allure.suite("九级代理")
@@ -1781,9 +2580,17 @@ def test_level9_agent_money_type_filter_options(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("九级代理")
-    assert ah.money_type_options() == ["信用", "现金"]
+    with allure.step("導覽到「用户管理」頁，切換到「九级代理」子頁面"):
+        ah.goto()
+        ah.switch_tab("九级代理")
+    with allure.step("點開「资金模式」下拉"):
+        options = ah.money_type_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['信用', '现金']）",
+        name="九级代理資金模式下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["信用", "现金"]
 
 
 @allure.suite("会员")
@@ -1798,6 +2605,14 @@ def test_member_money_type_filter_options(company_page):
     oracle 來源：B 級（結構快照）。
     """
     ah = AgentHierarchyPage(company_page)
-    ah.goto()
-    ah.switch_tab("会员")
-    assert ah.money_type_options() == ["信用", "现金"]
+    with allure.step("導覽到「用户管理」頁，切換到「会员」子頁面"):
+        ah.goto()
+        ah.switch_tab("会员")
+    with allure.step("點開「资金模式」下拉"):
+        options = ah.money_type_options()
+    allure.attach(
+        f"實際選項：{options}（期望：['信用', '现金']）",
+        name="会员資金模式下拉選項",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert options == ["信用", "现金"]

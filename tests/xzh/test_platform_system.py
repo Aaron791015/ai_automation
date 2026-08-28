@@ -2,6 +2,7 @@
 """平台層系統管理/租戶管理案例（案例清單 A5、B7）。"""
 from __future__ import annotations
 
+import allure
 import pytest
 
 from xzh_qa.pages.platform_system_page import ALL_14_GAMES, PlatformSystemPage
@@ -15,16 +16,25 @@ def test_global_setting_image_domain_roundtrip(platform_page):
     """
     page = platform_page
     sp = PlatformSystemPage(page)
-    sp.goto_global_setting()
-    original = sp.image_domain()
+    with allure.step("導覽到全局設置頁，記錄圖片網域原值"):
+        sp.goto_global_setting()
+        original = sp.image_domain()
     probe_value = "xzh-probe.example.com"  # 欄位名稱是「圖片網域」，實測會拿掉 scheme，探測值直接用純網域
-    sp.set_image_domain(probe_value)
-    sp.save()
-    page.reload()
-    assert sp.image_domain() == probe_value
+    with allure.step(f"改成探測值「{probe_value}」並保存，重新整理後重讀"):
+        sp.set_image_domain(probe_value)
+        sp.save()
+        page.reload()
+        after = sp.image_domain()
+    allure.attach(
+        f"設定值：{probe_value!r}\n重整後實際讀到：{after!r}（期望：兩者相等）",
+        name="圖片網域改值後 roundtrip",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert after == probe_value
 
-    sp.set_image_domain(original)
-    sp.save()
+    with allure.step(f"還原成原值「{original}」（CLAUDE.md §5：測試資料用完即還原）"):
+        sp.set_image_domain(original)
+        sp.save()
 
 
 @pytest.mark.smoke
@@ -36,6 +46,14 @@ def test_company1_all_14_games_enabled(platform_page):
     """
     page = platform_page
     ps = PlatformSystemPage(page)
-    ps.goto_games("company1")
-    for game in ALL_14_GAMES:
-        assert ps.is_game_enabled(game), "%s 應為啟用（探索當下現況）" % game
+    with allure.step("導覽到 company1「游戏」設定頁"):
+        ps.goto_games("company1")
+    with allure.step("逐一讀取 14 個彩種的啟用狀態"):
+        states = {game: ps.is_game_enabled(game) for game in ALL_14_GAMES}
+    allure.attach(
+        "\n".join(f"{g}：{'啟用' if v else '未啟用'}" for g, v in states.items()) + "\n（期望：全部啟用）",
+        name="14 個彩種啟用狀態現況",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    for game, enabled in states.items():
+        assert enabled, "%s 應為啟用（探索當下現況）" % game
