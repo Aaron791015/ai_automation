@@ -41,8 +41,12 @@ def create_app() -> Flask:
 
     @app.after_request
     def _no_cache_static(resp):
-        # 零建置的 ES modules：靜態檔一律不快取，改檔即生效（內網單人工具，頻寬不是問題）
-        if resp.mimetype in ("text/javascript", "application/javascript", "text/css", "text/html"):
+        # 零建置的 ES modules：靜態檔一律不快取，改檔即生效（內網單人工具，頻寬不是問題）。
+        # ⚠️ 2026-08-29 補上 application/json——`/api/cases` 這類會隨案例重建變動的
+        # API 回應原本沒蓋到，瀏覽器可能把它當成可快取的靜態回應留著，重建索引後
+        # 案例瀏覽器仍顯示舊資料（新欄位如 steps/criteria 看不到），跟靜態檔案是同一種毛病。
+        if resp.mimetype in ("text/javascript", "application/javascript", "text/css",
+                              "text/html", "application/json"):
             resp.headers["Cache-Control"] = "no-store"
         return resp
 

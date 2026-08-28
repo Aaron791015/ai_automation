@@ -110,6 +110,37 @@ description: UI 自動化測試開發標準流程 — 探索（Playwright MCP）
 4. 會建立資源（如帳號）的測試需自動避重（流水號偵測遞增，`tools/crux_qa/account_naming.py`），重跑不得因重名失敗；建立的帳戶輸出 manifest 至 `reports/created_accounts/`。
 5. **案例須留「驗證過程與佐證」（非僅截圖）**：每條案例的 allure 附件要能讓人看出**驗了什麼、佐證為何**——列出比對的**實際值 vs 期望值**（附公式/規格依據）、以及貨量/最大損失等的**組成來源明細**（如大類卡的組成號碼與各分量、驗證號碼關聯的注單/玩法）。PASS 與 FAIL 一律用**同一種可讀的算式明細**呈現，不得只附截圖。（教訓：虛盤001 一致性案例曾只附截圖、無數據紀錄，無法判讀「展開的組三多碼合計來自哪些號碼」而驗證過程不完整。）
 
+### 步驟與判準（`scripts/lint_cases.py` 的守門依據，2026-08-29 補）
+
+> 這節填的是 `lint_cases.py` 錯誤訊息裡引用、但先前一直沒寫的那節——腳本已經在守門，
+> 規範卻沒有落地成文字，屬於 CLAUDE.md §1 記過的同一種失效模式（「規則已寫在 skill 裡，
+> 但那是格式說明、不是會被執行的檢查」的反過來版本：**檢查已經在跑，格式說明才補上**）。
+
+- **每條案例的操作，用 `with allure.step("…"):` 包起來**——粒度是「一組有意義的動作」，
+  不是每一行都包一次。例：「導覽到頁面＋切分頁」算一步，不必拆成兩步。
+- **每條案例只要有 `assert`，函式本體（或它呼叫的 helper）裡就要有至少一次 `allure.attach(...)`**，
+  內容寫**實際值 vs 期望值**（呼應上面第 5 條），不是隨便貼一段文字充數。
+  ```python
+  with allure.step("讀取「状态」下拉選單"):
+      options = ah.status_options()
+  allure.attach(
+      f"實際選項：{options}（期望：['启用', '停用', '停押']）",
+      name="狀態下拉選項",
+      attachment_type=allure.attachment_type.TEXT,
+  )
+  assert options == ["启用", "停用", "停押"]
+  ```
+- **重複案例（多層級／多分頁共用同一套驗證邏輯）優先把 step／attach 寫進共用 helper**，
+  不要每個案例各寫一份——`lint_cases.py` 的檢查會**往下追一層同檔 helper**，
+  helper 補好，呼叫它的所有案例會一起過關（見 `tests/xzh/test_user_management.py` 的
+  `_check()`：一次補好，十個層級的 `*_count_matches` 全部一起滿足）。
+- **執行**：`python scripts\lint_cases.py --product <目錄名>`；`--all` 連已豁免的也列出來。
+  規範上路前就存在的案例可建一份 `tests/<產品>/case_steps_baseline.json` 豁免（**只減不增**，
+  補好一條就從名單刪一條），細節見該腳本檔頭。
+- ⚠️ **這是靜態解析，不是執行結果**：`allure.step`／`allure.attach` 本來是執行期才記錄的東西，
+  test_platform 案例瀏覽器（`pytest_case_export.py`）用 `pytest --collect-only`（不執行）
+  抓的是「案例原始碼寫了什麼」，不是「這次跑出來的值」。要看真正的執行結果仍要看 allure report。
+
 ### API 加速規則（重要）
 
 - API 只能用於「**非被測行為**」的前置資料準備。

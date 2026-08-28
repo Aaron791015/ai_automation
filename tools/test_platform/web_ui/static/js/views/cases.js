@@ -9,6 +9,20 @@ import { pageLoading } from '../ui/loading.js';
 
 let idx = null, filters = { q: '', product: '', marker: '', prereq: false, browser: '' };
 
+// ⚠️ 這裡顯示的是**靜態解析**結果（`pytest_case_export.py` 用 AST 抓 `allure.step`／
+//    `allure.attach` 的字面文字），不是執行結果——`--collect-only` 不會真的跑案例，
+//    抓不到「這次跑出來的值」。要看實際跑出來的結果，去看 allure report。
+function renderStepsAndCriteria(c) {
+  const steps = c.steps || [], criteria = c.criteria || [];
+  if (!steps.length && !criteria.length) {
+    return html`<div class="alert is-warn small" style="margin-top:10px">⚠️ 沒解析到步驟／判准——案例本身可能沒寫 <span class="mono">allure.step</span>／<span class="mono">allure.attach</span>，或寫法是 <span class="mono">scripts/lint_cases.py</span> 抓不到的形式（見該檔說明）</div>`;
+  }
+  return html`
+    ${steps.length ? html`<div style="margin-top:10px"><b>步驟</b><ol class="small" style="margin:4px 0 0;padding-left:20px">${steps.map((s) => html`<li>${s}</li>`)}</ol></div>` : ''}
+    ${criteria.length ? html`<div style="margin-top:8px"><b>判准（attach 佐證）</b><ul class="small" style="margin:4px 0 0;padding-left:20px">${criteria.map((s) => html`<li>${s}</li>`)}</ul></div>` : ''}
+    ${c.has_assert && !criteria.length ? html`<div class="alert is-warn small" style="margin-top:6px">有 <span class="mono">assert</span> 卻沒有 <span class="mono">allure.attach</span>——判准看不到實際值 vs 期望值</div>` : ''}`;
+}
+
 export async function mount(root) {
   const qs = new URLSearchParams(location.hash.split('?')[1] || '');
   filters.q = qs.get('q') || ''; filters.product = qs.get('product') || '';
@@ -217,7 +231,13 @@ export async function mount(root) {
   function draw() {
     if (!idx) return;
     const anyFilter = filters.q || filters.product || filters.marker || filters.prereq || filters.browser;
-    renderTree($('#cs-tree', root), idx.tree || [], { selection: state.selection, filter: anyFilter ? filterFn : null, expandAll: !!anyFilter, onToggle: () => { window.__tp_selection = state.selection; syncSelectionProducts(); drawBar(); }, onOpenCase: openCase });
+    // ⚠️ 2026-08-28 修正：`expandAll` 原本跟 `anyFilter` 綁在一起，導致單純點「新綜合」
+    // 這類產品分頁（只是縮小顯示範圍，不是在裡面搜東西）也會被強制全展開，
+    // 使用者完全無法再收合裡面的檔案／子頁節點——「可以展開/收合」的訴求因此形同虛設。
+    // 只有真的「在裡面找東西」（文字搜尋／標記／前置／瀏覽器篩選）才需要自動展開好讓
+    // 命中結果看得見；純粹選產品分頁不該連帶關掉收合功能。
+    const searching = filters.q || filters.marker || filters.prereq || filters.browser;
+    renderTree($('#cs-tree', root), idx.tree || [], { selection: state.selection, filter: anyFilter ? filterFn : null, expandAll: !!searching, onToggle: () => { window.__tp_selection = state.selection; syncSelectionProducts(); drawBar(); }, onOpenCase: openCase });
     const total = idx.count || 0, vis = anyFilter ? (idx.flat || []).filter(filterFn).length : total;
     $('#cs-cnt', root).textContent = anyFilter ? `${vis} / ${total} 條` : `${total} 條`;
     drawBar();
@@ -252,6 +272,7 @@ export async function mount(root) {
         ${a.parent_suite ? html`<tr><th>suite</th><td>${a.parent_suite} › ${a.suite} › ${a.sub_suite}</td></tr>` : ''}
         <tr><th>fixtures</th><td class="mono tiny">${(c.fixtures || []).join(', ')}</td></tr>
       </table>
+      ${renderStepsAndCriteria(c)}
       <div class="row" style="margin-top:10px"><button class="btn sm ${state.selection.has(nodeid) ? '' : 'primary'}" id="cd-sel">${state.selection.has(nodeid) ? '取消選取' : '加入選取'}</button><button class="btn sm" id="cd-only">只跑這一條</button></div>`;
     $('#cd-copy', root).onclick = () => { copy(c.nodeid); toast('已複製', 'success'); };
     $('#cd-sel', root).onclick = () => { state.selection.has(nodeid) ? state.selection.delete(nodeid) : state.selection.add(nodeid); draw(); openCase(nodeid); };
