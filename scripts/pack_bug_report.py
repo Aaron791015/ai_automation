@@ -10,6 +10,9 @@
 
 行為：
   - 複製各 Bug 單，**移除 frontmatter 與遷移註記**（對外不需要），保留狀態列與全部內容。
+  - ★ **正文轉成 JIRA wiki 標記**（`jira_markup`）—— 交付的下游就是 JIRA，
+    貼過去之前不該還要人手動轉一次（2026-08-28 使用者裁示）。
+    `--no-jira` 可關掉（要交的是 markdown 而不是 JIRA 時）。
   - 只複製該批 Bug 單實際引用到的截圖，路徑維持 `shots/`。
   - 目標資料夾已有手寫 `README.md`（缺陷彙總）時保留不覆蓋；沒有才生成基本彙總表。
 """
@@ -24,6 +27,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bug_paths import ARCHIVE_DIR   # noqa: E402  單一事實來源，勿在此重新定義
 from bug_paths import PRODUCT_DIRS as PRODUCTS   # noqa: E402
+# ⛔ 轉換規則只有這一份 —— 勿在本檔再寫一份（見該檔檔頭）
+from jira_markup import strip_headings, to_jira   # noqa: E402
 
 # ⛔ 上一行就是「單一事實來源」的意思 —— 這裡曾經又硬編一份原型三產品，
 #    於是同事接的產品打包不出來（2026-08-23 範本端到端驗收）。
@@ -36,9 +41,17 @@ def load(path):
     return io.open(path, encoding="utf-8").read()
 
 
-def strip_internal(text):
+def strip_internal(text, jira=True):
+    u"""去掉工作區內部的東西；`jira=True` 時順便轉成 JIRA wiki 標記。
+
+    ⭐ 交付的下游就是 JIRA —— 貼過去之前不該還要人手動轉一次（2026-08-28 使用者裁示）。
+    ⛔ 轉換的實作在 `jira_markup`，**不要在這裡再寫一份**：
+       2026-08-26 那套規則只做在平台落檔那條路，這支與 `bug-report` skill 都沒跟上，
+       於是同一個工作區同時產出兩種格式，而沒有任何機制會發現（2026-08-28 查出）。
+    """
     text = re.sub(r"\A---\n.*?\n---\n+", "", text, flags=re.S)   # 去 frontmatter
-    return "\n".join(l for l in text.splitlines() if not DROP_NOTE.match(l)) + "\n"
+    text = "\n".join(l for l in text.splitlines() if not DROP_NOTE.match(l)) + "\n"
+    return strip_headings(to_jira(text)) if jira else text
 
 
 def main():
@@ -46,6 +59,10 @@ def main():
     ap.add_argument("--product", required=True, choices=sorted(PRODUCTS))
     ap.add_argument("--name", required=True, help="打包資料夾名，如 2026-08-04_虛盤最大損失")
     ap.add_argument("--ids", required=True, nargs="+", help="要打包的 Bug ID")
+    # ⭐ 預設**轉成 JIRA wiki 標記** —— 交付的下游就是 JIRA。
+    #    要交 markdown（例如貼進 wiki 或寄信）才關掉。
+    ap.add_argument("--no-jira", action="store_true",
+                    help="不要轉成 JIRA wiki 標記，維持 markdown")
     args = ap.parse_args()
 
     bugs_dir = os.path.join(ROOT, "docs", PRODUCTS[args.product], "bugs")
@@ -73,7 +90,7 @@ def main():
         title = re.search(r"^title:\s*(.+)$", text, re.M)
         picked.append((bug_id, fname, title.group(1) if title else ""))
         io.open(os.path.join(dst, fname), "w", encoding="utf-8", newline="\n").write(
-            strip_internal(text))
+            strip_internal(text, jira=not args.no_jira))
         # 引用可能寫成 `shots/x.png` 或 `old/shots/x.png`、`../shots/x.png`，一律只取檔名
         shots.update(re.findall(r"shots/([^\s)`）]+\.png)", text))
 
@@ -84,6 +101,9 @@ def main():
             shutil.copy2(srcp, os.path.join(dst, "shots", s))
         else:
             print("  [warn] 截圖不存在:", s)
+
+    print("  格式：%s" % ("markdown（--no-jira）" if args.no_jira
+                          else "JIRA wiki 標記（可直接貼進 JIRA description）"))
 
     readme = os.path.join(dst, "README.md")
     if not os.path.exists(readme):

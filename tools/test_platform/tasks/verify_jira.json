@@ -17,14 +17,29 @@
     "mcp__playwright",
     "mcp__playwright2"
   ],
+  "prestep": {
+    "field": "mine",
+    "title": "先挑要重驗的單",
+    "manual_label": "直接輸入單號（一行一個；別人指派的、剛開的、已結案要複驗的都打這裡）"
+  },
   "fields": [
     {
       "key": "product",
       "type": "select",
       "label": "產品",
       "required": true,
+      "reload_on_change": true,
       "options_from": {
         "source": "products"
+      }
+    },
+    {
+      "key": "mine",
+      "type": "select",
+      "label": "指派給我的單",
+      "appends_to": "tickets",
+      "options_from": {
+        "source": "jira_mine"
       }
     },
     {

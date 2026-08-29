@@ -39,7 +39,9 @@ export async function renderChatPortal(container) {
   const off = !isOnline();
   try {
     const d = await api.get('/api/sessions');
-    n = (d.active || []).length;
+    // ⛔ 用 `active_count`，**不要用 `d.active.length`** —— 那是給列表用的清單，
+    //    一旦被截斷（先前是 `[:10]`）數字就會卡在上限（實際 14 條卻顯示 10）。
+    n = d.active_count ?? (d.active || []).length;
   } catch (e) { /* 拿不到就只是不顯示條數 */ }
   draw(off ? '未連線 —— 點我到設定頁看怎麼上線'
     : (n ? `${n} 條進行中 · 問索引、起任務、重跑失敗案例` : '問索引、起任務、重跑失敗案例'), off);

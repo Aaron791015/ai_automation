@@ -135,6 +135,15 @@ def _output_summary(got: dict, sid: str = "") -> list:
          人到了那裡還要自己找，等於沒接上。
     """
     out = []
+    # ★ 「這一輪沒有正常結束」要排在最前面 —— 它會改變下面每一條的可信度
+    #   （產出可能只做到一半）。而這一格**正是為它而設**：本函式的產物
+    #   「留得住：關掉視窗、隔天再來都還在」，而截斷最常見的成因就是關掉視窗。
+    if got.get("truncated"):
+        out.append({"kind": "warn",
+                    "text": "⚠️ 這一輪**沒有收到結束訊號**（關掉分頁、重整、"
+                            "或 claude 那側非正常結束）—— 下面的產出可能只做到一半。"
+                            "送一則「接著剛才的繼續」就會帶著完整脈絡接下去",
+                    "href": _sess_href(sid, "chat")})
     for b in got.get("filed") or []:
         out.append({"kind": "bug", "text": "已開單 %s" % b.get("bug_id"),
                     "href": "#/product/%s?tab=bugs&focus=%s" % (
@@ -337,8 +346,17 @@ def api_list():
                 if q in (msg.get("text") or "").lower():
                     hits.append({**m, "hit": msg.get("text", "")[:120]}); break
         rows = hits
-    return ok(sessions=rows, active=[m for m in rows if m.get("state") == "active"][:10],
-              closed=[m for m in rows if m.get("state") == "closed"][:10])
+    # ⛔ **不要對 `active`／`closed` 截斷**（2026-08-27 移除 `[:10]`）——
+    #    完整的 `sessions` 本來就在同一個回應裡，截斷**省不到任何頻寬**，
+    #    只造成兩個 bug：
+    #      ① 總覽的對話入口顯示「10 條進行中」（實際 14）—— 它拿這個清單的長度當計數
+    #      ② 對話面板的下拉**只列得出 10 條**，第 11 條之後**根本選不到**（更嚴重）
+    # ⭐ 另外回傳**明確的計數**：要顯示數量的地方一律用它，不要再用清單長度 ——
+    #    日後若真的需要截斷（幾百條 session），計數也不會跟著錯。
+    active = [m for m in rows if m.get("state") == "active"]
+    closed = [m for m in rows if m.get("state") == "closed"]
+    return ok(sessions=rows, active=active, closed=closed,
+              active_count=len(active), closed_count=len(closed))
 
 
 def _product_label(pid: str) -> str:
@@ -413,6 +431,12 @@ def api_create_session(body: dict) -> dict:
          "timeout_sec": body.get("timeout_sec") or None,
          "writes": body.get("writes", "none")}
     os.makedirs(_dir(sid), exist_ok=True)
+    # ⭐ 提示會叫 session 把截圖與暫存檔寫進這兩個子目錄 —— 先建好。
+    #    ⚠️ MCP 的 `filename` 遇到不存在的中間目錄不保證會自己建，而截圖失敗的症狀是
+    #       「工具回了路徑、檔案卻不在」（2026-08-25 那場事故的形狀）。
+    #    任務那側 `tasks_api.launch` 也建一次（那裡的 sid 更晚才有），重複無害。
+    for sub in ("shots", "work"):
+        os.makedirs(os.path.join(_dir(sid), sub), exist_ok=True)
     save_meta(m)
     if body.get("context"):
         append_message(sid, "system", _context_line(body["context"]))

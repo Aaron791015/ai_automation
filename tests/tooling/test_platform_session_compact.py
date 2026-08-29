@@ -274,10 +274,14 @@ def test_進度事件必須在壓縮開始之前送出():
 
     ⚠️ 這條用原始碼順序判：壓縮那一步是同步阻塞的，要驗「誰先 yield」
        就得真的跑起 claude。順序寫錯是唯一的失效方式，釘住順序就夠。
+
+    ⚠️ 2026-08-28 這段邏輯從 `chat_stream` 搬進 `_turn_events`（獨立的
+    generator，透過 `session_bus` 把事件送出去，見 chat.py 檔頭）——錨點
+    改抓 `_turn_events`，不然這裡永遠找不到 `_compact_plan` 等字樣。
     """
     src = io.open(os.path.join(PLATFORM, "web_ui", "api", "chat.py"),
                   encoding="utf-8").read()
-    body = src[src.index("def chat_stream("):]
+    body = src[src.index("def _turn_events("):]
     i_plan = body.index("_compact_plan(m)")
     i_yield = body.index("正在換一份較短的工作記憶")
     i_do = body.index("_take_seed(sid, m, _p)")

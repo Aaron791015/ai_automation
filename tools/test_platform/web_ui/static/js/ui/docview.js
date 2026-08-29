@@ -10,6 +10,7 @@ import { api } from '../api.js';
 import { $, $$, esc, h } from './el.js';
 import { modal } from './modal.js';
 import { toast } from './toast.js';
+import { jiraBackfillAction, needsJira } from './bugjira.js';
 
 // ── 行內：粗體／斜體／刪除線／code／連結／<br> ──────────────────────────
 // 交接檔儲存格常見的就這些。順序重要：先 esc，再處理 code（避免 code 內的 * 被當粗體）。
@@ -123,7 +124,8 @@ export function renderMarkdown(text, offset = 0) {
 }
 
 /** 開一份 markdown 全文；line 給了就捲過去並高亮。 */
-export async function openDoc(path, { line = null, title = null } = {}) {
+export async function openDoc(path, { line = null, title = null,
+                                      bug = null, productId = '', onChanged = null } = {}) {
   let d;
   try {
     d = await api.get(`/api/doc?path=${encodeURIComponent(path)}`);
@@ -166,8 +168,11 @@ export async function openDoc(path, { line = null, title = null } = {}) {
     //    交接檔那種 4~5 欄的表格在 880px 下每格都在硬斷行，而 1920 的螢幕
     //    右邊還空著一半（2026-08-24 走查）。`doc` ＝ min(1360px, 94vw)。
     size: 'doc',
+    // ⭐ 從 Bug 明細點進來時，這一頁也要能**就地回填 JIRA 單號**
+    //    （2026-08-27 使用者要求：看完全文就地回填，不必退回列表再開一次明細）。
+    //    ⛔ 與 Bug 明細**共用 `ui/bugjira.js`**，不複製一份 —— 兩處行為必須一致。
     actions: [
-      { label: '複製路徑', onClick: () => { navigator.clipboard?.writeText(line ? `${d.path}:${line}` : d.path); toast('已複製', 'success'); return false; } },
+      ...(bug && needsJira(bug) ? [jiraBackfillAction(bug, productId, onChanged)] : []),
       { label: '關閉' },
     ],
   });

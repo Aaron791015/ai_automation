@@ -628,16 +628,23 @@ def test_展開不會動到原始task():
 
 
 def test_只有一個產品時自動選好():
-    """少一次「沒有選擇的選擇」—— 範本剛接第一個產品時就是這個情境。"""
+    """少一次「沒有選擇的選擇」—— 範本剛接第一個產品時就是這個情境。
+
+    ⚠️ **用 `key` 定位，不要用 `options_from`**——`_expand_options` 展開完
+    `source: products` 的欄位後會把 `options_from` 拿掉（2026-08-27，避免
+    `form.js` 的 `reloadDynamic` 再去問一次不存在的網址而 404），展開後的結果
+    本來就找不到它了；`key` 是展開前後都不變的識別方式。
+    """
     T, A = _t(), _api()
     from core.registry import get_registry
     real = [p for p in get_registry().products if not p.get("virtual")]
     task = next(t for t in T.load()
                 if any((f.get("options_from") or {}).get("source") == "products"
                        for f in t.get("fields") or []))
+    key = next(f["key"] for f in task["fields"]
+               if (f.get("options_from") or {}).get("source") == "products")
     got = A._expand_options(task)
-    f = next(x for x in got["fields"]
-             if (x.get("options_from") or {}).get("source") == "products")
+    f = next(x for x in got["fields"] if x["key"] == key)
     if len(real) == 1:
         assert f.get("default") == real[0]["id"]
     else:
@@ -996,11 +1003,17 @@ def test_前言講會波及別人的操作但不禁止():
     「『一律不給』擋掉的不只是風險，**也擋掉了規範本身**」（見 `SAFE_TOOLS`）。
 
     `CLAUDE.md` §5 第 3 條的判準是「會不會影響到別人」，且**專用站台不必問**。
+
+    ⚠️ 2026-08-27 判準本身從 `_PREAMBLE` 搬進 `_STATION_SHARED`／`_STATION_DEDICATED`
+    （依表單「本次專用站台」欄在 `render()` 時展開）——原本寫死在 `_PREAMBLE` 裡的
+    「本次指定給你的站台照做」，沒指定站台時也照樣這樣講，等於明示又暗示地矛盾。
+    判準文字改成隨有沒有指定站台而不同，因此要查 `_STATION_SHARED`
+    （沒指定站台時的版本，也是判準這句話實際住的地方）。
     """
     T = _t()
     pre = T._PREAMBLE
     assert "一键结账" in pre and "反結算" in pre, u"前言沒提會波及別人的操作"
-    assert "會不會影響到別人" in pre, u"沒給判準，它只會避開清單上的字面詞"
+    assert "會不會影響到別人" in T._STATION_SHARED, u"沒給判準，它只會避開清單上的字面詞"
     assert "不是不能做" in pre, u"⛔ 寫成禁止會讓整類測試做不了"
     assert "在回覆裡寫明" in pre, u"沒要求留下紀錄 —— 事後就查不到它動了哪一台"
     # ⛔ 反向釘：不可以出現「一律不要做」這種寫法

@@ -10,6 +10,7 @@ import { html, raw } from './el.js';
 import { modal } from './modal.js';
 import { toast } from './toast.js';
 import { renderForm, readValues, validate } from './form.js';
+import { runPrestep } from './taskprestep.js';
 import { navigate } from '../router.js';
 
 let cache = null;
@@ -83,7 +84,15 @@ export async function renderTaskBar(container, { entry = 'overview', product = n
   container.onclick = async (e) => {
     const b = e.target.closest('[data-task]');
     if (!b || off) return;
-    await openTask(b.dataset.task, { product, ctx });
+    // ⭐ **按下去要立刻有反應**（2026-08-27 使用者回報「會以為沒點到」）。
+    //    ⚠️ 實測開窗只要 ~54ms —— 問題不是慢，是**完全沒有回饋**：
+    //    按鈕沒有按下狀態、視窗也沒有進場動畫，眼睛盯著按鈕就什麼都看不到，
+    //    於是會再按一次。所以修的是「回饋」而不是「速度」。
+    //    ⛔ 也要擋重複點擊：連按兩下會開兩個任務框疊在一起。
+    if (b.classList.contains('is-busy')) return;
+    b.classList.add('is-busy');
+    try { await openTask(b.dataset.task, { product, ctx }); }
+    finally { b.classList.remove('is-busy'); }
   };
 }
 
@@ -98,11 +107,22 @@ async function openTask(taskId, { product, ctx }) {
   try { task = (await api.get(`/api/tasks/${taskId}`)).task; }
   catch (e) { toast('讀取任務失敗：' + e.message, 'danger'); return; }
 
-  const fields = (task.fields || []).slice();
+  // ★ 兩段式：任務宣告了 `prestep` 就先開挑選框（2026-08-27）。
+  //    ⛔ 取消時要**整個中止** —— 回 null 就 return，不可以接著開設定框。
+  let pre = {};
+  if (task.prestep) {
+    const got = await runPrestep(task, { product });
+    if (got === null) return;
+    pre = got;
+  }
+
+  // 第一段挑過的欄位不再出現在設定框裡 —— 留著等於同一件事問兩次，
+  // 而且第二個控件是空的（值已經進了目標欄位），看起來像「剛才選的沒生效」。
+  const fields = (task.fields || []).filter((f) => !(task.prestep && f.key === task.prestep.field));
   const body = document.createElement('div');
   // 帶入呼叫端已知的值（產品頁帶產品、run 結果頁帶 run_id 與 nodeid）
-  const initial = { ...(ctx || {}) };
-  if (product) initial.product = product;
+  const initial = { ...(ctx || {}), ...pre };
+  if (product && !initial.product) initial.product = product;
   // 重用既有的動態表單引擎 —— 任務欄位的格式與 registry 的 params.fields 相同，
   // 所以不必為任務另寫一套渲染（第②層擴充的精神）。
   renderForm(body, { id: 'tasks' }, { id: taskId, params: { fields } }, initial);

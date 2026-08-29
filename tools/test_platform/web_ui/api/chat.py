@@ -5,7 +5,10 @@
 """
 from __future__ import annotations
 
+import os
+import queue
 import re
+import threading
 import time
 
 from flask import Blueprint, Response, request, stream_with_context
@@ -16,6 +19,11 @@ from core.bug_index import build_bug_index
 from core.claude_session import available as claude_available
 from core.claude_session import ask as claude_ask
 from core import session_compact
+from core import tasks
+from core.paths import SESSIONS_DIR
+from core.proc import kill_tree
+from core import session_bus
+from core import transcript
 from core.registry import get_registry
 from web_ui.api import fail, ok
 from web_ui.api.knowledge import _memoize
@@ -256,6 +264,7 @@ def chat(sid):
     # ⭐ 跑之前先記下工作區的樣子 —— session 有 shell 之後，它直接改的檔
     #    草稿模型完全看不見；靠前後比對補上（見 `core/worktree.py`）。
     _before = worktree.snapshot()
+    _t0 = _utc_now()                 # ⭐ 補救時用來濾掉「上一輪」的段落
     okay, why = claude_available()
     if not okay:
         return fail(why, 503)          # 503：服務暫時不可用（不是 501 未實作）
@@ -263,7 +272,10 @@ def chat(sid):
     #   ⚠️ 種子**只前置到送出的提示**，不寫進訊息紀錄：那是給 claude 的
     #     工作記憶，不是人講的話（寫進去的話對話畫面會多出好幾千字）。
     seed, _note = _take_seed(sid, m)
-    prompt = seed + text
+    # ⭐ 非任務對話的平台前言（任務那側由 `tasks.render()` 帶）——
+    #    ⚠️ 順序是「前言 → 壓縮種子 → 使用者的話」：兩者不會同時出現在第一輪，
+    #    但真的同時出現時，規則要在工作記憶之前。
+    prompt = _chat_preamble(sid, m) + seed + text
     parts, tools, meta, err = [], [], {}, ""
     proposal = None
     # ⚠️ `allowed_tools` 一定要傳 —— 不傳的話任務宣告的 MCP 是「填了不生效」
@@ -291,6 +303,15 @@ def chat(sid):
             err = ev["message"]
             break
     _remember_claude_session(sid, meta)
+    # ⭐ 沒有 `done` ＝ 這一輪不是正常結束（見 `_recover_truncated`）
+    #    ⚠️ **有 `err` 也要補救** —— 逾時正是最該撿回產出的情境（跑了幾十分鐘）。
+    #    原本寫成 `and not err` 會讓 POST 路徑跳過，而 SSE 路徑照補，兩條路行為不一致。
+    truncated = not meta
+    if truncated:
+        _lost, _trunc_note = _recover_truncated(sid, parts, _t0, had_error=bool(err))
+        parts.extend(_lost)
+        if _trunc_note:
+            err = (err + "\n\n" + _trunc_note) if err else _trunc_note
     text = "".join(parts)
     if err:
         # 產出先留著，錯誤附在後面 —— 人才看得出「這是被中斷的半份」
@@ -300,6 +321,8 @@ def chat(sid):
                          tools=tools, usage=meta.get("usage"))
     got = _absorb_drafts(sid, m, text)
     got["changed"] = worktree.changed_since(_before)
+    if truncated:
+        got["truncated"] = True         # ⭐ 讓「結果確認」也留得住（見 `_output_summary`）
     if err and not parts:
         return fail(err, 502)               # 真的什麼都沒產出才算失敗
     mark_done(sid, got, proposal=proposal)     # ⭐ 收尾 ＋ 留一筆待確認
@@ -393,6 +416,113 @@ def _take_seed(sid, m, p=None):
     return "", ""
 
 
+def _product_line(m: dict) -> str:
+    u"""選了產品才加的那一句：叫它載入該產品的 skill。
+
+    ⭐ 使用者 2026-08-28 裁示：**產品欄選填，不選就是乾淨 session**
+      —— 只有 `CLAUDE.md` 與 memory，適合臨時問一件事（近期的非任務對話
+      「CRUX-124 確認」「更新知識」都屬這類，套不進任何一支任務）。
+
+    ⛔ 不選時**一個字都不加** —— 「順便提一下有哪些產品」看似無害，
+       實際上是替它決定了框架，而那正是使用者要的「乾淨」的反面。
+    """
+    pid = str(m.get("product") or "").strip()
+    if not pid:
+        return ""
+    try:
+        from core.registry import get_registry
+        for p in get_registry().products:
+            if pid in (p.get("id"), p.get("product_id"), p.get("label")):
+                skill = p.get("skill")
+                name = p.get("product_id") or p.get("label") or pid
+                if not skill:
+                    return ""          # 虛擬產品（共通）沒有 skill，不硬湊
+                return (u"> · 本次的產品是 **%s** —— 請先載入 `/%s`"
+                        u"（意圖對照表與必記不變量都在那裡）。\n" % (name, skill))
+    except Exception:                   # noqa: BLE001 認不得就不加，別讓前言掛掉
+        pass
+    return ""
+
+
+def _chat_preamble(sid: str, m: dict) -> str:
+    """**非任務對話**要前置的平台前言（只在起 claude session 的那一輪）。
+
+    ⚠️ 2026-08-27 之前這條路送出的就是「壓縮種子 ＋ 使用者打的字」，
+      **一個字的規則都沒有** —— 任務那側靠 `tasks.render()` 帶前言，對話這側沒有對應物。
+      實測後果（session `29bc6a46`）：整則回覆與過程敘述都是英文；
+      而語言只是最表層的，同一份前言還負責「沒有人能批准你」「git 寫入會被擋」
+      「暫存檔寫哪裡」這三件會讓 session 卡住或弄髒 repo 的事。
+
+    ⭐ 判準用 `claude_session_id`（**不是**訊息數）——
+      它為空就代表這一輪會開一個全新的 claude session，正好是需要前言的時候；
+      而且第一輪失敗（沒拿到 id）時下一輪會自動再送一次，不必另外記旗標。
+    """
+    if m.get("task_id") or m.get("claude_session_id"):
+        return ""
+    # 前言裡的 `work/` 路徑要真的存在。正常情況 `api_create_session()` 已經建好了，
+    # 這裡只補「改版前就存在的舊 session」。
+    # ⛔ **先確認 session 目錄真的在** —— 無條件 makedirs 會讓拿假 sid 的測試
+    #    在真的 `logs/sessions/` 底下長出 `x/`、`xyz/`（2026-08-27 實際發生過）。
+    #    算字串的函式不該有副作用，這一行是唯一的例外，所以要夾緊。
+    d = os.path.join(SESSIONS_DIR, sid)
+    if os.path.isdir(d):
+        for sub in ("shots", "work"):
+            os.makedirs(os.path.join(d, sub), exist_ok=True)
+    pre = tasks.CHAT_PREAMBLE.replace("__SID__", sid)
+    line = _product_line(m)
+    if not line:
+        return pre               # ⛔ 沒選產品就一個字都不加（見 `_product_line`）
+    # ⚠️ 要接進**同一個引用區塊**裡 —— 前言結尾有一個空行，直接接上去會變成
+    #    兩塊分開的 blockquote，讀起來像是另一段話。
+    return pre.rstrip("\n") + "\n" + line + "\n"
+
+
+def _utc_now():
+    """UTC ISO（比到秒）。⚠️ 往前留 5 秒的餘裕 —— 兩邊的時鐘不保證同步，
+    抓太緊會把這一輪最前面的段落濾掉。"""
+    import datetime as _dt
+    return (_dt.datetime.now(_dt.timezone.utc)
+            - _dt.timedelta(seconds=5)).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _recover_truncated(sid, parts, since_utc, had_error=False):
+    """**這一輪沒有 `done` 事件**時的補救：回傳 (補回來的段落, 要告訴人的話)。
+
+    ★ 2026-08-27 使用者回報「非任務對話沒有回應任何結果」。查證 session `29bc6a46`：
+      claude **寫出了完整的中文結論**（transcript 09:21:40.967Z），
+      平台落檔的訊息卻只有工具之間的四句英文旁白、`usage` 是 `null`
+      —— `null` ＝ `meta` 空的 ＝ **整輪沒收到 `done`**。Flask 行程沒重啟過。
+      也就是：**答案產出了，只是沒走到平台這一側，而平台什麼都沒說。**
+
+    ⛔ 在這之前這是一條**完全靜默**的路：`claude_session.ask()` 只在
+       「exit code 非 0 **且** stderr 有東西」時才報錯。乾淨退出卻沒有 result、
+       或 client 斷線，兩種都不會有任何訊息 —— 使用者看到最後一句旁白然後沒有下文。
+
+    ⚠️ 放在 `_persist()` 裡（唯一的落檔漏斗），**不是**放在迴圈後面 ——
+       client 斷線時迴圈後面的程式碼永遠不會執行，而那正是最需要補救的情境。
+    """
+    cid = (get_meta(sid) or {}).get("claude_session_id")
+    have = "".join(parts)
+    lost = []
+    for t in transcript.texts_since(cid, since_utc):
+        if t and t not in have and t not in lost:
+            lost.append(t)
+    if had_error:
+        # ⛔ 這一輪**已經有錯誤訊息**（逾時、claude 那側報錯）——
+        #    再講一次「串流在中途斷了（關掉分頁…）」會把原因說成別的事。
+        #    這裡只補「撿回來了」，原因留給那一則錯誤自己講。
+        note = (u"⭐ 已從 claude 自己的 transcript 把中止前的最後一段補回來（上面）。"
+                if lost else u"")
+        return lost, note
+    note = (u"⚠️ 這一輪**沒有收到結束訊號** —— 串流在中途斷了"
+            u"（關掉分頁、重整、或 claude 那側非正常結束都會這樣）。")
+    note += (u"已從 claude 自己的 transcript 把結尾補回來（上面最後一段）。" if lost
+             else u"transcript 裡也沒有更多內容，上面就是中止前產出的全部。")
+    note += (u"要接下去的話**直接再送一則訊息**（例如「接著剛才的繼續」）"
+             u"—— 它會帶著完整脈絡接下去，不必從頭講一次。")
+    return lost, note
+
+
 def _remember_claude_session(sid, meta):
     """記住 claude 那一側的 session id，下一則訊息才接得上前文。
 
@@ -411,16 +541,309 @@ def _remember_claude_session(sid, meta):
         save_meta(mm)
 
 
+# ── 一條 session ＝ 一條事件匯流排 ＋ 一個佇列 ＋ 至多一個 pump ──────────
+#
+# ⛔ 2026-08-28 之前是「**一個 POST 自帶一條串流**」，三個症狀同一個根因
+#    （產出綁在連線上）：重整就看不到過程、兩個分頁各看各的、
+#    同一個 session 不能連送兩則。改成匯流排＋佇列之後三個一起消失。
+#
+# ⚠️ 佇列**只在記憶體裡**：平台重啟時還沒開跑的那幾則會消失（它們根本還沒送出去），
+#    而 `reconcile.on_startup()` 會把卡住的 `running` 收乾淨。
+#    ⛔ 不做成落檔的原因：重啟後自動補跑使用者半小時前打的字，比丟掉更難預期。
+_PUMP_LOCK = threading.Lock()
+#: sid -> {"thread", "inbox": [下一則…], "proc": [Popen…], "st": 這一輪的 state,
+#:         "stopped": 被中止}
+#: ⭐ **有這一筆 ＝ 這個 session 有人在跑**（`_take_next()` 收工時才移除）。
+_PUMPS = {}
+
+
+def _new_turn_state():
+    """一輪的所有中間狀態。⚠️ **每輪都要新的** —— 共用會把上一輪的產出算進來。"""
+    return {"parts": [], "tools": [], "meta": {}, "saved": [], "proposal": None,
+            "err": "", "proc": [], "t0": _utc_now(), "before": worktree.snapshot()}
+
+
+def _turn_events(sid, m, prompt, st):
+    """跑一輪，逐個 yield SSE 字串。
+
+    ⚠️ 這裡**不決定要送給誰** —— 送給誰是 `session_bus` 的事。
+    """
+    okay, why = claude_available()
+    if not okay:
+        yield _sse({"type": "error", "message": why})
+        return
+    # ★ 邊界壓縮 —— **進度事件要先送**。
+    #   ⛔ 2026-08-26 首次實跑抓到：先前是壓縮跑完才送事件，於是整段壓縮期間
+    #      畫面完全靜止（實測 509k 的 context 跑了一分多鐘）——
+    #      而「畫面完全沒有反應」正是這條路當初改成串流要解決的問題。
+    #   ⚠️ `_compact_plan` 只讀 transcript 檔尾，很便宜，可以先問一次。
+    _p = _compact_plan(m)
+    if _p:
+        yield _sse({"type": "notice",
+                    "text": ("🗜️ context 已達 %dk（門檻 %dk）—— 正在換一份較短的"
+                             "工作記憶。這一步要先跑一回合摘要，請稍候"
+                             % (_p["tokens"] // 1000, _p["threshold"] // 1000)),
+                    "label": "正在換一份較短的工作記憶"})
+    seed, note = _take_seed(sid, m, _p)
+    pre = _chat_preamble(sid, m)
+    if seed:
+        yield _sse({"type": "notice", "text": note, "label": "換好了，接著跑"})
+        prompt = seed + prompt
+    elif _p:
+        # ⭐ 沒成功也要講 —— 否則畫面只會停在「正在換」，看起來像卡死。
+        yield _sse({"type": "notice",
+                    "text": "⚠️ 換工作記憶沒成功 —— 照原本的方式繼續，任務不受影響",
+                    "label": "照原本的方式繼續"})
+    prompt = pre + prompt          # ⚠️ 一定要在 if/elif **之後**，否則斷開那條鏈
+    parts, tools = st["parts"], st["tools"]
+    meta = st["meta"]
+    for ev in claude_ask(prompt, session_id=sid, model=m.get("model"),
+                         resume=m.get("claude_session_id"),
+                         allow_tools=m.get("allowed_tools") or None,
+                         _handle=st["proc"], **_timeout_kw(m)):
+        if ev["type"] == "text":
+            parts.append(ev["text"])
+        elif ev["type"] == "tool" and ev["name"] != "_init":
+            tools.append(_tool_label(ev))
+            p2 = _as_proposal(ev)
+            if p2:
+                st["proposal"] = p2
+            # ⭐ 工具動作就是 session 的「進度」—— session 沒有可預估的總量，
+            #    而「它現在在讀檔／開瀏覽器／載 skill」正是人想知道的事。
+            try:
+                note_tool(sid, ev["name"])
+            except Exception:       # noqa: BLE001 —— 進度壞掉不可以影響任務本身
+                pass
+        elif ev["type"] == "tool":
+            _remember_claude_session(sid, ev.get("input") or {})
+        elif ev["type"] == "error":
+            # ⭐ 記下來 —— `_persist_turn()` 要靠它判斷「補救的說法該講哪一種」
+            st["err"] = ev.get("message") or "?"
+        elif ev["type"] == "done":
+            # ⭐ 把提議掛上 `done` —— 前端的確認卡讀的就是這裡
+            if st.get("proposal"):
+                ev = {**ev, "proposal": st["proposal"]}
+            meta = ev
+            st["meta"] = ev
+        yield _sse(ev)
+    _remember_claude_session(sid, meta)
+    got = _persist_turn(sid, m, st)
+    # ⭐ 把補回來的結尾與「這一輪被截斷」一起送出去
+    for _t in got.get("recovered") or []:
+        yield _sse({"type": "text", "text": _t})
+    if got.get("stream_note"):
+        yield _sse({"type": "error", "message": got["stream_note"]})
+    # ⚠️ 案例草稿與「自動寫了什麼」也要送 —— 先前條件只看 bugs／docs，
+    #    `write_cases` 那種只產案例的任務，前端什麼都收不到（2026-08-23）。
+    if any(got.get(k) for k in ("bugs", "docs", "cases", "written",
+                                "needs_review", "write_failed",
+                                "filed", "bugs_pending", "cases_written")):
+        yield _sse({"type": "drafts", **got})
+
+
+def _persist_turn(sid, m, st):
+    """把這一輪已經產出的內容存下來。**只做一次**。
+
+    ⛔ 一定要在 `finally` 也跑得到 —— 這一輪可能被中止、可能死在半路，
+       跑了幾十分鐘的產出不能因為收尾沒跑到就全丟。
+    """
+    saved = st["saved"]
+    if saved:
+        # ⚠️ 已經存過就把**上次的結果**回去 —— pump 的 finally 要靠它寫「待確認」。
+        return saved[0] if isinstance(saved[0], dict) else {}
+    saved.append(True)
+    parts, meta = st["parts"], st["meta"]
+    lost, note, truncated = [], "", not meta
+    if truncated:
+        lost, note = _recover_truncated(sid, parts, st["t0"],
+                                        had_error=bool(st.get("err")))
+        parts = list(parts) + lost
+    if st.get("interrupted"):
+        # ⭐ 一定要在 `lost` **之後** —— 見 `chat_interrupt()` 的說明
+        丟掉 = st.get("dropped") or 0
+        parts = list(parts) + [
+            u"\n\n⛔ **這一輪由使用者中止**（已產出的內容保留在上面）。"
+            + (u"排隊中的 **%d 則**也一併丟掉了 —— 上面那幾則使用者訊息**沒有送出去**，"
+               u"要的話重送一次。" % 丟掉 if 丟掉 else u"")]
+    reply = "".join(parts) or "（沒有輸出）"
+    # ⚠️ 警語也要進**落檔的訊息** —— 只送 SSE 的話，等一下重開這個 session
+    #    看到的就是一段沒頭沒尾的內容，而且看起來像是它正常講完的。
+    if note:
+        reply = reply + "\n\n---\n" + note
+    append_message(sid, "assistant", reply,
+                   tools=st["tools"], usage=(meta or {}).get("usage"))
+    got_ = _absorb_drafts(sid, m, reply)
+    # ⭐ session 用 shell 直接改的檔，草稿模型看不見 —— 靠前後快照補上
+    got_["changed"] = worktree.changed_since(st["before"])
+    if truncated:
+        got_["truncated"] = True        # ⭐ 讓「結果確認」也留得住
+    if note:
+        got_["recovered"], got_["stream_note"] = lost, note
+    saved[0] = got_
+    return got_
+
+
+def _take_next(sid):
+    """取佇列裡的下一則；沒有就**當場交出這個 session 的所有權**。
+
+    ⚠️ 「取下一則」與「登出 pump」必須在同一個鎖裡 —— 否則中間送進來的訊息
+       會排進一個正在收工的 pump，然後永遠不會被跑。
+    """
+    with _PUMP_LOCK:
+        p = _PUMPS.get(sid)
+        if not p or p.get("stopped") or not p["inbox"]:
+            _PUMPS.pop(sid, None)
+            return None
+        return p["inbox"].pop(0)
+
+
+def _pump(sid, text):
+    """一輪接一輪地跑，直到佇列空掉 —— **與瀏覽器的連線完全無關**。
+
+    ⛔ 2026-08-28 查出的缺陷的正解：先前這段掛在 response generator 上，
+       **分頁一重整就整條崩掉** ——
+       ① werkzeug 關掉 generator → `GeneratorExit`；
+       ② 展開時**內層 `claude_ask()` 的 finally 先跑**（實測順序如此，不是外層先），
+          它 `proc.stdout.close()` 之後 `proc.wait()` **卡住**；
+       ③ claude 那側不理會 stdout 的 EPIPE，**照樣跑完**（實測還跑了 58 分鐘）；
+       ④ 等它結束才輪到落檔，而 `meta` 是空的 → 完整的一輪被標成「串流在中途斷了」。
+       實測 session `7a458300` 兩輪都是這樣：平台在第 12 個工具就瞎了，
+       claude 那側實際做了 339 個。
+    """
+    try:
+        while text is not None:
+            m = get_meta(sid) or {}     # ⚠️ 每輪重讀 —— 上一輪換過 claude_session_id
+            st = _new_turn_state()
+            # ⭐ 每輪開頭立一個標記並記下序號 —— 中途加入的畫面只補**這一輪**。
+            #    ⛔ 補整段 backlog 會把上一輪的事件再畫一次，
+            #       而那一輪早就落檔了（畫面會出現兩份同樣的內容）。
+            seq0 = session_bus.publish(sid, _sse({"type": "turn_start"}))
+            with _PUMP_LOCK:
+                p = _PUMPS.get(sid)
+                if p is not None:
+                    p["st"], p["proc"], p["seq0"] = st, st["proc"], seq0
+            try:
+                for chunk in _turn_events(sid, m, text, st):
+                    session_bus.publish(sid, chunk)
+            except Exception as e:      # noqa: BLE001
+                # ⛔ 不可以靜默 —— 移進執行緒之前，例外會直接冒到 client。
+                #    現在要自己送出去，並且**寫進落檔的訊息**，否則只剩一句
+                #    「串流在中途斷了」，把平台自己的 bug 說成使用者重整了頁面。
+                import traceback as _tb
+                import sys as _s
+                _tb.print_exc(file=_s.stderr)
+                st["err"] = u"平台這一側出錯：%r" % e
+                st["parts"].append(u"\n\n⚠️ 這一輪在**平台這一側**出錯了：%r" % e)
+                session_bus.publish(sid, _sse({"type": "error", "message": st["err"]}))
+            finally:
+                try:
+                    got = _persist_turn(sid, m, st)
+                except Exception as e:  # noqa: BLE001
+                    import sys as _s
+                    print("⚠️ chat pump 落檔失敗：%r" % e, file=_s.stderr)
+                    got = {}
+                # ⛔ 收尾**一定要在 finally** —— 不然狀態會永遠卡在 running
+                try:
+                    mark_done(sid, got or {}, proposal=st.get("proposal"))
+                except Exception:       # noqa: BLE001
+                    pass
+            text = _take_next(sid)
+            if text is not None:
+                mark_running(sid, text)
+                session_bus.publish(sid, _sse({"type": "notice",
+                                               "text": "▶️ 接著跑排隊中的下一則",
+                                               "label": "接著跑下一則"}))
+    finally:
+        # ⛔ 一定要移除 —— 留著的話這個 session 會永遠被判成「有人在跑」，
+        #    之後每一則訊息都只會排隊、再也不會開跑。
+        with _PUMP_LOCK:
+            _PUMPS.pop(sid, None)
+        session_bus.publish(sid, _idle())
+
+
+def _start_or_queue(sid, text):
+    """開跑，或排進佇列。回傳 (資訊, 那條 pump 執行緒)。"""
+    # ⚠️ 執行緒物件要**在鎖裡就建好並掛上去** —— 先建條目、之後才填 thread 的話，
+    #    這兩步之間進來的第二則會拿到 `None`（測試偶發、畫面也少一個把手）。
+    with _PUMP_LOCK:
+        p = _PUMPS.get(sid)
+        if p is not None:
+            p["inbox"].append(text)
+            n, th = len(p["inbox"]), p.get("thread")
+        else:
+            th = threading.Thread(target=_pump, args=(sid, text), daemon=True,
+                                  name="chat-%s" % sid[:8])
+            _PUMPS[sid] = {"thread": th, "inbox": [], "proc": [],
+                           "st": None, "stopped": False}
+            n = 0
+    # ⭐ 排隊的也要先落檔 —— 不然重整之後看不到自己剛剛打了什麼
+    append_message(sid, "user", text)
+    if n:
+        session_bus.publish(sid, _sse({"type": "queued", "n": n, "text": text}))
+        return {"queued": n}, th
+    mark_running(sid, text)
+    th.start()
+    return {"started": True}, th
+
+
+def _relay(sid, q, replay, stop_on_idle):
+    """把匯流排的事件轉成 SSE。`stop_on_idle` ＝ 跑完就收線（`/stream` 用）。"""
+    idle = _idle()
+    try:
+        for seq, payload in replay:
+            yield "id: %d\n%s" % (seq, payload)
+        while True:
+            try:
+                item = q.get(timeout=20)
+            except queue.Empty:
+                yield ": ping\n\n"     # ⭐ 沒有心跳，閒置久了連線會被中間層砍掉
+                continue
+            if item is None:           # session 關掉了
+                break
+            seq, payload = item
+            yield "id: %d\n%s" % (seq, payload)
+            if stop_on_idle and payload == idle:
+                break
+    finally:
+        session_bus.unsubscribe(sid, q)
+
+
+def _sse_response(gen_, sid, q):
+    """⛔ 一定要掛 `call_on_close` 退訂 —— `_relay()` 的 finally **不保證會跑**：
+    response body 一次都沒被讀過時（連線在讀之前就沒了），那個 generator
+    從未啟動，`close()` 不會執行 finally，於是那個訂閱者永遠留在匯流排上，
+    塞滿 2000 個事件才會被丟掉。WSGI 一定會對 response iterable 呼叫 `close()`。
+    """
+    resp = Response(stream_with_context(gen_), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    resp.call_on_close(lambda: session_bus.unsubscribe(sid, q))
+    return resp
+
+
+def _since_of(sid, req):
+    """從哪裡開始補播。
+
+    · 有 `Last-Event-ID`（SSE 自動重連）或 `?since=` → 就從那裡接下去
+    · 這個 session **正在跑** → 從**這一輪的開頭**補（中途加入也看得到全程）
+    · 沒有在跑 → 從現在開始，**一個字都不補** ——
+      ⛔ 補了會與已經落檔的訊息重複，畫面出現兩份一樣的內容。
+    """
+    raw = req.headers.get("Last-Event-ID") or req.args.get("since") or ""
+    if str(raw).isdigit():
+        return int(raw)
+    with _PUMP_LOCK:
+        p = _PUMPS.get(sid)
+        seq0 = p.get("seq0") if p else None
+    return (seq0 - 1) if seq0 else session_bus.tip(sid)
+
+
 @bp.route("/api/chat/<sid>/stream", methods=["GET", "POST"])
 def chat_stream(sid):
-    """SSE 串流：一邊產生一邊送，不必等整段講完。
-
-    ⚠️ 原本是 `time.sleep(0.4)` 後一次回傳。長回答（尤其它會先查好幾個 MCP 工具）
-      在非串流下要等十幾秒，畫面完全沒有反應。
+    """送一則訊息並看著它跑（正在跑就排隊，跑完自動接著跑）。
 
     ⛔ **一定要收 POST** —— 任務的提示有兩千多字，塞進 query string
        之後 URL 破四千字元、直接 500，於是按下任務的「開始」等於什麼都沒發生
-       （2026-08-23 UI 走查；先前全部用非串流 API 驗，那條路不經過 query）。
+       （2026-08-23 UI 走查）。
     """
     m = get_meta(sid)
     if not m or m.get("deleted"):
@@ -431,125 +854,100 @@ def chat_stream(sid):
     text = (body.get("text") or request.args.get("text") or "").strip()
     if not text:
         return fail("空訊息")
-    append_message(sid, "user", text)
-    mark_running(sid, text)          # ⭐ 同上；⛔ 收尾在 `guarded()` 的 finally
-    _before = worktree.snapshot()    # ⭐ 同上：這一輪動了哪些檔，要看得見
-    # ⛔ **閉包內不可以再對 `text` 賦值** —— 那會讓它變成區域變數，
-    #    於是迴圈開頭讀外層的 `text` 直接 `UnboundLocalError` → 500。
-    #    ⚠️ 這條路**從來沒有成功過**：先前 GET 的 URL 太長也是 500，
-    #    前端每次都靜默退回非串流，所以沒有人發現串流其實是壞的
-    #    （2026-08-23 UI 走查才挖出來）。
-    def gen(prompt=text, _state=None):
-        okay, why = claude_available()
-        if not okay:
-            yield _sse({"type": "error", "message": why})
-            return
-        # ★ 邊界壓縮 —— 放在 `gen()` 裡面，而且**進度事件要先送**。
-        #   ⛔ 2026-08-26 首次實跑抓到：先前是壓縮跑完才送事件，於是整段
-        #      壓縮期間畫面完全靜止（實測 509k 的 context 跑了一分多鐘）——
-        #      而「畫面完全沒有反應」正是這條路當初改成串流要解決的問題。
-        #   ⚠️ `_compact_plan` 只讀 transcript 檔尾，很便宜，可以先問一次。
-        _p = _compact_plan(m)
-        if _p:
-            yield _sse({"type": "tool", "name": (
-                "🗜️ context 已達 %dk（門檻 %dk）—— 正在換一份較短的工作記憶。"
-                "這一步要先跑一回合摘要，請稍候"
-                % (_p["tokens"] // 1000, _p["threshold"] // 1000))})
-        seed, note = _take_seed(sid, m, _p)
-        if seed:
-            yield _sse({"type": "tool", "name": note})
-            prompt = seed + prompt
-        elif _p:
-            # ⭐ 沒成功也要講 —— 否則畫面只會停在「正在換」，看起來像卡死。
-            yield _sse({"type": "tool", "name":
-                        "⚠️ 換工作記憶沒成功 —— 照原本的方式繼續，任務不受影響"})
-        st = _state if _state is not None else {"parts": [], "tools": [],
-                                                "meta": {}, "saved": [], "proposal": None}
-        parts, tools, saved = st["parts"], st["tools"], st["saved"]
-        meta = st["meta"]
-        for ev in claude_ask(prompt, session_id=sid, model=m.get("model"),
-                             resume=m.get("claude_session_id"),
-                             allow_tools=m.get("allowed_tools") or None,
-                             **_timeout_kw(m)):
-            if ev["type"] == "text":
-                parts.append(ev["text"])
-            elif ev["type"] == "tool" and ev["name"] != "_init":
-                tools.append(_tool_label(ev))
-                # ⚠️ 用 `st` 不是 `_state` —— 後者可能是 None（見上面的 fallback）
-                p2 = _as_proposal(ev)
-                if p2:
-                    st["proposal"] = p2
-                # ⭐ 工具動作就是 session 的「進度」—— session 沒有可預估的總量，
-                #    而「它現在在讀檔／開瀏覽器／載 skill」正是人想知道的事。
-                try:
-                    note_tool(sid, ev["name"])
-                except Exception:       # noqa: BLE001 —— 進度壞掉不可以影響任務本身
-                    pass
-            elif ev["type"] == "tool":
-                _remember_claude_session(sid, ev.get("input") or {})
-            elif ev["type"] == "done":
-                meta = ev
-                # ⭐ 把提議掛上 `done` —— 前端的確認卡讀的就是這裡（先前一直是 undefined）
-                if st.get("proposal"):
-                    ev = {**ev, "proposal": st["proposal"]}
-                    meta = ev
-                if _state is not None:
-                    _state["meta"] = ev
-            yield _sse(ev)
-        _remember_claude_session(sid, meta)
-        got = _persist(parts, tools, meta, saved)
-        # ⚠️ 案例草稿與「自動寫了什麼」也要送 —— 先前條件只看 bugs／docs，
-        #    `write_cases` 那種只產案例的任務，前端什麼都收不到（2026-08-23）。
-        if any(got.get(k) for k in ("bugs", "docs", "cases", "written",
-                                    "needs_review", "write_failed",
-                                    "filed", "bugs_pending", "cases_written")):
-            yield _sse({"type": "drafts", **got})
+    # ⚠️ **先訂閱再送出** —— 反過來的話，開跑到訂閱之間的事件會整個漏掉
+    #    （壓縮提示就在那一段，而它正是最需要立刻看到的東西）。
+    q, replay = session_bus.subscribe(sid, since=_since_of(sid, request))
+    try:
+        _info, th = _start_or_queue(sid, text)
+    except Exception:                   # noqa: BLE001
+        # ⛔ 這裡炸掉的話 Response 根本沒建出來，`call_on_close` 也就不會掛 ——
+        #    那個訂閱者會**永遠**留在匯流排上（而且有訂閱者的匯流排不會被淘汰）。
+        session_bus.unsubscribe(sid, q)
+        raise
+    resp = _sse_response(_relay(sid, q, replay, stop_on_idle=True), sid, q)
+    resp.pump = th          # ⭐ 掛出來讓測試等得到那一輪跑完（正式路徑不會用到）
+    return resp
 
-    def _persist(parts, tools, meta, saved):
-        """把已經產出的內容存下來。**只做一次**。
 
-        ⛔ 這一段一定要在 `finally` 也跑得到 —— client 斷線時
-           generator 收到 `GeneratorExit`，迴圈後面那幾行永遠不會執行，
-           於是跑了幾十分鐘的產出**一個字都不留**（2026-08-23 實測：
-           我在任務跑到一半重啟平台，那一輪整段消失）。
-        """
-        if saved:
-            # ⚠️ 已經存過就把**上次的結果**回去 —— `guarded()` 的 finally 要靠它
-            #    寫「待確認」。回 `{}` 的話正常結束的那一輪會沒有產出摘要
-            #    （2026-08-24 接狀態時踩到）。
-            return saved[0] if isinstance(saved[0], dict) else {}
-        saved.append(True)
-        reply = "".join(parts) or "（沒有輸出）"
-        append_message(sid, "assistant", reply,
-                       tools=tools, usage=(meta or {}).get("usage"))
-        got_ = _absorb_drafts(sid, m, reply)
-        # ⭐ session 用 shell 直接改的檔，草稿模型看不見 —— 靠前後快照補上
-        got_["changed"] = worktree.changed_since(_before)
-        saved[0] = got_                 # 讓重入時回得出同一份
-        return got_
+@bp.route("/api/chat/<sid>/send", methods=["POST"])
+def chat_send(sid):
+    """只送訊息，**不帶串流** —— 畫面靠 `/events` 那一條訂閱看。
 
-    def guarded():
-        """把 `gen()` 包起來，斷線時仍然落檔。"""
-        state = {"parts": [], "tools": [], "meta": {}, "saved": [], "proposal": None}
+    ⭐ 這是「同一則事件被畫兩次」的正解：先前 `send()` 每次都開一條新串流，
+       同一個面板掛著兩條訂閱（2026-08-28 瀏覽器走查抓到）。
+    """
+    m = get_meta(sid)
+    if not m or m.get("deleted"):
+        return fail("找不到 session", 404)
+    if m.get("state") != "active":
+        return fail("session 已關閉，請先續接", 409)
+    body = request.get_json(force=True, silent=True) or {}
+    text = (body.get("text") or "").strip()
+    if not text:
+        return fail("空訊息")
+    info, _th = _start_or_queue(sid, text)
+    return ok(**info)
+
+
+@bp.route("/api/chat/<sid>/events")
+def chat_events(sid):
+    """**只看不送**：訂閱這個 session 的事件。
+
+    ⭐ 這就是「重整之後還看得到過程」與「兩個分頁看到同一份」的那條路 ——
+       它不送訊息、也不會因為某一輪跑完就收線。
+    """
+    m = get_meta(sid)
+    if not m or m.get("deleted"):
+        return fail("找不到 session", 404)
+    q, replay = session_bus.subscribe(sid, since=_since_of(sid, request))
+    return _sse_response(_relay(sid, q, replay, stop_on_idle=False), sid, q)
+
+
+@bp.route("/api/chat/<sid>/interrupt", methods=["POST"])
+def chat_interrupt(sid):
+    """⛔ 中止這一輪（終端機的 Esc）—— **已經產出的內容照樣留下**。
+
+    ⚠️ 排隊中的訊息一併丟掉並回報數量：中止之後還自動跑下一則，
+       是使用者最不會預期的行為。
+    """
+    with _PUMP_LOCK:
+        p = _PUMPS.get(sid)
+        if not p:
+            return fail("這個 session 現在沒有在跑", 409)
+        p["stopped"] = True
+        dropped, procs, st = len(p["inbox"]), list(p.get("proc") or []), p.get("st")
+        p["inbox"] = []
+    if st is not None:
+        # ⭐ 讓補救走「已經有錯誤訊息」那一支 —— 否則會補上「串流在中途斷了
+        #    （關掉分頁、重整…）」，把使用者自己按的中止說成別的事。
+        st["err"] = u"使用者中止"
+        # ⛔ 這句話**不能現在就 append** —— 落檔時還會從 transcript 把中止前的
+        #    最後一段撿回來接在後面，於是「已中止」會夾在內容中間
+        #    （2026-08-28 實測畫面：「已中止…。28 份 .md 檔，逐一讀取前 30 行。」）。
+        st["interrupted"] = True
+        st["dropped"] = dropped
+    for proc in procs:
         try:
-            for chunk in gen(_state=state):
-                yield chunk
-        finally:
-            # 正常結束時 gen 自己已經存過（`saved` 有值），這裡就不會重複
-            got = _persist(state["parts"], state["tools"], state["meta"],
-                           state["saved"])
-            # ⛔ 收尾**一定要在 finally** —— client 斷線時 generator 收到
-            #    `GeneratorExit`，迴圈後面永遠不會執行，狀態會**永遠卡在 running**
-            #    （與 `_persist()` 同一條理由）。
-            try:
-                mark_done(sid, got or {}, proposal=state.get("proposal"))
-            except Exception:           # noqa: BLE001
-                pass
-
-    return Response(stream_with_context(guarded()), mimetype="text/event-stream",
-                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+            kill_tree(proc.pid, force=True)
+        except Exception:               # noqa: BLE001
+            pass
+    more = u"，並丟掉排隊中的 %d 則" % dropped if dropped else u""
+    session_bus.publish(sid, _sse(
+        {"type": "error",
+         "message": u"⛔ 已中止這一輪%s。要接下去的話直接再送一則。" % more}))
+    return ok(dropped=dropped, killed=len(procs))
 
 
 def _sse(obj):
     import json as _j
     return "data: %s\n\n" % _j.dumps(obj, ensure_ascii=False)
+
+
+def _idle():
+    """全部跑完的訊號。`/stream` 收到就收線；`/events` 只轉發、不收線。
+
+    ⚠️ 用「同一個字串比對」而不是解析 JSON —— 匯流排裡放的是已經序列化好的
+       SSE 字串，為了一個控制訊號去解析每一筆，成本與出錯面都不划算。
+    """
+    return _sse({"type": "idle"})
+

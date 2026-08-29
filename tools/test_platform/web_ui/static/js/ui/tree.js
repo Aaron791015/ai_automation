@@ -21,7 +21,12 @@ export function renderTree(container, tree, { selection, onToggle, onOpenCase, f
     }
     const ids = leafIds(n), on = ids.filter((i) => sel.has(i)).length;
     const st = on === 0 ? 'none' : on === ids.length ? 'all' : 'some';
-    const open = expandAll || depth < 1 || (n.type === 'product' && !n.collapsed && depth < 2) ? true : (openState.get(n.id) ?? false);
+    // ⚠️ 2026-08-28 修正：原本 `depth < 1` 會讓所有產品層（如「新綜合」）永遠強制展開，
+    // 點收合箭頭雖然有把狀態寫進 openState，但這裡完全沒讀它就被短路成 true——等於
+    // 產品層的收合鈕形同虛設。改成只用「預設值」決定初次展開與否（產品層預設展開，
+    // 除非設了 collapsed；其餘層預設收合），一旦 openState 有記錄一律以它為準。
+    const defaultOpen = n.type === 'product' && !n.collapsed;
+    const open = expandAll ? true : (openState.get(n.id) ?? defaultOpen);
     const c = n.counts || {};
     return html`<div class="branch" data-id="${n.id}">
       <div class="node type-${n.type}"><span class="tw" data-tog="${n.id}">${open ? '▾' : '▸'}</span>

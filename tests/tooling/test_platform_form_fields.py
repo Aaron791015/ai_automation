@@ -214,7 +214,10 @@ def test_前端會去問選項端點():
     p = os.path.join(PLATFORM, "web_ui", "static", "js", "ui", "form.js")
     src = io.open(p, encoding="utf-8").read()
     i = src.index("async function reloadDynamic")
-    body = src[i:i + 1800]
+    # ⚠️ 視窗長度需 > 函式實際長度，否則函式尾端的檢查點會被切掉而誤判成「不見了」
+    #    （2026-08-27 `appendInto`／`opt-reason` 兩段邏輯插進函式中段，
+    #    把 `if (touched) recalc()` 推到第 1955 字元，1800 切太短漏踩過一次）。
+    body = src[i:i + 2400]
     # ⚠️ 比對「真的會執行的那個形狀」，不是這串字 ——
     #    上面的註解本身就引用了舊寫法（那是刻意留的說明），單純 grep 會誤判。
     assert "!== 'api') continue" not in body, "又把動態選項鎖回 kind==='api' 了"

@@ -537,15 +537,25 @@ def test_stream端點收POST():
 
 
 def test_stream的閉包不會遮蔽外層的text():
-    """★ 這一條就是那個 500 的迴歸：閉包內一旦對 `text` 賦值，
-    迴圈開頭讀它就會 `UnboundLocalError`。"""
+    """★ 原始的 500 迴歸：巢狀 `def gen(` 閉包內對 `text` 賦值，
+    迴圈開頭讀它就會 `UnboundLocalError`。
+
+    ⚠️ 2026-08-28 `chat_stream` 重構掉了那個閉包——實際跑一輪的邏輯搬進
+    `_turn_events`（獨立函式，透過 `session_bus` 傳遞事件，見 chat.py 檔頭），
+    不再共用 `chat_stream` 的區域變數，`def gen(` 這個寫法本身已經不存在。
+    這裡改成釘住「不會走回頭路」：`chat_stream` 本體不應該再出現巢狀 `def`
+    ——一旦又把邏輯搬回巢狀閉包，共用變數被遮蔽的風險就會跟著回來。
+    """
     import inspect
+    import re
     src = inspect.getsource(_chat().chat_stream)
-    body = src[src.index("def gen("):]
-    # 閉包內不得再出現 `text = `（賦值）
-    for ln in body.split("\n"):
-        st = ln.strip()
-        assert not st.startswith("text ="), u"閉包內又對 text 賦值了：%s" % st
+    lines = src.split("\n")
+    # ⚠️ `inspect.getsource` 連裝飾器（`@bp.route(...)`）一起回傳 ——
+    #    真正的 `def chat_stream(...):` 不保證是第一行，用內容找，不要用位置猜。
+    start = next(i for i, ln in enumerate(lines) if re.match(r"\s*def chat_stream\(", ln))
+    for ln in lines[start + 1:]:
+        assert not re.match(r"\s*(async\s+)?def\s", ln), (
+            u"chat_stream 內又出現巢狀函式了 —— 閉包共用變數的風險可能回來：%s" % ln.strip())
 
 
 def test_stream真的串得出事件(monkeypatch):
@@ -581,9 +591,16 @@ def _flask_app():
 def test_斷線時已產出的內容仍然落檔(monkeypatch):
     """★ 2026-08-23 實測：任務跑到一半平台被重啟 —— 連線斷掉，那一輪整段消失。
 
-    SSE 的 `gen()` 是跑完迴圈才 `append_message`，而 client 斷線會讓
-    generator 收到 `GeneratorExit`，**後面那幾行永遠不會執行**。
-    與逾時是同一類：跑了幾十分鐘的東西，不能因為收尾那一步沒跑到就全丟。
+    ⚠️ 2026-08-28 這條路整個換了架構（見 `_pump` 檔頭的說明）：跑一輪的工作
+    搬進**獨立的背景執行緒**（`_pump`），SSE 只是訂閱 `session_bus` 的消費端——
+    **client 斷線只會讓消費端的 generator 收到 `GeneratorExit`，完全不影響
+    背景執行緒**，落檔（`append_message`）在執行緒自己的 `finally` 做，
+    跟有沒有人在看串流無關。這是比原本的修法更徹底的解法（原本的洞是
+    `GeneratorExit` 會一路傳進 `claude_ask()` 的 `finally` 卡住整條 pump）。
+
+    驗證方式因此要跟著換：不是「讀一段就斷線，看斷線前存到的內容」，
+    是「斷線後照樣等背景執行緒把這一輪跑完，確認落檔沒有因為斷線而漏掉」——
+    `resp.pump` 就是那條執行緒的把手（`chat_stream` 特意掛出來給測試用）。
     """
     C = _chat()
     saved = []
@@ -602,9 +619,10 @@ def test_斷線時已產出的內容仍然落檔(monkeypatch):
         resp = C.chat_stream("x")
         it = resp.response
         next(it)                    # 只讀第一段就「斷線」
-        it.close()                  # 觸發 GeneratorExit
-    assert saved, u"斷線之後一個字都沒留"
-    assert "第一段" in saved[0]
+        it.close()                  # 觸發 GeneratorExit（只影響消費端）
+        resp.pump.join(timeout=5)   # 背景執行緒不受斷線影響，等它自己跑完
+    assert saved, u"斷線之後一個字都沒落檔——背景執行緒沒有真的獨立於連線之外"
+    assert "第一段" in saved[0] and "第三段" in saved[0], u"落檔內容不完整"
 
 
 def test_正常結束不會重複落檔(monkeypatch):

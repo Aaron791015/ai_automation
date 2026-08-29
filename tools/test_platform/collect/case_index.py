@@ -178,7 +178,14 @@ def _counts(cs: list[dict]) -> dict:
 
 
 def to_tree(cases: list[dict], spec) -> list[dict]:
-    """產品 → parentSuite → suite → subSuite → 檔案 → 案例；缺標籤的層級自動塌陷。"""
+    """產品 → 檔案 → （檔案內若貼了 allure suite 標籤才分組）→ 案例。
+
+    ⚠️ 2026-08-28 由「產品 → suite → 檔案 → 案例」改成「產品 → 檔案 → suite → 案例」：
+    原本 suite 分岔在檔案**之上**，同一檔案有多個子頁面（如 `test_system_setting.py`
+    橫跨投注限額／遊戲設置／退水設置…）就會在樹上被拆成好幾支、檔名重複出現好幾次——
+    使用者要的是「點開一個檔案，就能看到裡面案例對應哪個子頁面」，不是把檔案本身拆散。
+    沒貼 suite 標籤的案例維持原樣（檔案下直接列案例，不多一層）。
+    """
     cases_cfg = spec.cases or {}
     pmap = {m["product"]: m for m in cases_cfg.get("product_map", [])}
     by_product: dict[str, list[dict]] = defaultdict(list)
@@ -203,37 +210,38 @@ def to_tree(cases: list[dict], spec) -> list[dict]:
             nodes.append((k, buckets[k]))
         return nodes
 
-    def build_files(items: list[dict], id_prefix: str) -> list[dict]:
-        nodes = []
-        for fpath, fcases in group(items, lambda c: c["file"], "file", id_prefix):
-            stage = fcases[0].get("stage_label")
-            nodes.append({
-                "type": "file", "id": f"{id_prefix}/{fpath}", "label": stage or os.path.basename(fpath),
-                "sublabel": fpath if stage else None, "file": fpath,
-                "stage": fcases[0].get("stage"), "counts": _counts(fcases),
-                "children": [leaf(c) for c in fcases],
-            })
-        return nodes
-
-    def build_suites(items: list[dict], id_prefix: str) -> list[dict]:
-        # 三層 allure suite；某層全為 None 就塌陷
+    def build_case_groups(fcases: list[dict], id_prefix: str) -> list[dict]:
+        """檔案節點底下的案例；有 allure suite／sub_suite 標籤才分組，否則直接列案例。"""
         def lvl(c, k):
             return (c.get("allure") or {}).get(k)
-        if all(lvl(c, "suite") is None for c in items):
-            return build_files(items, id_prefix)
+        if all(lvl(c, "suite") is None for c in fcases):
+            return [leaf(c) for c in fcases]
         nodes = []
-        for suite, scases in group(items, lambda c: lvl(c, "suite"), "suite", id_prefix):
+        for suite, scases in group(fcases, lambda c: lvl(c, "suite"), "suite", id_prefix):
             sid = f"{id_prefix}/{suite or '_'}"
             if all(lvl(c, "sub_suite") is None for c in scases):
-                children = build_files(scases, sid)
+                children = [leaf(c) for c in scases]
             else:
                 children = []
                 for sub, subcases in group(scases, lambda c: lvl(c, "sub_suite"), "sub_suite", sid):
                     ssid = f"{sid}/{sub or '_'}"
                     children.append({"type": "sub_suite", "id": ssid, "label": sub or "（未分類）",
-                                     "counts": _counts(subcases), "children": build_files(subcases, ssid)})
+                                     "counts": _counts(subcases), "children": [leaf(c) for c in subcases]})
             nodes.append({"type": "suite", "id": sid, "label": suite or "（未分類）",
                           "counts": _counts(scases), "children": children})
+        return nodes
+
+    def build_files(items: list[dict], id_prefix: str) -> list[dict]:
+        nodes = []
+        for fpath, fcases in group(items, lambda c: c["file"], "file", id_prefix):
+            stage = fcases[0].get("stage_label")
+            fid = f"{id_prefix}/{fpath}"
+            nodes.append({
+                "type": "file", "id": fid, "label": stage or os.path.basename(fpath),
+                "sublabel": fpath if stage else None, "file": fpath,
+                "stage": fcases[0].get("stage"), "counts": _counts(fcases),
+                "children": build_case_groups(fcases, fid),
+            })
         return nodes
 
     # ⭐ `product_map` 只有少數幾條寫了 `label`（生成骨架那三條、tests/tooling），
@@ -255,7 +263,7 @@ def to_tree(cases: list[dict], spec) -> list[dict]:
             "type": "product", "id": pid,
             "label": m.get("label") or labels.get(pid) or pid, "product": pid,
             "collapsed": bool(m.get("collapsed")), "counts": _counts(pcases),
-            "children": build_suites(pcases, pid),
+            "children": build_files(pcases, pid),
         })
     # 產品順序：crux, wbot, qixing, common（common 收合在最後）
     order = {"crux": 0, "wbot": 1, "qixing": 2, "common": 9}

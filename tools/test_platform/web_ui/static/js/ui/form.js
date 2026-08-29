@@ -88,6 +88,16 @@ export function validate(fields, vals) {
   return errs;
 }
 
+// ⛔ **`html` 是 tagged template —— 裡面一個反引號就會提前結束整串字串。**
+//    2026-08-27 在欄位模板裡寫了一句含 `.reason` 的說明（markdown 習慣加反引號），
+//    結果整個任務框打不開，錯誤是 `html(...).reason is not a function`。
+//    ⚠️ **JS 語法檢查抓不到這一類** —— 提前結束後剩下的仍是合法 JS
+//    （`html\`…\`.reason(…)`），`node --check` 一路綠燈。
+//    → 模板內要說明就寫在**模板外面**（像這一段），或用「」代替反引號。
+//
+// `.opt-reason` 的用途：動態選項的說明（選單為什麼是空的、共幾張）。
+// ⛔ 不能共用旁邊的 `.reason` —— 那個被「此組合不適用」佔用，
+//    且 recalc() 會把它清空，共用的話這句話會被蓋掉。
 export function renderForm(root, spec, command, initial = {}, { onChange } = {}) {
   const params = command.params || {};
   let fields = params.fields || [];
@@ -118,6 +128,7 @@ export function renderForm(root, spec, command, initial = {}, { onChange } = {})
           <label>${f.label}${f.required ? html`<span class="req">*</span>` : ''}${raw(tip(f))}</label>
           ${raw((R[f.type] || R.text)(f, values[f.key]))}
           <span class="err"></span><span class="reason"></span>
+          <span class="opt-reason" data-reason hidden></span>
         </div>`)}
       </div>
     </fieldset>`);
@@ -138,7 +149,33 @@ export function renderForm(root, spec, command, initial = {}, { onChange } = {})
   };
   root.onkeydown = (e) => { if (e.target.classList.contains('switch') && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); e.target.click(); } };
   root.oninput = () => recalc();
-  root.onchange = (e) => { recalc(); const k = e.target.dataset.key; const f = fields.find((x) => x.key === k); if (f && f.reload_on_change) reloadDynamic(k); };
+  root.onchange = (e) => {
+    recalc();
+    const k = e.target.dataset.key;
+    const f = fields.find((x) => x.key === k);
+    if (!f) return;
+    if (f.appends_to) appendInto(f, e.target);
+    if (f.reload_on_change) reloadDynamic(k);
+  };
+
+  /** `appends_to`：把這個欄位選到的值**追加**進另一個欄位（2026-08-27）。
+   *
+   * ⭐ 為什麼是「追加」而不是「取代那個欄位」：目標欄位（例如 JIRA 單號）
+   *    必須**still 打得進任何值** —— 別人指派的單、剛開的單都不會出現在選單裡。
+   *    把輸入框換成下拉等於把那些正當用途一起擋掉（CLAUDE.md §7.0）。
+   * ⛔ 要去重 —— 同一張單選兩次不該在欄位裡出現兩行。
+   */
+  function appendInto(f, el) {
+    const dst = $(`[data-key="${CSS.escape(f.appends_to)}"]`, root);
+    if (!dst) return;
+    const picked = Array.from(el.selectedOptions || []).map((o) => o.value);
+    if (!picked.length) return;
+    const have = String(dst.value || '').split(/[\s,、]+/).map((x) => x.trim()).filter(Boolean);
+    const add = picked.filter((p) => !have.includes(p));
+    if (!add.length) return;
+    dst.value = have.concat(add).join('\n');
+    recalc();                      // ⛔ 目標欄位可能是 required —— 不重算會一直顯示「必填」
+  }
 
   async function reloadDynamic(changedKey) {
     let touched = false;
@@ -163,6 +200,11 @@ export function renderForm(root, spec, command, initial = {}, { onChange } = {})
         const keep = el.value;
         el.innerHTML = (f.type === 'file_select' ? `<option value="">${esc(f.placeholder || '（預設）')}</option>` : '') + (d.options || []).map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
         if ([...el.options].some((o) => o.value === keep)) el.value = keep;
+        // ⭐ 把後端給的一句話顯示出來 —— 選單空的時候**一定要說得出為什麼**
+        //    （沒設 JIRA 憑證／這個產品沒有 JIRA 專案／真的沒有指派給你的單），
+        //    否則人只看到一個空下拉，會以為是壞了（2026-08-27）。
+        const why = el.parentElement?.querySelector('[data-reason]');
+        if (why) { why.textContent = d.reason || ''; why.hidden = !d.reason; }
         touched = true;
       } catch (e) { /* 動態選項失敗不阻塞 */ }
     }

@@ -80,6 +80,19 @@ def _expand_options(task: dict) -> dict:
             # 只有一個產品時直接選好 —— 少一次沒有選擇的選擇
             if len(f["options"]) == 1 and f.get("default") is None:
                 f["default"] = f["options"][0]["value"]
+            # ⛔ **展開完就把 `options_from` 拿掉**（2026-08-27）——
+            #    留著的話 `ui/form.js` 的 `reloadDynamic` 會再去問一次選項端點，
+            #    而任務不是 registry 工具，那個網址不存在 → **每開一次任務框
+            #    就噴一個 404**（`/api/tools/tasks/options/product`）。
+            #    選項後端已經填好了，那一趟純屬浪費。
+            f.pop("options_from", None)
+        elif src == "jira_mine":
+            # ⭐ 這一類**不能在這裡展開** —— 它要依「當下選的產品」查 JIRA，
+            #    而這支 API 在表單打開前就回應了，那時還不知道選哪個產品。
+            #    改成告訴前端「去這個網址問」，`form.js` 會帶上表單當前的值。
+            f = dict(f)
+            f["options_from"] = dict(f["options_from"],
+                                     url="/api/tasks/%s/options/%s" % (task.get("id"), f["key"]))
         fields.append(f)
     out["fields"] = fields
     return out
@@ -91,6 +104,31 @@ def get_task(task_id):
     if not t:
         return fail("未知的任務：%s" % task_id, 404)
     return ok(task=_expand_options(t))
+
+
+@bp.get("/api/tasks/<task_id>/options/<key>")
+def task_options(task_id, key):
+    """依**當下表單的值**算出動態選項（`ui/form.js` 的 `reloadDynamic` 會來問）。
+
+    ★ 為什麼不能在 `/api/tasks/<id>` 就展開：這一類選項要看「現在選的是哪個產品」，
+      而那支 API 在表單打開之前就回應了。
+
+    ⛔ 任何失敗都回**空清單 ＋ 一句原因**，不要回 5xx ——
+       選單只是輔助，壞掉不該讓整個任務框開不起來。
+    """
+    t = T.get(task_id)
+    if not t:
+        return fail("未知的任務：%s" % task_id, 404)
+    f = next((x for x in (t.get("fields") or []) if x.get("key") == key), None)
+    src = ((f or {}).get("options_from") or {}).get("source")
+    if src == "jira_mine":
+        from core.jira_mine import mine_for_product
+        got = mine_for_product((request.args.get("product") or "").strip())
+        return ok(options=got["options"], reason=got["reason"])
+    if src == "products":
+        return ok(options=[{"value": p.get("id"), "label": p.get("label") or p.get("id")}
+                           for p in get_registry().products if not p.get("virtual")])
+    return ok(options=[], reason="這個欄位沒有動態選項")
 
 
 def pick_model(body: dict, task: dict) -> str | None:

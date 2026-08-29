@@ -22,6 +22,7 @@ import io
 import os
 import re
 import subprocess
+import sys
 
 from flask import Blueprint, request
 
@@ -198,40 +199,15 @@ def _real_next_id(product: str) -> str | None:
 
 
 # ── markdown → JIRA wiki 標記 ────────────────────────────
-# Bug 單是**拿去轉貼 JIRA** 的（使用者 2026-08-26 裁示），所以正文直接寫 wiki 標記。
-_FENCE = re.compile(r"^```[^\n]*\n(.*?)^```[ \t]*$", re.M | re.S)
-_BOLD = re.compile(r"\*\*(.+?)\*\*", re.S)
-#: markdown 表格的分隔行。⚠️ JIRA 的 `|` 本來就是表格語法，這一行會被渲染成
-#:  「一列全是破折號的儲存格」—— 留著就是一列垃圾。
-_TABLE_SEP = re.compile(r"^\|[\s\-:|]+\|[ \t]*$")
-
-
-def _to_jira(text: str) -> str:
-    """把正文的 markdown 轉成 JIRA wiki 標記。
-
-    ⭐ 圍欄**先切出來**，內容原樣搬進 `{code}` —— 程式碼裡的 `**` 是次方運算，
-       跟著轉會把它改壞。
-    """
-    out, last = [], 0
-    for m in _FENCE.finditer(text):
-        out.append(_plain_to_jira(text[last:m.start()]))
-        out.append("{code}\n%s{code}" % m.group(1))
-        last = m.end()
-    out.append(_plain_to_jira(text[last:]))
-    return "".join(out)
-
-
-def _plain_to_jira(seg: str) -> str:
-    seg = _BOLD.sub(r"*\1*", seg)
-    lines, out = seg.split("\n"), []
-    for ln in lines:
-        if _TABLE_SEP.match(ln) and out and out[-1].lstrip().startswith("|"):
-            # 上一行是表頭 → 改成 `||a||b||`，分隔行本身丟掉
-            cells = [c.strip() for c in out[-1].strip().strip("|").split("|")]
-            out[-1] = "||" + "||".join(cells) + "||"
-            continue
-        out.append(ln)
-    return "\n".join(out)
+# ⭐ **實作在 `scripts/jira_markup.py`** —— 2026-08-28 從這裡搬出去。
+#    原因：這套轉換原本只做在平台這條路，`bug-report` skill 與
+#    `scripts/pack_bug_report.py` 都沒跟上，於是同一個工作區同時產出兩種格式，
+#    而 `lint_bug_assets` 的 W8 還刻意同時容忍兩種寫法 —— 沒有任何機制會發現在分岔。
+#    ⛔ 不要再在這裡複製一份。
+_SCRIPTS = os.path.join(REPO_ROOT, "scripts")           # 與 bug_paths 同一條路
+if _SCRIPTS not in sys.path:                            # ⚠️ 重載時不要愈插愈多
+    sys.path.insert(0, _SCRIPTS)
+from jira_markup import to_jira as _to_jira   # noqa: E402  scripts/jira_markup.py
 
 
 _SHOT_RE = re.compile(r"[^\s，、。；;：:（）()\[\]｜|]+\.(?:png|jpg|jpeg)", re.I)
