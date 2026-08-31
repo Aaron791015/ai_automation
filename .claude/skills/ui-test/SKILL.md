@@ -140,6 +140,33 @@ description: UI 自動化測試開發標準流程 — 探索（Playwright MCP）
 - ⚠️ **這是靜態解析，不是執行結果**：`allure.step`／`allure.attach` 本來是執行期才記錄的東西，
   test_platform 案例瀏覽器（`pytest_case_export.py`）用 `pytest --collect-only`（不執行）
   抓的是「案例原始碼寫了什麼」，不是「這次跑出來的值」。要看真正的執行結果仍要看 allure report。
+- ⚠️⚠️ **`allure.step("...")` 的字串本身要寫出具體內容，不能只寫概括說法**（2026-08-31，
+  xzh B26 踩到）——`pytest_case_export.py` 的 `_step_texts()` 只讀**字面字串**，不會展開
+  f-string 變數（變數值要真的執行才看得到，test_platform 的靜態案例瀏覽器看不到）。
+  例：`with allure.step("讀取表頭欄位、8 個分組收合按鈕")` 在 test_platform 上完全看不出
+  是哪 6 個欄位、哪 8 個分組；要改成
+  `with allure.step("讀取表頭 6 欄位（玩法／自留口径／每选项自留上限／…）、8 個分組（连码／连肖／…）")`，
+  把具體名稱直接寫進字串，test_platform 才顯示得出來。**這是本工作區新綜合（xzh）產品
+  案例的固定寫法，之後生成／新增 xzh 案例一律比照辦理**；其他產品若同樣用 test_platform
+  瀏覽案例，也適用同一個限制。
+- ⛔ **`allure.step("...")` 的字串不能用隱式多行串接**（`"上半段"` 換行 `"下半段"` 兩個字面值
+  黏在一起）——`_lit()` 用 `ast.literal_eval()` 解析，只對第一行做 `lstrip`，後續行的縮排
+  會讓 `ast.parse(..., mode='eval')` 噴 `IndentationError`，退回顯示帶引號的原始碼片段
+  （字面上印出 `"讀取表頭...` 這種東西），不是還原後的文字。**再長也要寫成一行字串**，
+  或改用變數先組字串再傳進 `allure.step()`。
+- ⚠️⚠️ **「一個共用 helper、被多個測試函式呼叫、用參數帶入具體值」是另一種會踩到同一個雷
+  的結構**（2026-08-31，`test_user_management.py` 的 `_check(company_page, level)` 踩到，
+  跟上面「迴圈」是不同情境，容易搞混）——迴圈是**一個測試函式內部**跑好幾個對象，靜態
+  瀏覽器只看得到迴圈模板，用「迴圈外加一步總覽」補救即可；但**共用 helper 被多個獨立測試
+  函式各自呼叫一次**（如 10 個 `test_levelN_agent_count_matches` 都呼叫同一個
+  `_check(company_page, "X级代理")`），若把 `f"...{level}..."` 這個 step 寫在 helper
+  裡面，**10 個測試在 test_platform 上會全部顯示同一個沒解開的 `{level}` 佔位符**，
+  完全分不出哪個函式測的是哪個層級——這裡沒有「總覽」可以補，因為 10 筆是分開的案例，
+  不是同一案例內的迴圈。**正確做法**：把帶層級名稱的那個 step 移出 helper，改成由
+  **每個呼叫端**自己用具體字面值包一層 `allure.step`（例：
+  `with allure.step("導覽到「用户管理」頁，切換到「一级代理」子頁面"): _check(company_page, "一级代理")`），
+  helper 內部只留跟具體值無關的共用步驟。判斷準則：**helper 的參數如果會被拿去組
+  `allure.step` 的字串內容，這個 step 就不能留在 helper 裡**，要下放給呼叫端。
 
 ### API 加速規則（重要）
 

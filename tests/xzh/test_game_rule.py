@@ -33,7 +33,7 @@ def test_game_rule_intro_and_bet_types(company_page, game_name):
     """
     page = company_page
     grp = GameRulePage(page)
-    with allure.step(f"導覽到「游戏规则」頁並切換到「{game_name}」"):
+    with allure.step(f"導覽到「游戏规则」頁並切換到「{game_name}」（本案例對三彩種各執行一次：香港六合彩／英国天天彩／宾果六合彩）"):
         grp.goto()
         grp.switch_game(game_name)
     with allure.step("讀取遊戲介紹段落文字"):

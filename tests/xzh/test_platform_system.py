@@ -20,7 +20,7 @@ def test_global_setting_image_domain_roundtrip(platform_page):
         sp.goto_global_setting()
         original = sp.image_domain()
     probe_value = "xzh-probe.example.com"  # 欄位名稱是「圖片網域」，實測會拿掉 scheme，探測值直接用純網域
-    with allure.step(f"改成探測值「{probe_value}」並保存，重新整理後重讀"):
+    with allure.step("改成探測值「xzh-probe.example.com」並保存，重新整理後重讀"):
         sp.set_image_domain(probe_value)
         sp.save()
         page.reload()
@@ -32,7 +32,7 @@ def test_global_setting_image_domain_roundtrip(platform_page):
     )
     assert after == probe_value
 
-    with allure.step(f"還原成原值「{original}」（CLAUDE.md §5：測試資料用完即還原）"):
+    with allure.step("還原成進入案例前讀到的原值（CLAUDE.md §5：測試資料用完即還原）"):
         sp.set_image_domain(original)
         sp.save()
 

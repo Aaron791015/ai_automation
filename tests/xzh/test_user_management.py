@@ -20,11 +20,19 @@ from xzh_qa.pages.dashboard_page import AgentHierarchyPage
 
 
 def _check(company_page, level: str) -> None:
+    """讀取指定層級子頁面的分頁人數與表格筆數並比對。
+
+    ⚠️ 2026-08-31 更正：「導覽到用户管理頁、切換到哪個子頁面」這個 step 刻意**不**放在
+    這個共用 helper 裡——test_platform 的 `_step_texts()` 是靜態解析原始碼，這裡若寫
+    `f"...切換到「{level}」子頁面"`，10 個呼叫端（level1~9＋会员）在 test_platform 上
+    會全部顯示同一個沒解開的 `{level}` 佔位符，看不出各自測的是哪個層級。改成由**每個
+    呼叫端自己**用具體層級名稱包一層 `allure.step`（見下方 10 個 `test_levelN_...` 函式），
+    這裡只保留跟層級名稱無關的共用步驟。
+    """
     page = company_page
     ah = AgentHierarchyPage(page)
-    with allure.step(f"導覽到「用户管理」頁，切換到「{level}」子頁面"):
-        ah.goto()
-        ah.switch_tab(level)
+    ah.goto()
+    ah.switch_tab(level)
     with allure.step("讀取分頁標籤人數與表格「共 N 条」的數字"):
         tab_count = ah.tab_label_count(level)
         table_count = ah.table_total_count()
@@ -51,7 +59,8 @@ def test_level1_agent_count_matches(company_page):
 
     oracle 來源：B 級（自檢不變量——分頁標籤數字本來就該等於該層級表格的實際筆數）。
     """
-    _check(company_page, "一级代理")
+    with allure.step("導覽到「用户管理」頁，切換到「一级代理」子頁面"):
+        _check(company_page, "一级代理")
 
 
 @allure.suite("一级代理")
@@ -76,7 +85,7 @@ def test_level1_agent_subordinate_breakdown_sum_matches(company_page):
     """
     ah = AgentHierarchyPage(company_page)
     account = "aaa111"
-    with allure.step(f"導覽到「用户管理→一级代理」，讀取「{account}」收合狀態的「下级」欄總數"):
+    with allure.step("導覽到「用户管理→一级代理」，讀取「aaa111」收合狀態的「下级」欄總數"):
         ah.goto()
         collapsed_total = ah.row_collapsed_subordinate_count(account)
     with allure.step("點「展开 »」，讀取同一列「二级代理～会员」逐層人數欄並加總"):
@@ -373,7 +382,8 @@ def test_level2_agent_count_matches(company_page):
 
     oracle 來源：B 級（自檢不變量——分頁標籤數字本來就該等於該層級表格的實際筆數）。
     """
-    _check(company_page, "二级代理")
+    with allure.step("導覽到「用户管理」頁，切換到「二级代理」子頁面"):
+        _check(company_page, "二级代理")
 
 
 @allure.suite("三级代理")
@@ -391,7 +401,8 @@ def test_level3_agent_count_matches(company_page):
 
     oracle 來源：B 級（自檢不變量——分頁標籤數字本來就該等於該層級表格的實際筆數）。
     """
-    _check(company_page, "三级代理")
+    with allure.step("導覽到「用户管理」頁，切換到「三级代理」子頁面"):
+        _check(company_page, "三级代理")
 
 
 @allure.suite("四级代理")
@@ -409,7 +420,8 @@ def test_level4_agent_count_matches(company_page):
 
     oracle 來源：B 級（自檢不變量——分頁標籤數字本來就該等於該層級表格的實際筆數）。
     """
-    _check(company_page, "四级代理")
+    with allure.step("導覽到「用户管理」頁，切換到「四级代理」子頁面"):
+        _check(company_page, "四级代理")
 
 
 @allure.suite("五级代理")
@@ -427,7 +439,8 @@ def test_level5_agent_count_matches(company_page):
 
     oracle 來源：B 級（自檢不變量——分頁標籤數字本來就該等於該層級表格的實際筆數）。
     """
-    _check(company_page, "五级代理")
+    with allure.step("導覽到「用户管理」頁，切換到「五级代理」子頁面"):
+        _check(company_page, "五级代理")
 
 
 @allure.suite("六级代理")
@@ -445,7 +458,8 @@ def test_level6_agent_count_matches(company_page):
 
     oracle 來源：B 級（自檢不變量——分頁標籤數字本來就該等於該層級表格的實際筆數）。
     """
-    _check(company_page, "六级代理")
+    with allure.step("導覽到「用户管理」頁，切換到「六级代理」子頁面"):
+        _check(company_page, "六级代理")
 
 
 @allure.suite("七级代理")
@@ -463,7 +477,8 @@ def test_level7_agent_count_matches(company_page):
 
     oracle 來源：B 級（自檢不變量——分頁標籤數字本來就該等於該層級表格的實際筆數）。
     """
-    _check(company_page, "七级代理")
+    with allure.step("導覽到「用户管理」頁，切換到「七级代理」子頁面"):
+        _check(company_page, "七级代理")
 
 
 @allure.suite("八级代理")
@@ -481,7 +496,8 @@ def test_level8_agent_count_matches(company_page):
 
     oracle 來源：B 級（自檢不變量——分頁標籤數字本來就該等於該層級表格的實際筆數）。
     """
-    _check(company_page, "八级代理")
+    with allure.step("導覽到「用户管理」頁，切換到「八级代理」子頁面"):
+        _check(company_page, "八级代理")
 
 
 @allure.suite("九级代理")
@@ -499,7 +515,8 @@ def test_level9_agent_count_matches(company_page):
 
     oracle 來源：B 級（自檢不變量——分頁標籤數字本來就該等於該層級表格的實際筆數）。
     """
-    _check(company_page, "九级代理")
+    with allure.step("導覽到「用户管理」頁，切換到「九级代理」子頁面"):
+        _check(company_page, "九级代理")
 
 
 @allure.suite("会员")
@@ -517,7 +534,8 @@ def test_member_count_matches(company_page):
 
     oracle 來源：B 級（自檢不變量——分頁標籤數字本來就該等於該層級表格的實際筆數）。
     """
-    _check(company_page, "会员")
+    with allure.step("導覽到「用户管理」頁，切換到「会员」子頁面"):
+        _check(company_page, "会员")
 
 
 # ============================================================================

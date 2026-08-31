@@ -18,8 +18,10 @@
 - [多 session 版控紀律](uncommitted-files-ownership.md) — 共用 working tree 為何需要紀律（四個踩過的坑）
 - [amend 競態教訓](git-amend-race-shared-worktree.md) — 共用 worktree 下 amend 前必查 HEAD 仍是自己的 commit
 - [假實作不可比真的寬鬆](test-double-must-not-be-lenient.md) — fake/monkeypatch 寬鬆一格，測試就從驗證退化成裝飾且無訊號；驗收自己的測試
+- [規則被自己的守門測試釘住](rule-frozen-by-its-own-guard-test.md) — 規則過期卻改不掉，多半是「改了會紅」；守門測試要釘性質不釘字面
 - [heredoc 反斜線坑](bash-heredoc-backslash-trap.md) — 用 heredoc 跑 Python 改檔時 Windows 路徑的反斜線會被吃掉且靜默失敗
 - [環境帳密政策](env-credentials-policy.md) — environments.md 可版控測試站帳密，不視為外洩
 - [STG 需授權才可使用](stg-requires-authorization.md) — ⛔STG 已交客戶試用，預設走 QAT
 - [Playwright MCP 設定](playwright-mcp-setup.md) — .mcp.json 釘 0.0.77（Node 18 上限）＋ --isolated 各 session 隔離
 - [統一測試平台](test-platform.md) — tools/test_platform（:5300）；registry 宣告式接工具、各自 PC 跑各自實例
+- [範本 --sync 快照工作區](template-sync-snapshots-worktree-not-head.md) — 會把別人未提交的檔一起帶進鏡像；被擋下來時先查那是誰的

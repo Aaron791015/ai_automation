@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """公司層「系統設置→飛單選項明細設置」Page Object（`/setting/lay-off-setting-detail`）。
 
-用途：B11～B14、B17 案例（矩陣 K7）。
+用途：B37～B50 案例（矩陣 K7；2026-08-31 飛單案例從零重新設計後編號已改，
+對照舊編號見 `docs/新綜合/新綜合_案例清單.md` §0.1）。
 前置條件：已登入公司層。
 
 ⚠️ 這頁跟同層級的「飛單設置」（`SystemSettingPage`，矩陣 K4）結構完全不同，
@@ -46,6 +47,11 @@ class LayOffDetailSettingPage:
         self.page.get_by_role("menuitem", name="飞单选项明细设置", exact=True).click()
         self.page.wait_for_timeout(1200)
 
+    def switch_game(self, game_name: str) -> None:
+        """切換上方彩種卡片，機制同 `SystemSettingPage.switch_game`（B42 三彩種分類比對用）。"""
+        self.page.get_by_text(game_name, exact=True).first.click()
+        self.page.wait_for_timeout(1200)
+
     def category_labels(self) -> list[str]:
         """讀取左側／上方玩法分類按鈕的文字清單（結構掃描用，矩陣 K7／案例 B17）。"""
         return self.page.get_by_role("navigation").get_by_role("button").all_inner_texts()
@@ -73,6 +79,16 @@ class LayOffDetailSettingPage:
         ⚠️ 開啟時會跳確認框（見檔頭說明），本方法已處理：偵測到 dialog 出現就點「確定」。
         關閉時不會跳確認框，直接生效。兩個方向都**立即送出 API、無需另外按保存**——
         呼叫端用完記得呼叫 `set_master_switch(<原值>)` 還原（見 CLAUDE.md §5）。
+
+        ⚠️⚠️ 2026-08-31 探索發現一個**尚未查明根因、但已三次重現**的異常：呼叫本方法
+        （開啟或關閉皆有可能）之後，回到 K4「飛單設置」頁複查，發現**K4 表格第一列
+        「特码」**會被意外解鎖（`isSelectionDetailEnabled` 變 False），即使該次操作
+        完全沒有碰過 K4 頁面、也沒有碰過「特码」這個玩法。三次都能用同一套鎖回程序
+        （`set_lay_off_detail_mode("特码", True)` + `save()`）修復，資料本身沒有壞掉，
+        但**每次呼叫本方法後都應該去複查 K4「特码」列的鎖定狀態**，不能假設只有自己
+        碰過的列會受影響。懷疑是前端在總開關切換時重新整理 K4 本地端快取時的
+        index／參照錯誤（「特码」恰好是陣列第 0 項），但未深入 debug 前端原始碼確認。
+        見案例清單 B38、交接檔（K4「特码」意外解鎖）。
         """
         if self.is_master_switch_enabled() == enable:
             return
@@ -82,7 +98,21 @@ class LayOffDetailSettingPage:
             dialog.get_by_role("button", name="确定").click()
         self.page.wait_for_timeout(800)
 
-    # ---- 分類工具列（B12）----
+    def click_master_switch_and_cancel(self) -> None:
+        """點擊總開關嘗試開啟，但在確認框按「取消」（B37 取消分支，交接檔 T26）。
+
+        ⚠️ 前提：呼叫前總開關必須是**關閉**狀態——開關「關閉」動作本身不跳確認框，
+        沒有取消可測；只有「關→開」這個方向才會跳確認框。呼叫端呼叫前應先用
+        `is_master_switch_enabled()` 確認為 False，或先 `set_master_switch(False)`。
+        點「取消」後預期總開關維持關閉，不應真的送出任何持久化（2026-08-31 已 MCP
+        唯讀＋寫入實測確認：取消後 `is_master_switch_enabled()` 仍讀到 False）。
+        """
+        self.page.get_by_text("启用飞单选项明细", exact=True).locator("..").locator(".el-switch").click()
+        dialog = self.page.get_by_role("dialog", name="启用飞单选项明细")
+        dialog.get_by_role("button", name="取消").click()
+        self.page.wait_for_timeout(500)
+
+    # ---- 分類工具列（B44，舊編號 B12）----
     def click_batch_auto(self) -> None:
         self.page.get_by_role("button", name="一键自动").click()
         self.page.wait_for_timeout(500)
@@ -90,6 +120,21 @@ class LayOffDetailSettingPage:
     def click_batch_manual(self) -> None:
         self.page.get_by_role("button", name="一键手动").click()
         self.page.wait_for_timeout(500)
+
+    def batch_tool_buttons_disabled(self) -> dict[str, bool]:
+        """讀取目前分類工具列「全部設置／一鍵自動／一鍵手動」三顆按鈕是否為 disabled（B50-2）。
+
+        ⚠️ 2026-08-31 探索發現一個混淆變因：「全部設置」旁邊有一個數值輸入框，
+        **輸入框未填值時，「全部設置」本身恆為 disabled**，與總開關（K7 master switch）
+        無關——即使總開關開啟、選項可正常編輯，「全部設置」也會因為輸入框空白而
+        disabled。呼叫端若要驗證「總開關關閉造成的影響」，只能用「一鍵自動」／「一鍵手動」
+        兩者當可靠樣本（總開關開啟時兩者皆可互動、關閉時兩者皆 disabled）；「全部設置」
+        只適合用來記錄「關閉時同樣是 disabled」這個現況，不能反向拿它證明「開啟時不受影響」。
+        """
+        return {
+            name: self.page.get_by_role("button", name=name, exact=True).is_disabled()
+            for name in ("全部设置", "一键自动", "一键手动")
+        }
 
     # ---- 分類表格（B12/B13/B14/B17）----
     def _table(self):
@@ -105,6 +150,25 @@ class LayOffDetailSettingPage:
     def option_row_count(self) -> int:
         """目前分類的選項列數（不含表頭）。"""
         return self._table().get_by_role("row").count() - 1
+
+    # ---- 結構家族判定（B41，交接檔 T24）----
+    def is_current_category_combo(self) -> bool:
+        """讀取目前選定分類是否為「組合型」——組合型才有「共用自留上限」欄位，
+        標準選項清單型沒有這個欄位（只有「每選項自留上限」）。
+
+        ⚠️ 2026-08-31 用本方法逐一掃描 25 個分類才發現案例清單先前記錄的「14 個標準型」
+        有誤（漏算「色波」），實際是 15 個標準型＋10 個組合型＝25，見 B41、交接檔 T24。
+        """
+        return self.page.get_by_text("共用自留上限", exact=True).count() > 0
+
+    def combo_item_count(self) -> int:
+        """讀取目前選定（組合型）分類的組合列數，用「選擇」checkbox 的數量計算。
+
+        ⚠️ 不同組合型分類的 checkbox 數量差異很大（10～52 不等，依玩法組合數而定），
+        本方法只讀數量，不判斷是 `table=0` 或 `table=10` 哪一種子變體——子變體的行為
+        差異見 B47（`table=0`）／B48（`table=10`）。
+        """
+        return self.page.get_by_role("checkbox").count()
 
     def option_row(self, option_number: int):
         """依 DOM 順序取第 `option_number` 個選項列（1-based，表頭不算）。"""
@@ -131,6 +195,13 @@ class LayOffDetailSettingPage:
             cell.locator(".el-switch").click()
 
     def option_cap_editable(self, option_number: int) -> bool:
+        """讀取「每選項自留上限」欄位目前是否為可編輯 button。
+
+        ⚠️⚠️ 2026-08-31 探索發現（B43，先前沒有任何文件記載，卻是能不能編輯這欄的關鍵前提）：
+        這欄只有在頁面總開關「啟用飛單選項明細」**開啟**時才會是可編輯 button；總開關關閉時
+        呈唯讀 `is-static`（`option_cap_editable()` 回 False）。呼叫 `set_option_cap()` 前
+        若總開關是關的，要先 `set_master_switch(True)`，測完記得關回原狀（見 B43 案例）。
+        """
         cell = self.option_row(option_number).get_by_role("cell").nth(2)
         return cell.get_by_role("button").count() > 0
 
@@ -138,6 +209,9 @@ class LayOffDetailSettingPage:
         return self.option_row(option_number).get_by_role("cell").nth(2).inner_text()
 
     def set_option_cap(self, option_number: int, value: str) -> None:
+        """把第 `option_number` 個選項（1-based，不含表頭，見 `option_row()`）的自留上限改成
+        `value`。⚠️ 前提見 `option_cap_editable()`——總開關必須先開啟這欄才可編輯。
+        """
         cell = self.option_row(option_number).get_by_role("cell").nth(2)
         cell.get_by_role("button").click()
         field = cell.get_by_role("spinbutton")
@@ -228,12 +302,22 @@ class LayOffDetailSettingPage:
         一直讀不到持久化結果的真因，不是保存流程本身失敗。
         用 `PUT /api/LayOffSettingDetail` 攔截確認的資料模型：`items` 陣列每項對應
         一個組合（`selection` "1"~"7"），`isMarked` 對應這裡的勾選狀態，
-        `retentionCap` 對應「共用自留上限」的值（**但只套用到未勾選的項目**——
-        已勾選／「選擇」的項目會保留其個別值不受「共用自留上限」影響，這跟畫面文字
-        「此設定下共用自留上限將存為 0，該玩法所有組合無條件全飛」的語意一致：
-        沒被特別勾選＝套用共用規則，勾選＝該項目獨立處理），`relationMode`
-        對應「关连／不关连」（`"related"`／`"unrelated"`）。
+        `retentionCap` 對應「共用自留上限」的值，`relationMode` 對應「关连／不关连」
+        （`"related"`／`"unrelated"`）。
         checkbox 同樣是 Element Plus 視覺隱藏 `<input>`，**要點父層元素**才點得到。
+
+        ⚠️⚠️ 2026-08-31 更正（B49，方向與本檔頭原本寫的相反，以此為準）：
+        「共用自留上限」的值會套用到**目前所有已勾選**的組合，**未勾選的組合一律強制
+        `retentionCap=0`**——不是「只套用到未勾選」。畫面文字「此設定下共用自留上限將存為
+        0，該玩法所有組合無條件全飛」因此只對**未勾選**的組合成立；已勾選的組合可以有
+        非 0 值，不受「全飛」限制（這正是「選擇」checkbox 存在的意義：讓操作者能個別
+        處理特定組合的例外值）。
+
+        ⚠️ 呼叫端陷阱：**呼叫序列若讓「目前已勾選數」中途變成 0（例如迴圈把全部組合都
+        取消勾選、下一步才勾選新的目標項），保存會卡住送不出 PUT**（`expect_request`
+        逾時，非提示訊息擋下——訊息只在「保存當下」零勾選才會跳，中途瞬間歸零不會跳訊息，
+        但後續保存仍可能失敗）。安全作法：**全程至少保留一個組合勾選**，改動其餘項目時
+        用「先勾新目標、再取消其餘」而非「先全部取消、再勾新目標」的順序。
         """
         if self.combo_item_marked(index) == marked:
             return

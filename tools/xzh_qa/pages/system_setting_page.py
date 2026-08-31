@@ -63,6 +63,29 @@ class SystemSettingPage:
     def set_pass_bonus_cap(self, value: str) -> None:
         self.page.get_by_role("spinbutton", name="过关彩金上限").fill(value)
 
+    # ---- 遊戲設置：開盤／關盤時間（B24）----
+    # 2026-08-29 實測：這兩顆是 Element Plus 時間選擇器（`combobox`），點擊會彈出
+    # 時／分兩欄的滾輪選單，**但不需要真的用滾輪選**——直接對 combobox `.fill("HH:MM:SS")`
+    # 再按 Enter 就會被接受、彈窗自動關閉，跟一般 spinbutton 欄位一樣簡單。
+    # 屬於「一般表單欄位」那一類（按頁面「保存」才持久化，不像最小飛單額是 Enter 即時送出）。
+    def opening_time(self) -> str:
+        return self.page.get_by_role("combobox", name="开盘时间").input_value()
+
+    def set_opening_time(self, value: str) -> None:
+        field = self.page.get_by_role("combobox", name="开盘时间")
+        field.fill(value)
+        field.press("Enter")
+        self.page.wait_for_timeout(300)
+
+    def closing_time(self) -> str:
+        return self.page.get_by_role("combobox", name="关盘时间").input_value()
+
+    def set_closing_time(self, value: str) -> None:
+        field = self.page.get_by_role("combobox", name="关盘时间")
+        field.fill(value)
+        field.press("Enter")
+        self.page.wait_for_timeout(300)
+
     def pass_bonus_cap(self) -> str:
         """讀「過關彩金上限」目前值。
 
@@ -151,9 +174,14 @@ class SystemSettingPage:
     def set_lay_off_detail_mode(self, row_name_prefix: str, enable: bool) -> None:
         """把指定玩法列的「開啟飛單選項明細設定」開關切到 `enable` 狀態。
 
-        ⚠️ 2026-08-26 實測：這個切換**只影響前端當下狀態**，不會送出任何 API 請求
+        ⚠️ 2026-08-26 實測：**單獨點擊**這個切換只影響前端當下狀態，不會送出任何 API 請求
         （不是「保存」動作）——切完不必特別還原網路層面的東西，但仍要把畫面狀態切回
         原樣（見 CLAUDE.md §5），避免影響同一頁面接下來的操作或別的案例的前置假設。
+
+        ✅ 2026-08-31 補充確認（B29／B34，交接檔 T20 已結案）：機制文件 §5.2 是對的——
+        切完之後只要呼叫 `save()`，這個當下狀態**就會被持久化**，不需要額外對「最小飛單額」
+        之類的欄位再做一次 Enter。整列持久化因此有兩條路徑都通：①按保存；②對任一
+        Enter-即時持久化欄位（見 `set_cap_value`／`set_min_lay_off_amount`）做 Enter。
         """
         row = self.page.get_by_role("row").filter(has_text=row_name_prefix).first
         cell = row.get_by_role("cell").nth(5)
@@ -197,6 +225,66 @@ class SystemSettingPage:
     #
     # ⚠️ 邊界值實測（同一輪）：負數（如 `-5`）會被前端拒絕、Enter 後欄位打回原值，
     # 不會送出任何 API；超大值（如 `999999999`）會被接受並直接持久化。
+    def switch_game(self, game_name: str) -> None:
+        """切換上方彩種卡片（如「香港六合彩」「英国天天彩」「宾果六合彩」），並等待表格重新載入。
+
+        ⚠️ 沿用 `ensure_fields_loaded()` 已驗證過的卡片點擊方式；飛單設置頁沒有像
+        「游戏规则」頁那樣的固定文字可等待內容真的換掉，改用固定等待（見
+        `browser-ops` §7 增量驗證的權衡：等內容不如等結構穩定的頁面更難抓等待條件）。
+        """
+        self.page.get_by_text(game_name, exact=True).first.click()
+        self.page.wait_for_timeout(1200)
+
+    def locked_row_count(self) -> int:
+        """回傳目前彩種下，明細設定＝開啟 且 自動飛單＝disabled 的一致鎖定列數。
+
+        用途：B28 環境健康度基線、B27 三彩種鎖定列數比對。判準與 `row_count()` 用同一種
+        「cell 數＝6」結構特徵篩資料列，逐列讀兩個 switch 的狀態，不受分組展開/收合影響。
+        """
+        rows = self.page.get_by_role("row")
+        count = 0
+        for i in range(rows.count()):
+            row = rows.nth(i)
+            cells = row.get_by_role("cell")
+            if cells.count() != 6:
+                continue
+            detail_checked = cells.nth(5).get_by_role("switch").get_attribute("aria-checked")
+            auto_disabled = cells.nth(3).get_by_role("switch").get_attribute("aria-disabled")
+            if detail_checked == "true" and auto_disabled == "true":
+                count += 1
+        return count
+
+    def consistent_row_count(self) -> tuple[int, int]:
+        """回傳 (狀態自洽的列數, 總列數)：檢查每列「開啟飛單選項明細設定」與「自動飛單」／
+        「每選項自留上限」兩個受它連動的欄位是否互相一致——**不預設該列目前是鎖定或解鎖**，
+        只要求兩者同步（明細設定開⇄自動飛單 disabled 且自留上限不可編輯；明細設定關⇄兩者
+        皆可互動）。
+
+        用途：B55（非預設彩種環境健康度基線）。B28 用的 `locked_row_count() == total` 判準
+        只適用於「全部列本來就該是鎖定」的彩種（香港六合彩 70/70 皆鎖定）；英國天天彩／
+        賓果六合彩的環境現況大部分列本來就是解鎖狀態（見矩陣 K4、案例 B27），不能沿用同一個
+        判準，必須改成「不管鎖定或解鎖，兩個受連動欄位有沒有同步」這個更寬鬆但仍然嚴謹的版本。
+        """
+        rows = self.page.get_by_role("row")
+        total = 0
+        consistent = 0
+        for i in range(rows.count()):
+            row = rows.nth(i)
+            cells = row.get_by_role("cell")
+            if cells.count() != 6:
+                continue
+            total += 1
+            detail_on = cells.nth(5).get_by_role("switch").get_attribute("aria-checked") == "true"
+            auto_disabled = cells.nth(3).get_by_role("switch").get_attribute("aria-disabled") == "true"
+            cap_editable = cells.nth(2).get_by_role("button").count() > 0
+            if detail_on:
+                ok = auto_disabled and not cap_editable
+            else:
+                ok = (not auto_disabled) and cap_editable
+            if ok:
+                consistent += 1
+        return consistent, total
+
     def group_toggle_labels(self) -> list[str]:
         """讀取飛單設置表格目前可收合分組的按鈕文字（如「連碼」「連肖」…）。"""
         return self.page.get_by_role("button", name="收起当前行").locator("..").all_inner_texts()
@@ -236,8 +324,16 @@ class SystemSettingPage:
     def set_min_lay_off_amount(self, row_name_prefix: str, value: str) -> str:
         """把指定玩法列「最小飛單額」改成 `value`（點格→輸入→Enter），回傳 Enter 後畫面顯示的值。
 
-        ⚠️ 見本方法群組上方註解——這欄按 Enter 就即時持久化，**不需要**也**不要**呼叫 `save()`。
+        ⚠️ 見本方法群組上方註解——這欄按 Enter 就即時持久化，**不需要**呼叫 `save()`。
         回傳值可用來判斷輸入是否被前端拒絕（拒絕時會打回原值，不等於 `value`）。
+
+        ✅ 2026-08-31 補充驗證（B9，網路攔截確認）：Enter 當下就已經送出 `PUT`——輸入合法
+        新值時 payload 帶著新值、204 成功；輸入被前端拒絕的非法值（如負數）時，畫面已把
+        欄位打回原值，Enter 送出的 `PUT` payload 是空陣列 `{"settings": []}`（不是完全不送，
+        是送了但沒有變更內容）。**呼叫端額外再點頁面「保存」按鈕不會改變結果**——因為 Enter
+        已經把「有沒有變更」這件事處理掉了，之後再點保存送出的 `PUT` 一律是空陣列，不影響
+        這欄或其他列的資料。這就是「不需要」呼叫 `save()` 的真正原因：不是按了會出錯，
+        是按了本來就不會有任何效果。
         """
         row = self.page.get_by_role("row").filter(has_text=row_name_prefix).first
         cell = row.get_by_role("cell").nth(4)
@@ -259,3 +355,44 @@ class SystemSettingPage:
         row = self.page.get_by_role("row").filter(has_text=row_name_prefix).first
         cell = row.get_by_role("cell").nth(2)
         return cell.get_by_role("button").count() > 0
+
+    def cap_value(self, row_name_prefix: str) -> str:
+        """讀取指定玩法列「每選項自留上限」目前顯示值（不管鎖定或解鎖狀態都讀得到）。"""
+        row = self.page.get_by_role("row").filter(has_text=row_name_prefix).first
+        return row.get_by_role("cell").nth(2).inner_text()
+
+    def set_cap_value(self, row_name_prefix: str, value: str) -> str:
+        """把指定玩法列「每選項自留上限」改成 `value`（點格→輸入→Enter），回傳 Enter 後畫面顯示的值。
+
+        ⚠️⚠️ 2026-08-29 實測發現的重要陷阱：**這欄跟「最小飛單額」一樣是 Enter 即時持久化**，
+        但送出的 API 是**整列**的資料，會把當下「開啟飛單選項明細設定」的狀態也一併寫進去。
+        意思是：解鎖某列（`set_lay_off_detail_mode(row, False)`）後呼叫本方法編輯自留上限，
+        Enter 送出的那次 API 呼叫**會把「明細設定＝關閉（解鎖）」也順便持久化**——即使之後
+        再呼叫 `set_lay_off_detail_mode(row, True)` 想鎖回去，那個切換**本身不送 API**
+        （見該方法註解），該列的後端狀態依然是解鎖的殘留。
+
+        **收尾鎖回程序**（呼叫端測完邊界值後必須照做，不能只切開關）——**2026-08-31 更正
+        （交接檔 T20 已結案）**：本檔頭原本寫「只能」靠對「最小飛單額」再 Enter 一次才救得回來，
+        這個說法**不完整**。實測（B29／B34）證實 `save()` 本身就能持久化「開啟飛單選項明細
+        設定」的當下狀態，是更直接的作法：
+        ```python
+        sp.set_lay_off_detail_mode(row, True)  # 切回鎖定（純前端）
+        sp.save()                              # 按保存即可持久化，不必再找別的欄位補一次 Enter
+        ```
+        原本記載的「對『最小飛單額』無變化重填」寫法**仍然有效**（是另一條也走得通的路徑，
+        因為那欄同樣是 Enter 即時持久化、送出的也是整列資料），兩者擇一即可，優先建議用
+        `save()`，語意更直接。
+        負數邊界值實測：會被前端拒絕，Enter 後打回 **0**（不是打回原值，跟「最小飛單額」的
+        「打回原值」不同，屬於 el-input-number 的 min=0 邊界，呼叫端斷言時要注意這個差異）。
+        超大值：會被接受並直接持久化。後端契約已確認（B32）：負數同樣被後端拒絕（500，
+        `FluentValidation` 例外，非乾淨 400）、超大值後端也接受——前端擋法與後端一致，無資料
+        完整性缺口。
+        """
+        row = self.page.get_by_role("row").filter(has_text=row_name_prefix).first
+        cell = row.get_by_role("cell").nth(2)
+        cell.get_by_role("button").click()
+        field = cell.get_by_role("spinbutton")
+        field.fill(value)
+        field.press("Enter")
+        self.page.wait_for_timeout(500)
+        return cell.inner_text()
