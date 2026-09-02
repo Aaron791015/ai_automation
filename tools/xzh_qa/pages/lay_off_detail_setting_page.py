@@ -32,6 +32,17 @@
      會失效、自動出貨改手動**，兩層不是各自獨立，是互斥切換的父子關係。
      `set_master_switch(True)` 必須點確認框的「確定」才會真的生效，光點開關本身
      只是跳出確認框，不會立刻改變狀態（已實測：點開關但不點確定，reload 後仍是關閉）。
+
+⚠️⚠️ 2026-09-01 三彩種全玩法覆蓋（B43）實測發現**標準型玩法表格其實有兩種欄位配置**，
+   先前所有文件都假設只有一種：`选项／实际占成金额／每选项自留上限／自动飞单`（4 欄）。
+   `生肖中／生肖不中／半波／特肖／尾数中／尾数不中` 這 6 個玩法多一欄「對應號碼」
+   （選項對照的實際號碼），變成 5 欄，「每選項自留上限」與「自動飛單」整體往後推一位。
+   `option_cap_editable`／`option_cap_value`／`set_option_cap`／
+   `option_auto_lay_off_enabled`／`option_auto_lay_off_toggleable`／
+   `set_option_auto_lay_off` 已改為依表頭動態判斷（見 `_has_number_column()`／
+   `_cap_cell_index()`），呼叫端不需要關心這個差異。**這是 B43 全量 15×3 實跑「總開關開啟後
+   自留上限欄位一直未變成可編輯」失敗的真正根因**——不是渲染時序問題，是欄位索引原本就抓
+   錯欄（抓到恆為唯讀文字的「實際占成金額」），先前以為的等待/重試workaround治標不治本。
 """
 from __future__ import annotations
 
@@ -151,6 +162,28 @@ class LayOffDetailSettingPage:
         """目前分類的選項列數（不含表頭）。"""
         return self._table().get_by_role("row").count() - 1
 
+    # ---- 全 25 分類畫面元素掃描（B68，2026-09-01）----
+    def quick_set_panel_visible(self) -> bool:
+        """讀取目前分類是否顯示「快速設置」面板。
+
+        ⚠️⚠️ 2026-09-01 探索發現：**不是全部 25 分類共有的元素**——只有「特码／正码／
+        正特码」這 3 個「號碼型（選項即 1~49 號碼）」分類才有這個面板（面板內容本身就是
+        1~49 號碼格＋波色/單雙快速勾選），其餘 22 個分類（含同為標準選項清單型的「两面」
+        「生肖中」等）完全沒有這個區塊（DOM 裡不存在，非只是不可見）。B40 先前只驗證過
+        「特码」1 個分類，未在此之前發現這個範圍限制，見案例清單 B68。
+        """
+        return self.page.get_by_text("快速设置", exact=True).count() > 0
+
+    def relation_radio_block_count(self) -> int:
+        """讀取目前分類的「关连」radio 出現次數——多數組合型分類是 1 個，
+        但「六肖」是唯一例外，會同時顯示「六肖中」「六肖不中」兩個子區塊，各自一組
+        关连/共用自留上限，因此讀到 2（2026-09-01 探索發現，見案例清單 B68）。"""
+        return self.page.get_by_role("radio", name="关连", exact=True).count()
+
+    def shared_cap_field_count(self) -> int:
+        """讀取目前分類的「共用自留上限」欄位出現次數，同上——「六肖」讀到 2，其餘讀到 1。"""
+        return self.page.get_by_role("spinbutton", name="共用自留上限").count()
+
     # ---- 結構家族判定（B41，交接檔 T24）----
     def is_current_category_combo(self) -> bool:
         """讀取目前選定分類是否為「組合型」——組合型才有「共用自留上限」欄位，
@@ -161,10 +194,35 @@ class LayOffDetailSettingPage:
         """
         return self.page.get_by_text("共用自留上限", exact=True).count() > 0
 
+    def wait_until_category_unlocked(self, timeout_ms: int = 45000) -> None:
+        """等待「目前分類」的欄位鎖定狀態跟上總開關的實際值（B47/B49/B64 根因修復，2026-09-01）。
+
+        ⚠️⚠️ 2026-09-01 發現：`select_category()` 切分類本身是一次非同步重新載入，
+        總開關的畫面 `aria-checked` 有時會**先**顯示成「已開啟」，但該分類自己的欄位
+        鎖定狀態還沒跟上——舊版 `_ensure_category_switch_enabled()` 只在「原本是關、
+        剛點下去開」這條分支才等 1500ms，「切過去發現已經是開的」完全不等，導致誤判成
+        「連碼等組合型分類即使總開關已開啟、欄位仍鎖死長達 30 秒以上」（曾誤記為總開關
+        規則不一致，見 B47/B49/B64、交接檔 §7）。MCP 現場覆核「连码」證實：只要給欄位
+        足夠時間追上，鎖定機制其實跟「比大小」一致，都是單純的總開關控制。
+
+        改用**輪詢真正的解鎖信號**取代固定等待，兩種結構家族分開判斷：
+        - 組合型：「共用自留上限」欄位（第一個區塊）的 `aria-disabled` 變成 `"false"`。
+        - 標準型：第 1 列「每選項自留上限」欄位從唯讀文字變成可編輯 `button`
+          （沿用 `option_cap_editable()` 同一套判準，見 B43 根因說明）。
+        呼叫端不需要自己判斷分類是哪種結構家族，本方法內部已處理。
+        """
+        if self.is_current_category_combo():
+            field = self.page.get_by_role("spinbutton", name="共用自留上限").first
+            expect(field).to_have_attribute("aria-disabled", "false", timeout=timeout_ms)
+        else:
+            cell = self.option_row(1).get_by_role("cell").nth(self._cap_cell_index())
+            expect(cell.get_by_role("button")).to_have_count(1, timeout=timeout_ms)
+
     def combo_item_count(self) -> int:
         """讀取目前選定（組合型）分類的組合列數，用「選擇」checkbox 的數量計算。
 
-        ⚠️ 不同組合型分類的 checkbox 數量差異很大（10～52 不等，依玩法組合數而定），
+        ⚠️ 不同組合型分類的 checkbox 數量差異很大（8～50 不等，依玩法組合數而定；
+        `table=10` 四個成員固定 50，`table=0` 六個成員依玩法 8～29，見 B68），
         本方法只讀數量，不判斷是 `table=0` 或 `table=10` 哪一種子變體——子變體的行為
         差異見 B47（`table=0`）／B48（`table=10`）。
         """
@@ -174,12 +232,31 @@ class LayOffDetailSettingPage:
         """依 DOM 順序取第 `option_number` 個選項列（1-based，表頭不算）。"""
         return self._table().get_by_role("row").nth(option_number)
 
+    def _has_number_column(self) -> bool:
+        """判讀目前分類的表格是否多一欄「對應號碼」。
+
+        ⚠️⚠️ 2026-09-01 三彩種全玩法覆蓋實測發現（B43 全量實跑失敗的真正根因）：
+        `生肖中／生肖不中／半波／特肖／尾数中／尾数不中` 這 6 個玩法的表格比其餘標準型
+        多一欄「對應號碼」（選項對照的實際號碼），欄位順序整體往後推一位——
+        `选项／[对应号码]／实际占成金额／每选项自留上限／自动飞单`。原本 `option_cap_editable`
+        等方法寫死 `nth(2)`／`nth(3)`，只對**沒有**這欄的表格（4 欄）成立；套用到這 6 個
+        玩法會抓到「實際占成金額」欄（恆為唯讀文字），因而誤判成「總開關開啟後自留上限欄位
+        一直未變成可編輯」——**不是渲染時序問題，是欄位索引本身就抓錯欄**。MCP 現場逐一核對
+        `生肖中`／`半波`（5 欄，有「對應號碼」）與`特码`／`色波`（4 欄，無此欄）後確認。
+        """
+        headers = self._table().locator("thead").get_by_role("columnheader").all_inner_texts()
+        return "对应号码" in headers
+
+    def _cap_cell_index(self) -> int:
+        """「每選項自留上限」欄位在 `get_by_role("cell")` 裡的索引，依表格是否有「對應號碼」欄動態判斷。"""
+        return 3 if self._has_number_column() else 2
+
     def option_auto_lay_off_enabled(self, option_number: int) -> bool:
-        switch = self.option_row(option_number).get_by_role("cell").nth(3).get_by_role("switch")
+        switch = self.option_row(option_number).get_by_role("cell").nth(self._cap_cell_index() + 1).get_by_role("switch")
         return switch.get_attribute("aria-checked") == "true"
 
     def option_auto_lay_off_toggleable(self, option_number: int) -> bool:
-        switch = self.option_row(option_number).get_by_role("cell").nth(3).get_by_role("switch")
+        switch = self.option_row(option_number).get_by_role("cell").nth(self._cap_cell_index() + 1).get_by_role("switch")
         return switch.get_attribute("aria-disabled") != "true"
 
     def set_option_auto_lay_off(self, option_number: int, enable: bool) -> None:
@@ -189,7 +266,7 @@ class LayOffDetailSettingPage:
         比重新整理頁面猜測原值更明確——呼叫前搭配 `option_auto_lay_off_enabled()`
         記錄原值。
         """
-        cell = self.option_row(option_number).get_by_role("cell").nth(3)
+        cell = self.option_row(option_number).get_by_role("cell").nth(self._cap_cell_index() + 1)
         current = cell.get_by_role("switch").get_attribute("aria-checked") == "true"
         if current != enable:
             cell.locator(".el-switch").click()
@@ -201,18 +278,21 @@ class LayOffDetailSettingPage:
         這欄只有在頁面總開關「啟用飛單選項明細」**開啟**時才會是可編輯 button；總開關關閉時
         呈唯讀 `is-static`（`option_cap_editable()` 回 False）。呼叫 `set_option_cap()` 前
         若總開關是關的，要先 `set_master_switch(True)`，測完記得關回原狀（見 B43 案例）。
+
+        ⚠️⚠️ 2026-09-01 補：欄位索引依 `_cap_cell_index()` 動態判斷（見該方法檔頭）——
+        `生肖中`等 6 個玩法有「對應號碼」欄，索引跟其餘玩法不同。
         """
-        cell = self.option_row(option_number).get_by_role("cell").nth(2)
+        cell = self.option_row(option_number).get_by_role("cell").nth(self._cap_cell_index())
         return cell.get_by_role("button").count() > 0
 
     def option_cap_value(self, option_number: int) -> str:
-        return self.option_row(option_number).get_by_role("cell").nth(2).inner_text()
+        return self.option_row(option_number).get_by_role("cell").nth(self._cap_cell_index()).inner_text()
 
     def set_option_cap(self, option_number: int, value: str) -> None:
         """把第 `option_number` 個選項（1-based，不含表頭，見 `option_row()`）的自留上限改成
         `value`。⚠️ 前提見 `option_cap_editable()`——總開關必須先開啟這欄才可編輯。
         """
-        cell = self.option_row(option_number).get_by_role("cell").nth(2)
+        cell = self.option_row(option_number).get_by_role("cell").nth(self._cap_cell_index())
         cell.get_by_role("button").click()
         field = cell.get_by_role("spinbutton")
         field.fill(value)
@@ -229,11 +309,78 @@ class LayOffDetailSettingPage:
     def quick_set_reset(self) -> None:
         self.page.get_by_role("button", name="重置").click()
 
-    def quick_set_apply(self, value: str) -> None:
-        """在「快速設置」面板下方輸入數值並按「套用」，套用到已勾選的號碼。"""
+    def quick_set_fill_apply_value(self, value: str) -> None:
+        """只填「快速設置」套用數值輸入框，不點擊「套用」（供檢查按鈕 disabled 狀態用）。"""
         panel = self.page.get_by_text("快速设置", exact=True).locator("..")
         panel.get_by_role("spinbutton").last.fill(value)
+
+    def quick_set_apply_disabled(self) -> bool:
+        """讀取「快速設置」面板「套用」按鈕目前是否為不可點擊。"""
+        panel = self.page.get_by_text("快速设置", exact=True).locator("..")
+        return panel.get_by_role("button", name="套用").is_disabled()
+
+    def quick_set_apply(self, value: str) -> None:
+        """在「快速設置」面板下方輸入數值並按「套用」，套用到已勾選的號碼。"""
+        self.quick_set_fill_apply_value(value)
+        panel = self.page.get_by_text("快速设置", exact=True).locator("..")
         panel.get_by_role("button", name="套用").click()
+        self.page.wait_for_timeout(300)
+
+    def quick_set_invert(self) -> None:
+        """點擊「快速設置」面板的「反選」按鈕。"""
+        self.page.get_by_role("button", name="反选").click()
+
+    def quick_set_select_by_property(self, name: str) -> None:
+        """在「快速設置」面板勾選屬性 checkbox（如「红波」「大」「合单」「尾大」等）。
+        2026-09-02 唯讀/write_action 探索已確認：屬性名稱對應的號碼與畫面上號碼球
+        自身的顏色分類（`red`/`green`/`blue` class）或大小/單雙定義完全一致，見 B69。
+
+        ⚠️ `force=True` + 短 timeout：總開關關閉時這顆 checkbox 會被鎖定（disabled），
+        Playwright 預設點擊會等待元素變成「可操作」而卡住到 30 秒逾時（B75 曾因此整條
+        案例卡死）。鎖定情境下即使強制送出點擊事件，Element UI 的 disabled checkbox
+        也不會真的觸發勾選（Vue 層擋下 change 事件），所以用 `force=True` 不會讓
+        「應該鎖住」的案例失真，只是避免 Playwright 白等 30 秒。
+        """
+        panel = self.page.get_by_text("快速设置", exact=True).locator("..")
+        panel.get_by_text(name, exact=True).click(force=True, timeout=5000)
+
+    def ball_color_map(self) -> dict[int, str]:
+        """讀取「快速設置」號碼球本身的顏色分類（class 標記為 red/green/blue），
+        作為驗證「紅波/藍波/綠波」勾選正確性的自身一致性基準（不依賴外部文件的號碼清單，
+        因為目前查無明確記載色波對應號碼的權威文件，見 B69）。"""
+        panel = self.page.get_by_text("快速设置", exact=True).locator("..")
+        pairs = panel.evaluate(
+            """(panel) => {
+                const nums = Array.from(panel.querySelectorAll('*'))
+                    .filter(el => el.children.length === 0 && /^\\d{1,2}$/.test(el.textContent.trim()));
+                return nums.map(el => {
+                    const cls = el.parentElement.className;
+                    const color = cls.includes('red') ? 'red' : cls.includes('green') ? 'green' : cls.includes('blue') ? 'blue' : null;
+                    return [parseInt(el.textContent.trim(), 10), color];
+                });
+            }"""
+        )
+        return {n: c for n, c in pairs}
+
+    def quick_set_selected_numbers(self) -> list[int]:
+        """讀取「快速設置」號碼格目前被標記為已選（`is-selected`）的號碼，供斷言比對。"""
+        panel = self.page.get_by_text("快速设置", exact=True).locator("..")
+        return panel.evaluate(
+            """(panel) => {
+                const nums = Array.from(panel.querySelectorAll('*'))
+                    .filter(el => el.children.length === 0 && /^\\d{1,2}$/.test(el.textContent.trim()));
+                return nums
+                    .filter(el => el.parentElement.className.includes('is-selected'))
+                    .map(el => parseInt(el.textContent.trim(), 10))
+                    .sort((a, b) => a - b);
+            }"""
+        )
+
+    def set_all_options(self, value: str) -> None:
+        """在分類標題列的「全部設置」輸入框填值並點擊，套用到目前分類全部選項（未保存）。"""
+        container = self.page.get_by_role("button", name="全部设置").locator("..")
+        container.get_by_role("spinbutton").fill(value)
+        container.get_by_role("button", name="全部设置").click()
         self.page.wait_for_timeout(300)
 
     # ---- 保存區 ----
@@ -257,28 +404,36 @@ class LayOffDetailSettingPage:
         self.page.get_by_text(name, exact=True).click()
         self.page.wait_for_timeout(500)
 
-    def is_relation_linked(self) -> bool:
-        """讀取目前子項「关连／不关连」是否為「关连」狀態。"""
-        radio = self.page.get_by_role("radio", name="关连", exact=True)
+    def is_relation_linked(self, block_index: int = 0) -> bool:
+        """讀取目前子項「关连／不关连」是否為「关连」狀態。
+
+        ⚠️⚠️ 2026-09-01 三彩種全玩法覆蓋實測發現：「六肖」是組合型分類裡**唯一**同時顯示
+        兩個子區塊（「六肖中」「六肖不中」）的分類，各自一組「关连」radio／「共用自留上限」
+        欄位，accessible name 相同——不加索引直接 `get_by_role(..., name="关连")` 會撞
+        Playwright strict mode（resolved to 2 elements）。`block_index` 預設 0，其餘 9 個
+        分類只有 1 個區塊，`nth(0)` 等同原行為；「六肖」呼叫端需分別用 0／1 各驗一次。
+        """
+        radio = self.page.get_by_role("radio", name="关连", exact=True).nth(block_index)
         return radio.evaluate("el => el.checked")
 
-    def set_relation_linked(self, linked: bool) -> None:
+    def set_relation_linked(self, linked: bool, block_index: int = 0) -> None:
         """切換「关连／不关连」（只在目前值不同才點擊）。
 
         ⚠️ 這個切換**只影響前端當下狀態**，不送 API（跟 K4「開啟飛單選項明細設定」
         同一種模式）——切完不用擔心殘留，但仍要切回原樣（見 CLAUDE.md §5）。
+        `block_index` 用途見 `is_relation_linked()` 檔頭（「六肖」雙區塊）。
         """
-        if self.is_relation_linked() == linked:
+        if self.is_relation_linked(block_index) == linked:
             return
-        self.page.get_by_text("关连" if linked else "不关连", exact=True).click()
+        self.page.get_by_text("关连" if linked else "不关连", exact=True).nth(block_index).click()
         self.page.wait_for_timeout(500)
 
-    def shared_cap_value(self) -> str:
-        """讀取「共用自留上限」欄位目前值。"""
-        return self.page.get_by_role("spinbutton", name="共用自留上限").input_value()
+    def shared_cap_value(self, block_index: int = 0) -> str:
+        """讀取「共用自留上限」欄位目前值。`block_index` 用途見 `is_relation_linked()` 檔頭。"""
+        return self.page.get_by_role("spinbutton", name="共用自留上限").nth(block_index).input_value()
 
-    def set_shared_cap(self, value: str) -> None:
-        field = self.page.get_by_role("spinbutton", name="共用自留上限")
+    def set_shared_cap(self, value: str, block_index: int = 0) -> None:
+        field = self.page.get_by_role("spinbutton", name="共用自留上限").nth(block_index)
         field.fill(value)
         field.press("Tab")
         self.page.wait_for_timeout(300)
