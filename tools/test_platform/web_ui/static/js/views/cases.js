@@ -13,11 +13,14 @@ let idx = null, filters = { q: '', product: '', marker: '', prereq: false, brows
 //    `allure.attach` 的字面文字），不是執行結果——`--collect-only` 不會真的跑案例，
 //    抓不到「這次跑出來的值」。要看實際跑出來的結果，去看 allure report。
 function renderStepsAndCriteria(c) {
-  const steps = c.steps || [], criteria = c.criteria || [];
+  const scope = c.scope || [], steps = c.steps || [], criteria = c.criteria || [];
   if (!steps.length && !criteria.length) {
     return html`<div class="alert is-warn small" style="margin-top:10px">⚠️ 沒解析到步驟／判准——案例本身可能沒寫 <span class="mono">allure.step</span>／<span class="mono">allure.attach</span>，或寫法是 <span class="mono">scripts/lint_cases.py</span> 抓不到的形式（見該檔說明）</div>`;
   }
+  // ★ 測試範圍：目前僅新綜合(xzh)案例會有（`allure.attach(name="測試範圍：...")`），
+  //   其餘產品案例的 scope 是空陣列，這塊不會顯示，不影響既有版面。
   return html`
+    ${scope.length ? html`<div style="margin-top:10px"><b>測試範圍</b><ul class="small" style="margin:4px 0 0;padding-left:20px">${scope.map((s) => html`<li>${s}</li>`)}</ul></div>` : ''}
     ${steps.length ? html`<div style="margin-top:10px"><b>步驟</b><ol class="small" style="margin:4px 0 0;padding-left:20px">${steps.map((s) => html`<li>${s}</li>`)}</ol></div>` : ''}
     ${criteria.length ? html`<div style="margin-top:8px"><b>判准（attach 佐證）</b><ul class="small" style="margin:4px 0 0;padding-left:20px">${criteria.map((s) => html`<li>${s}</li>`)}</ul></div>` : ''}
     ${c.has_assert && !criteria.length ? html`<div class="alert is-warn small" style="margin-top:6px">有 <span class="mono">assert</span> 卻沒有 <span class="mono">allure.attach</span>——判准看不到實際值 vs 期望值</div>` : ''}`;

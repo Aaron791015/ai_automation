@@ -3,7 +3,8 @@
 用途：不執行任何測試，把 pytest 收集到的每個 item 匯出成 JSON —— nodeid、檔案:行號、
       中文標題（allure.title > docstring 首行 > 函式名）、markers、allure 五層標籤、
       fixtures（供反推前置依賴，如 wbot_target）、是否需瀏覽器、參數化 id、
-      ★ 步驟／判准（靜態解析 `allure.step`／`allure.attach`，見 `_steps_and_criteria`）。
+      ★ 步驟／測試範圍／判准（靜態解析 `allure.step`／`allure.attach`，見 `_steps_and_criteria`；
+      「測試範圍」是 `allure.attach(name="測試範圍：...")` 依前綴獨立拆出的欄位，見 `_SCOPE_PREFIX`）。
 使用方式（由平台 collect/case_index.py 以 subprocess 呼叫，帶 90s timeout）：
     .venv\\Scripts\\python.exe -m pytest --collect-only -q -p no:cacheprovider \\
         -p tools.test_platform.collect.pytest_case_export \\
@@ -45,6 +46,12 @@ except ImportError:  # 沒裝 allure 也要能列舉
 
 _INTERNAL_MARKS = {"allure_label", "allure_description", "allure_description_html",
                    "allure_link", "parametrize", "usefixtures", "filterwarnings"}
+
+# ★ 新綜合（xzh）2026-09-02 起，多彩種／多玩法案例要求先輸出「測試範圍」區塊
+#   （完整列出彩種＋玩法，見 `docs/新綜合/新綜合_測試案例撰寫規則.md` Step 5）。
+#   案例裡用 `allure.attach(..., name="測試範圍：...")` 宣告，這裡依名稱前綴把它
+#   從一般判准 attach 裡挑出來，獨立成 `scope` 欄位，不跟真正的判准佐證混在一起。
+_SCOPE_PREFIX = "測試範圍"
 
 
 # ---------------------------------------------------------------- 步驟／判准（靜態解析）
@@ -92,7 +99,16 @@ def _is_attr_or_name(func: ast.AST, name: str) -> bool:
 
 
 def _step_texts(node: ast.AST, src: str) -> list[str]:
-    """`with allure.step("..."):` 的步驟文字，依原始碼出現順序。"""
+    """`with allure.step("..."):` 的步驟文字，依原始碼出現順序。
+
+    ⚠️ 2026-09-01 修正：`ast.walk()` 是**廣度優先**（BFS），不是原始碼順序——當 `with
+    allure.step(...)` 混雜著「函式本體的平行步驟」與「for/if 區塊裡巢狀的步驟」時，
+    BFS 會把所有淺層節點（含巢狀迴圈本身）走完才下探迴圈內部，導致迴圈*之後*的平行
+    步驟被排到迴圈*內部*步驟前面——跟本函式 docstring 自己承諾的「依原始碼出現順序」
+    矛盾。改成先收集 `(lineno, col_offset)` 再排序，才是真的原始碼順序（實例：
+    `test_lay_off_detail_all_categories_screen_elements` 的收尾步驟因此曾顯示在
+    迴圈內的逐分類步驟前面）。
+    """
     out = []
     for n in ast.walk(node):
         if isinstance(n, ast.With):
@@ -101,36 +117,52 @@ def _step_texts(node: ast.AST, src: str) -> list[str]:
                 if isinstance(call, ast.Call) and _is_attr_or_name(call.func, "step") and call.args:
                     t = _lit(src, call.args[0])
                     if t:
-                        out.append(t)
-    return out
+                        out.append((n.lineno, n.col_offset, t))
+    out.sort(key=lambda x: (x[0], x[1]))
+    return [t for _, _, t in out]
 
 
 def _attach_titles(node: ast.AST, src: str) -> list[str]:
-    """`allure.attach(..., name="...")` 的附件標題——判准佐證貼了什麼。"""
+    """`allure.attach(..., name="...")` 的附件標題——判准佐證貼了什麼。依原始碼出現順序
+    （同 `_step_texts()` 的 BFS 排序修正，見其檔頭說明）。"""
     out = []
     for n in ast.walk(node):
         if isinstance(n, ast.Call) and _is_attr_or_name(n.func, "attach"):
             name_node = next((kw.value for kw in n.keywords if kw.arg == "name"), None)
             if name_node is None and len(n.args) >= 2:
                 name_node = n.args[1]
-            out.append(_lit(src, name_node) or "（未命名附件）")
-    return out
+            out.append((n.lineno, n.col_offset, _lit(src, name_node) or "（未命名附件）"))
+    out.sort(key=lambda x: (x[0], x[1]))
+    return [t for _, _, t in out]
 
 
 def _helper_names(node: ast.AST) -> list[str]:
-    """本體呼叫的單純具名函式（`_verify(...)`，不含 `a.b()`）——依出現順序、去重。"""
-    seen, out = set(), []
+    """本體呼叫的單純具名函式（`_verify(...)`，不含 `a.b()`）——依出現順序、去重（同上
+    BFS 排序修正）。"""
+    calls = []
     for n in ast.walk(node):
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id not in seen:
-            seen.add(n.func.id)
-            out.append(n.func.id)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name):
+            calls.append((n.lineno, n.col_offset, n.func.id))
+    calls.sort(key=lambda x: (x[0], x[1]))
+    seen, out = set(), []
+    for _, _, name in calls:
+        if name not in seen:
+            seen.add(name)
+            out.append(name)
     return out
 
 
-def _steps_and_criteria(fn: ast.AST, helpers: dict, src: str) -> tuple[list[str], list[str], bool]:
-    """步驟／判准（attach 標題）／有沒有 assert——本體 ＋ 往下追一層同檔 helper（跟 lint_cases.py 同規則）。"""
+def _split_scope(titles: list[str]) -> tuple[list[str], list[str]]:
+    """把 attach 標題依 `_SCOPE_PREFIX` 前綴拆成 (測試範圍, 真正的判准)，保持原順序。"""
+    scope = [t for t in titles if t.startswith(_SCOPE_PREFIX)]
+    criteria = [t for t in titles if not t.startswith(_SCOPE_PREFIX)]
+    return scope, criteria
+
+
+def _steps_and_criteria(fn: ast.AST, helpers: dict, src: str) -> tuple[list[str], list[str], list[str], bool]:
+    """步驟／測試範圍／判准（attach 標題）／有沒有 assert——本體 ＋ 往下追一層同檔 helper（跟 lint_cases.py 同規則）。"""
     steps = _step_texts(fn, src)
-    criteria = _attach_titles(fn, src)
+    scope, criteria = _split_scope(_attach_titles(fn, src))
     body_seg = ast.get_source_segment(src, fn) or ""
     has_assert = "assert " in body_seg
     for name in _helper_names(fn):
@@ -138,22 +170,24 @@ def _steps_and_criteria(fn: ast.AST, helpers: dict, src: str) -> tuple[list[str]
         if h is None:
             continue
         steps += _step_texts(h, src)
-        criteria += _attach_titles(h, src)
+        h_scope, h_criteria = _split_scope(_attach_titles(h, src))
+        scope += h_scope
+        criteria += h_criteria
         has_assert = has_assert or "assert " in (ast.get_source_segment(src, h) or "")
-    return steps, criteria, has_assert
+    return steps, scope, criteria, has_assert
 
 
-def _static_steps(item) -> tuple[list[str], list[str], bool]:
+def _static_steps(item) -> tuple[list[str], list[str], list[str], bool]:
     """單筆失敗不可拖垮整份索引——解析失敗一律退回空結果，不往外丟例外。"""
     try:
         path = str(item.path)
         src, cases, helpers = _parse_file(path)
         fn = cases.get(getattr(item, "originalname", None) or item.name)
         if fn is None:
-            return [], [], False
+            return [], [], [], False
         return _steps_and_criteria(fn, helpers, src)
     except Exception:  # noqa: BLE001
-        return [], [], False
+        return [], [], [], False
 
 
 def pytest_addoption(parser):
@@ -199,7 +233,7 @@ def _collect_one(item, rootdir: str) -> dict:
     path = os.path.relpath(str(item.path), rootdir).replace("\\", "/")
     title, title_src = _title(item)
     fixtures = [f for f in getattr(item, "fixturenames", []) if not f.startswith("_")]
-    steps, criteria, has_assert = _static_steps(item)
+    steps, scope, criteria, has_assert = _static_steps(item)
 
     return {
         "nodeid": item.nodeid,  # 中文原樣（JSON 以 ensure_ascii=False 寫出）
@@ -223,6 +257,9 @@ def _collect_one(item, rootdir: str) -> dict:
         "fixtures": fixtures,
         "needs_browser": "page" in fixtures or "context" in fixtures or "browser" in fixtures,
         # ★ 靜態解析（見檔頭說明）：案例原始碼寫了什麼步驟／貼了什麼判准佐證，不是執行結果
+        # ★ scope＝「測試範圍」attach（見上方 _SCOPE_PREFIX 說明），目前僅新綜合(xzh)案例使用，
+        #   其餘產品案例沒有這個 attach 就是空陣列，不影響原本 steps/criteria 的顯示。
+        "scope": scope,
         "steps": steps,
         "criteria": criteria,
         "has_assert": has_assert,
