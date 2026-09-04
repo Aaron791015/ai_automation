@@ -54,7 +54,15 @@ class LayOffDetailSettingPage:
         self.page = page
 
     def goto(self) -> None:
-        self.page.get_by_role("menuitem", name="系统设置").click()
+        system_item = self.page.get_by_role("menuitem", name="系统设置", exact=True)
+        if system_item.count() == 0 or not system_item.last.is_visible():
+            # 2026-09-02 實測：1280px 寬度時，頂部靠右的「系统设置」會被 Element Plus
+            # 收進最後一個「…」溢出子選單。直接等待 menuitem 會逾時，需先展開溢出選單。
+            overflow = self.page.locator(".el-menu--horizontal > .el-sub-menu").last
+            expect(overflow).to_be_visible()
+            overflow.click()
+            expect(system_item.last).to_be_visible()
+        system_item.last.click()
         self.page.get_by_role("menuitem", name="飞单选项明细设置", exact=True).click()
         self.page.wait_for_timeout(1200)
 
@@ -67,7 +75,7 @@ class LayOffDetailSettingPage:
         """讀取左側／上方玩法分類按鈕的文字清單（結構掃描用，矩陣 K7／案例 B17）。"""
         return self.page.get_by_role("navigation").get_by_role("button").all_inner_texts()
 
-    def select_category(self, name: str) -> None:
+    def select_category(self, name: str, *, wait_for_networkidle: bool = True) -> None:
         """切到指定玩法分類。
 
         ⚠️ 不能統一用「分類標題（`heading` level 3）出現」當等待條件——2026-08-28 實測
@@ -76,8 +84,12 @@ class LayOffDetailSettingPage:
         換取對所有分類（含結構特殊的「比大小」）都適用。
         """
         self.page.get_by_role("button", name=name, exact=True).click()
-        self.page.wait_for_load_state("networkidle", timeout=10000)
-        self.page.wait_for_timeout(500)
+        if wait_for_networkidle:
+            self.page.wait_for_load_state("networkidle", timeout=10000)
+            self.page.wait_for_timeout(500)
+        else:
+            # 呼叫端會以實際欄位可操作狀態作後續等待時，不必每次都等待整頁 network-idle。
+            self.page.wait_for_timeout(150)
 
     # ---- 總開關（B11）----
     def is_master_switch_enabled(self) -> bool:
@@ -218,6 +230,29 @@ class LayOffDetailSettingPage:
             cell = self.option_row(1).get_by_role("cell").nth(self._cap_cell_index())
             expect(cell.get_by_role("button")).to_have_count(1, timeout=timeout_ms)
 
+    _TRIGGER_NOW_LABEL = "保存后立即触发本次选项自动飞单"
+
+    def trigger_now_checkbox(self):
+        """取得保存區「保存後立即觸發本次選項自動飛單」的原生 checkbox。
+
+        Element Plus 會把原生 input 隱藏在 `.el-checkbox` 內，且文字節點不一定
+        直接以父子關係包住 input；用元件根節點的文字篩選比 `get_by_text(...).locator("..")`
+        穩定，也能避免和表格內其他 checkbox 混在一起。
+        """
+        wrapper = self.page.locator(".el-checkbox").filter(has_text=self._TRIGGER_NOW_LABEL).last
+        checkbox = wrapper.locator("input[type='checkbox']")
+        expect(checkbox).to_have_count(1)
+        return checkbox
+
+    def trigger_now_enabled(self) -> bool:
+        return self.trigger_now_checkbox().is_checked()
+
+    def set_trigger_now(self, enable: bool) -> None:
+        checkbox = self.trigger_now_checkbox()
+        if checkbox.is_checked() != enable:
+            # 原生 input 為視覺隱藏，點擊 Element Plus 外層元件。
+            checkbox.locator("xpath=ancestor::*[contains(@class, 'el-checkbox')][1]").click()
+
     def combo_item_count(self) -> int:
         """讀取目前選定（組合型）分類的組合列數，用「選擇」checkbox 的數量計算。
 
@@ -225,8 +260,18 @@ class LayOffDetailSettingPage:
         `table=10` 四個成員固定 50，`table=0` 六個成員依玩法 8～29，見 B68），
         本方法只讀數量，不判斷是 `table=0` 或 `table=10` 哪一種子變體——子變體的行為
         差異見 B47（`table=0`）／B48（`table=10`）。
+
+        ⚠️⚠️ 2026-09-02 修正 off-by-one：頁面下方保存區的「保存后立即触发本次选项
+        自动飞单」也是一顆 `checkbox`，且它跟分類內容共用同一個 `get_by_role("checkbox")`
+        查詢空間——原本直接回傳 `count()` 會把它也算進組合列數（六肖量到 25，實際只有
+        24；连码量到 50，實際只有 49），2026-09-02 六肖探索時發現。這裡明確扣掉這顆，
+        改用「排除保存區勾選框」的方式計數，不能只靠「永遠是最後一個」的假設硬減 1。
         """
-        return self.page.get_by_role("checkbox").count()
+        total = self.page.get_by_role("checkbox").count()
+        trigger_now = self.page.get_by_role(
+            "checkbox", name=self._TRIGGER_NOW_LABEL, exact=True
+        ).count()
+        return total - trigger_now
 
     def option_row(self, option_number: int):
         """依 DOM 順序取第 `option_number` 個選項列（1-based，表頭不算）。"""
@@ -288,13 +333,17 @@ class LayOffDetailSettingPage:
     def option_cap_value(self, option_number: int) -> str:
         return self.option_row(option_number).get_by_role("cell").nth(self._cap_cell_index()).inner_text()
 
+    def open_option_cap_editor(self, option_number: int):
+        """開啟指定列的「每選項自留上限」編輯器並回傳 number input。"""
+        cell = self.option_row(option_number).get_by_role("cell").nth(self._cap_cell_index())
+        cell.get_by_role("button").click()
+        return cell.get_by_role("spinbutton")
+
     def set_option_cap(self, option_number: int, value: str) -> None:
         """把第 `option_number` 個選項（1-based，不含表頭，見 `option_row()`）的自留上限改成
         `value`。⚠️ 前提見 `option_cap_editable()`——總開關必須先開啟這欄才可編輯。
         """
-        cell = self.option_row(option_number).get_by_role("cell").nth(self._cap_cell_index())
-        cell.get_by_role("button").click()
-        field = cell.get_by_role("spinbutton")
+        field = self.open_option_cap_editor(option_number)
         field.fill(value)
         field.press("Enter")
         self.page.wait_for_timeout(300)
@@ -319,12 +368,16 @@ class LayOffDetailSettingPage:
         panel = self.page.get_by_text("快速设置", exact=True).locator("..")
         return panel.get_by_role("button", name="套用").is_disabled()
 
-    def quick_set_apply(self, value: str) -> None:
-        """在「快速設置」面板下方輸入數值並按「套用」，套用到已勾選的號碼。"""
-        self.quick_set_fill_apply_value(value)
+    def quick_set_click_apply(self) -> None:
+        """點擊「快速設置」面板的「套用」，供案例將輸入與送出拆成兩個可讀步驟。"""
         panel = self.page.get_by_text("快速设置", exact=True).locator("..")
         panel.get_by_role("button", name="套用").click()
         self.page.wait_for_timeout(300)
+
+    def quick_set_apply(self, value: str) -> None:
+        """在「快速設置」面板下方輸入數值並按「套用」，套用到已勾選的號碼。"""
+        self.quick_set_fill_apply_value(value)
+        self.quick_set_click_apply()
 
     def quick_set_invert(self) -> None:
         """點擊「快速設置」面板的「反選」按鈕。"""
@@ -399,10 +452,17 @@ class LayOffDetailSettingPage:
     # `.evaluate("el => el.checked")`**；**點擊要用文字定位**（`get_by_text(...).click()`），
     # 直接點 `get_by_role("radio")` 會因為視覺隱藏而逾時失敗——跟 `el-switch` 的陷阱同一類，
     # 見 `system_setting_page.py` 檔頭對 `el-switch` 的說明。
-    def select_sub_item(self, name: str) -> None:
-        """切到子項（如「比大小」分類下的「一比一」～「一比六」）。"""
-        self.page.get_by_text(name, exact=True).click()
-        self.page.wait_for_timeout(500)
+    def select_sub_item(self, name: str, *, settle_ms: int = 500) -> None:
+        """切到子項（如「比大小」分類下的「一比一」～「一比六」）。
+
+        ⚠️⚠️ 2026-09-02 比大小全 6 子項覆蓋實測發現：選定子項後，下方
+        `el-card__header`（組合表格標題）也會重複顯示同一個文字（例如選「一比一」後，
+        表格標題也寫「一比一」），`get_by_text(name, exact=True)` 因此會撞 Playwright
+        strict mode（resolved to 2 elements：子項選單本身 ＋ 表格標題）。改用 class
+        限定在頂部的子項選單元素（`el-segmented__item-label`），不比對整頁文字。
+        """
+        self.page.locator(".el-segmented__item-label", has_text=name).click()
+        self.page.wait_for_timeout(settle_ms)
 
     def is_relation_linked(self, block_index: int = 0) -> bool:
         """讀取目前子項「关连／不关连」是否為「关连」狀態。
@@ -438,16 +498,53 @@ class LayOffDetailSettingPage:
         field.press("Tab")
         self.page.wait_for_timeout(300)
 
-    def combo_auto_lay_off_enabled(self) -> bool:
+    def combo_auto_lay_off_enabled(self, block_index: int = 0) -> bool:
         """讀取目前子項的「自動飛單」開關（組合型分類是子項層級單一開關，
         不是每個組合欄位各自一顆——跟標準選項清單型的 `option_auto_lay_off_enabled`
-        是不同層級的方法，不要混用）。"""
-        switch = self.page.get_by_role("switch", name="自动飞单")
+        是不同層級的方法，不要混用）。`block_index` 用途見 `is_relation_linked()` 檔頭
+        （「六肖」有兩個區塊、各自一顆「自動飛單」，2026-09-02 補上索引避免撞
+        Playwright strict mode）。"""
+        switch = self.page.get_by_role("switch", name="自动飞单").nth(block_index)
         return switch.get_attribute("aria-checked") == "true"
 
     def combo_item_marked(self, index: int) -> bool:
         """讀取第 `index` 個組合列（正1特～正6特＋特码，0-based）的「選擇」checkbox 是否勾選。"""
         return self.page.get_by_role("checkbox").nth(index).evaluate("el => el.checked")
+
+    def combo_marked_indices(self) -> list[int]:
+        """一次讀取目前組合型玩法所有已勾選列，避免逐列跨瀏覽器查詢。"""
+        count = self.combo_item_count()
+        return self.page.get_by_role("checkbox").evaluate_all(
+            "(boxes, count) => boxes.slice(0, count).flatMap((box, index) => box.checked ? [index] : [])",
+            count,
+        )
+
+    def set_combo_marked_indices(self, marked_indices: list[int]) -> None:
+        """批次把組合列調整成指定勾選集合（只點擊狀態不同的視覺 checkbox）。
+
+        B46 需要在 3 彩種 × 55 個目標反覆清空及還原；逐列使用 Playwright `click()`
+        會產生數千次跨程序往返。這裡仍觸發每顆 Element Plus checkbox 的真實 click
+        handler，只把同頁的點擊集中在一次瀏覽器端執行，完成後再讀回確認狀態。
+        """
+        count = self.combo_item_count()
+        expected = sorted(set(marked_indices))
+        invalid = [index for index in expected if index < 0 or index >= count]
+        if invalid:
+            raise IndexError(f"組合列索引超出範圍（共{count}列）：{invalid}")
+        self.page.get_by_role("checkbox").evaluate_all(
+            """(boxes, args) => {
+                const [count, expected] = args;
+                const selected = new Set(expected);
+                boxes.slice(0, count).forEach((box, index) => {
+                    if (box.checked !== selected.has(index)) box.parentElement.click();
+                });
+            }""",
+            [count, expected],
+        )
+        self.page.wait_for_timeout(300)
+        actual = self.combo_marked_indices()
+        if actual != expected:
+            raise AssertionError(f"組合勾選批次調整失敗：預期{expected}，實際{actual}")
 
     def set_combo_item_marked(self, index: int, marked: bool) -> None:
         """勾選/取消第 `index` 個組合列的「選擇」checkbox。
