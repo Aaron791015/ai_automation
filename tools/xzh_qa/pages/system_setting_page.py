@@ -31,7 +31,15 @@ class SystemSettingPage:
 
     def goto(self, submenu: str) -> None:
         """導覽到系統設置的指定子選單，如「游戏设置」「投注限额」等。"""
-        self.page.get_by_role("menuitem", name="系统设置").click()
+        system_item = self.page.get_by_role("menuitem", name="系统设置", exact=True)
+        if system_item.count() == 0 or not system_item.last.is_visible():
+            # 1280px 寬度時頂部「系统设置」會被收進最後一個「…」溢出子選單，
+            # 與 LayOffDetailSettingPage.goto() 的導覽規則一致。
+            overflow = self.page.locator(".el-menu--horizontal > .el-sub-menu").last
+            expect(overflow).to_be_visible()
+            overflow.click()
+            expect(system_item.last).to_be_visible()
+        system_item.last.click()
         self.page.get_by_role("menuitem", name=submenu, exact=True).click()
         # 子選單內容是非同步載入的，給緩衝時間再讓呼叫端讀欄位
         self.page.wait_for_timeout(1200)

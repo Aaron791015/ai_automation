@@ -1,0 +1,438 @@
+- generic [ref=f1e3]:
+  - generic [ref=f1e4]:
+    - generic [ref=f1e5]: 公司
+    - generic [ref=f1e6]:
+      - generic [ref=f1e7]:
+        - generic [ref=f1e8]: "#26095"
+        - generic [ref=f1e9]:
+          - generic [ref=f1e10]:
+            - generic [ref=f1e12]: "30"
+            - generic [ref=f1e13]: 牛
+          - generic [ref=f1e14]:
+            - generic [ref=f1e16]: "4"
+            - generic [ref=f1e17]: 兔
+          - generic [ref=f1e18]:
+            - generic [ref=f1e20]: "11"
+            - generic [ref=f1e21]: 猴
+          - generic [ref=f1e22]:
+            - generic [ref=f1e24]: "26"
+            - generic [ref=f1e25]: 蛇
+          - generic [ref=f1e26]:
+            - generic [ref=f1e28]: "8"
+            - generic [ref=f1e29]: 猪
+          - generic [ref=f1e30]:
+            - generic [ref=f1e32]: "7"
+            - generic [ref=f1e33]: 鼠
+          - generic [ref=f1e34]:
+            - generic [ref=f1e36]: "42"
+            - generic [ref=f1e37]: 牛
+        - generic [ref=f1e38]: 木
+      - generic [ref=f1e39]:
+        - generic [ref=f1e40]:
+          - generic [ref=f1e41]: "#26095"
+          - generic [ref=f1e42]:
+            - generic [ref=f1e43]: 距离封盘
+            - generic [ref=f1e44]: 00:00:00
+          - generic [ref=f1e45]:
+            - generic [ref=f1e46]: 距离开奖
+            - generic [ref=f1e47]: 00:00:00
+        - generic [ref=f1e48]:
+          - generic [ref=f1e49]: 今日盈亏
+          - generic [ref=f1e50]: "0"
+    - generic [ref=f1e51]:
+      - generic [ref=f1e55] [cursor=pointer]: 36ms
+      - separator [ref=f1e57]
+      - generic [ref=f1e59]:
+        - generic [ref=f1e60]: A
+        - generic [ref=f1e61]:
+          - generic [ref=f1e62]: 公司
+          - generic [ref=f1e63]: 操作员 aaron01
+      - separator [ref=f1e65]
+      - generic [ref=f1e67]:
+        - button [ref=f1e68] [cursor=pointer]:
+          - img [ref=f1e70]
+        - button [ref=f1e72] [cursor=pointer]:
+          - img [ref=f1e74]
+        - button [ref=f1e76] [cursor=pointer]:
+          - img [ref=f1e78]
+  - generic [ref=f1e80]:
+    - generic [ref=f1e81]:
+      - generic [ref=f1e83]:
+        - generic [ref=f1e84] [cursor=pointer]:
+          - generic [ref=f1e86]: 香港六合彩
+          - generic [ref=f1e88]:
+            - generic [ref=f1e89]: "26095"
+            - generic [ref=f1e90]: "0"
+        - generic [ref=f1e91] [cursor=pointer]:
+          - generic [ref=f1e93]: 英国天天彩
+          - generic [ref=f1e95]:
+            - generic [ref=f1e96]: "20260902245"
+            - generic [ref=f1e97]: 7.6万
+        - generic [ref=f1e98] [cursor=pointer]:
+          - generic [ref=f1e100]: 宾果六合彩
+          - generic [ref=f1e102]:
+            - generic [ref=f1e103]: "115049616"
+            - generic [ref=f1e104]: "0"
+        - generic [ref=f1e105] [cursor=pointer]:
+          - generic [ref=f1e107]: 英国赛车
+          - generic [ref=f1e109]:
+            - generic [ref=f1e110]: "20260902280"
+            - generic [ref=f1e111]: "0"
+        - generic [ref=f1e112] [cursor=pointer]:
+          - generic [ref=f1e114]: 英国极速赛车
+          - generic [ref=f1e116]:
+            - generic [ref=f1e117]: "202609020672"
+            - generic [ref=f1e118]: "0"
+        - generic [ref=f1e119] [cursor=pointer]:
+          - generic [ref=f1e121]: 英国飞艇
+          - generic [ref=f1e123]:
+            - generic [ref=f1e124]: "20260902168"
+            - generic [ref=f1e125]: "0"
+        - generic [ref=f1e126] [cursor=pointer]:
+          - generic [ref=f1e128]: 宾果赛车(前)
+          - generic [ref=f1e130]:
+            - generic [ref=f1e131]: "115049616"
+            - generic [ref=f1e132]: "0"
+        - generic [ref=f1e133] [cursor=pointer]:
+          - generic [ref=f1e135]: 宾果赛车(后)
+          - generic [ref=f1e137]:
+            - generic [ref=f1e138]: "115049616"
+            - generic [ref=f1e139]: "0"
+        - generic [ref=f1e140] [cursor=pointer]:
+          - generic [ref=f1e142]: 英国时时彩
+          - generic [ref=f1e144]:
+            - generic [ref=f1e145]: "20260902280"
+            - generic [ref=f1e146]: "0"
+        - generic [ref=f1e147] [cursor=pointer]:
+          - generic [ref=f1e149]: 英国极速时时彩
+          - generic [ref=f1e151]:
+            - generic [ref=f1e152]: "202609020673"
+            - generic [ref=f1e153]: "0"
+        - generic [ref=f1e154] [cursor=pointer]:
+          - generic [ref=f1e156]: 宾果时时彩(A)
+          - generic [ref=f1e158]:
+            - generic [ref=f1e159]: "115049616"
+            - generic [ref=f1e160]: "0"
+        - generic [ref=f1e161] [cursor=pointer]:
+          - generic [ref=f1e163]: 宾果时时彩(B)
+          - generic [ref=f1e165]:
+            - generic [ref=f1e166]: "115049616"
+            - generic [ref=f1e167]: "0"
+        - generic [ref=f1e168] [cursor=pointer]:
+          - generic [ref=f1e170]: 宾果时时彩(C)
+          - generic [ref=f1e172]:
+            - generic [ref=f1e173]: "115049616"
+            - generic [ref=f1e174]: "0"
+        - generic [ref=f1e175] [cursor=pointer]:
+          - generic [ref=f1e177]: 宾果时时彩(D)
+          - generic [ref=f1e179]:
+            - generic [ref=f1e180]: "115049616"
+            - generic [ref=f1e181]: "0"
+      - button "下一个" [ref=f1e182] [cursor=pointer]:
+        - img [ref=f1e184]
+    - button "自定义游戏列" [ref=f1e186] [cursor=pointer]:
+      - img [ref=f1e189]
+  - generic [ref=f1e193]:
+    - menubar [ref=f1e194]:
+      - menuitem "用户管理" [ref=f1e195] [cursor=pointer]:
+        - img [ref=f1e197]
+        - generic [ref=f1e201]: 用户管理
+      - menuitem "即时操盘" [ref=f1e202] [cursor=pointer]:
+        - img [ref=f1e204]
+        - generic [ref=f1e210]: 即时操盘
+      - menuitem "注单数据" [ref=f1e211] [cursor=pointer]:
+        - img [ref=f1e213]
+        - generic [ref=f1e217]: 注单数据
+      - menuitem "报表" [ref=f1e218] [cursor=pointer]:
+        - img [ref=f1e220]
+        - generic [ref=f1e224]: 报表
+      - menuitem "跟单管理" [ref=f1e225] [cursor=pointer]:
+        - img [ref=f1e227]
+        - generic [ref=f1e231]: 跟单管理
+      - menuitem "开奖号码" [ref=f1e232] [cursor=pointer]:
+        - img [ref=f1e234]
+        - generic [ref=f1e239]: 开奖号码
+      - menuitem "操作日志" [ref=f1e240] [cursor=pointer]:
+        - img [ref=f1e242]
+        - generic [ref=f1e244]: 操作日志
+      - menuitem "系统设置" [ref=f1e245] [cursor=pointer]:
+        - img [ref=f1e247]
+        - generic [ref=f1e251]: 系统设置
+      - menuitem "个人资料" [ref=f1e252] [cursor=pointer]:
+        - img [ref=f1e254]
+        - generic [ref=f1e259]: 个人资料
+      - menuitem "游戏规则" [ref=f1e260] [cursor=pointer]:
+        - img [ref=f1e262]
+        - generic [ref=f1e264]: 游戏规则
+    - menubar [ref=f1e265]:
+      - menuitem "游戏设置" [ref=f1e266] [cursor=pointer]
+      - menuitem "赔率设置" [ref=f1e267] [cursor=pointer]
+      - menuitem "降赔设置" [ref=f1e268] [cursor=pointer]
+      - menuitem "飞单设置" [ref=f1e269] [cursor=pointer]
+      - menuitem "飞单选项明细设置" [ref=f1e270] [cursor=pointer]
+      - menuitem "退水设置" [ref=f1e271] [cursor=pointer]
+      - menuitem "投注限额" [ref=f1e272] [cursor=pointer]
+      - menuitem "公告管理" [ref=f1e273] [cursor=pointer]
+    - main [ref=f1e274]:
+      - generic [ref=f1e280]:
+        - navigation [ref=f1e281]:
+          - button "特码" [ref=f1e282] [cursor=pointer]
+          - button "正码" [ref=f1e283] [cursor=pointer]
+          - button "正特码" [ref=f1e284] [cursor=pointer]
+          - button "两面" [ref=f1e285] [cursor=pointer]
+          - button "连码" [ref=f1e286] [cursor=pointer]
+          - button "过关" [ref=f1e287] [cursor=pointer]
+          - button "生肖中" [ref=f1e288] [cursor=pointer]
+          - button "生肖不中" [ref=f1e289] [cursor=pointer]
+          - button "尾数中" [ref=f1e290] [cursor=pointer]
+          - button "尾数不中" [ref=f1e291] [cursor=pointer]
+          - button "半波" [ref=f1e292] [cursor=pointer]
+          - button "六肖" [active] [ref=f1e293] [cursor=pointer]
+          - button "色波" [ref=f1e294] [cursor=pointer]
+          - button "特肖" [ref=f1e295] [cursor=pointer]
+          - button "连肖" [ref=f1e296] [cursor=pointer]
+          - button "连尾" [ref=f1e297] [cursor=pointer]
+          - button "不中" [ref=f1e298] [cursor=pointer]
+          - button "多选中一" [ref=f1e299] [cursor=pointer]
+          - button "特平中" [ref=f1e300] [cursor=pointer]
+          - button "合肖" [ref=f1e301] [cursor=pointer]
+          - button "七码" [ref=f1e302] [cursor=pointer]
+          - button "五行" [ref=f1e303] [cursor=pointer]
+          - button "一肖量" [ref=f1e304] [cursor=pointer]
+          - button "尾数量" [ref=f1e305] [cursor=pointer]
+          - button "比大小" [ref=f1e306] [cursor=pointer]
+        - generic [ref=f1e307]:
+          - generic [ref=f1e308]:
+            - generic [ref=f1e309]: 启用飞单选项明细
+            - generic [ref=f1e310]:
+              - switch [checked]
+          - generic [ref=f1e313]:
+            - generic [ref=f1e593]:
+              - generic [ref=f1e594]:
+                - generic [ref=f1e595]: 六肖中
+                - generic [ref=f1e596]:
+                  - generic [ref=f1e598]:
+                    - generic [ref=f1e599]:
+                      - generic [ref=f1e600]:
+                        - generic [ref=f1e601]: 选项
+                        - generic [ref=f1e602]: 号码
+                        - generic [ref=f1e603]: 组合占成金额
+                        - generic [ref=f1e604]: 选择
+                      - generic [ref=f1e605]:
+                        - generic [ref=f1e606]: 选项
+                        - generic [ref=f1e607]: 号码
+                        - generic [ref=f1e608]: 组合占成金额
+                        - generic [ref=f1e609]: 选择
+                    - generic [ref=f1e610]:
+                      - generic [ref=f1e611] [cursor=pointer]:
+                        - generic [ref=f1e612]: 鼠
+                        - generic [ref=f1e613]: 07, 19, 31, 43
+                        - button "0" [disabled] [ref=f1e614]
+                        - generic [ref=f1e617]:
+                          - checkbox
+                      - generic [ref=f1e619] [cursor=pointer]:
+                        - generic [ref=f1e620]: 牛
+                        - generic [ref=f1e621]: 06, 18, 30, 42
+                        - button "0" [disabled] [ref=f1e622]
+                        - generic [ref=f1e625]:
+                          - checkbox
+                      - generic [ref=f1e627] [cursor=pointer]:
+                        - generic [ref=f1e628]: 虎
+                        - generic [ref=f1e629]: 05, 17, 29, 41
+                        - button "0" [disabled] [ref=f1e630]
+                        - generic [ref=f1e633]:
+                          - checkbox
+                      - generic [ref=f1e635] [cursor=pointer]:
+                        - generic [ref=f1e636]: 兔
+                        - generic [ref=f1e637]: 04, 16, 28, 40
+                        - button "0" [disabled] [ref=f1e638]
+                        - generic [ref=f1e641]:
+                          - checkbox
+                      - generic [ref=f1e643] [cursor=pointer]:
+                        - generic [ref=f1e644]: 龙
+                        - generic [ref=f1e645]: 03, 15, 27, 39
+                        - button "0" [disabled] [ref=f1e646]
+                        - generic [ref=f1e649]:
+                          - checkbox
+                      - generic [ref=f1e651] [cursor=pointer]:
+                        - generic [ref=f1e652]: 蛇
+                        - generic [ref=f1e653]: 02, 14, 26, 38
+                        - button "0" [disabled] [ref=f1e654]
+                        - generic [ref=f1e657]:
+                          - checkbox
+                      - generic [ref=f1e659] [cursor=pointer]:
+                        - generic [ref=f1e660]: 马
+                        - generic [ref=f1e661]: 01, 13, 25, 37, 49
+                        - button "0" [disabled] [ref=f1e662]
+                        - generic [ref=f1e665]:
+                          - checkbox
+                      - generic [ref=f1e667] [cursor=pointer]:
+                        - generic [ref=f1e668]: 羊
+                        - generic [ref=f1e669]: 12, 24, 36, 48
+                        - button "0" [disabled] [ref=f1e670]
+                        - generic [ref=f1e673]:
+                          - checkbox
+                      - generic [ref=f1e675] [cursor=pointer]:
+                        - generic [ref=f1e676]: 猴
+                        - generic [ref=f1e677]: 11, 23, 35, 47
+                        - button "0" [disabled] [ref=f1e678]
+                        - generic [ref=f1e681]:
+                          - checkbox
+                      - generic [ref=f1e683] [cursor=pointer]:
+                        - generic [ref=f1e684]: 鸡
+                        - generic [ref=f1e685]: 10, 22, 34, 46
+                        - button "0" [disabled] [ref=f1e686]
+                        - generic [ref=f1e689]:
+                          - checkbox
+                      - generic [ref=f1e691] [cursor=pointer]:
+                        - generic [ref=f1e692]: 狗
+                        - generic [ref=f1e693]: 09, 21, 33, 45
+                        - button "0" [disabled] [ref=f1e694]
+                        - generic [ref=f1e697]:
+                          - checkbox
+                      - generic [ref=f1e699] [cursor=pointer]:
+                        - generic [ref=f1e700]: 猪
+                        - generic [ref=f1e701]: 08, 20, 32, 44
+                        - button "0" [disabled] [ref=f1e702]
+                        - generic [ref=f1e705]:
+                          - checkbox
+                  - generic [ref=f1e707]:
+                    - radiogroup [ref=f1e710]:
+                      - generic [ref=f1e711]:
+                        - radio "关连" [checked] [ref=f1e712]
+                        - generic [ref=f1e713] [cursor=pointer]: 关连
+                      - generic [ref=f1e714]:
+                        - radio "不关连" [ref=f1e715]
+                        - generic [ref=f1e716] [cursor=pointer]: 不关连
+                    - generic [ref=f1e717]:
+                      - generic [ref=f1e718]: 共用自留上限
+                      - generic [ref=f1e720]:
+                        - generic [ref=f1e721]:
+                          - button "减少数值" [ref=f1e722]:
+                            - img [ref=f1e724]
+                          - button "增加数值" [ref=f1e726] [cursor=pointer]:
+                            - img [ref=f1e728]
+                          - spinbutton "共用自留上限" [ref=f1e732]: "0"
+                        - generic [ref=f1e733]: 此设定下共用自留上限将存为 0，该玩法所有组合无条件全飞
+                    - generic [ref=f1e734]:
+                      - generic [ref=f1e735]: 自动飞单
+                      - generic [ref=f1e737]:
+                        - switch "自动飞单"
+              - generic [ref=f1e740]:
+                - generic [ref=f1e741]: 六肖不中
+                - generic [ref=f1e742]:
+                  - generic [ref=f1e744]:
+                    - generic [ref=f1e745]:
+                      - generic [ref=f1e746]:
+                        - generic [ref=f1e747]: 选项
+                        - generic [ref=f1e748]: 号码
+                        - generic [ref=f1e749]: 组合占成金额
+                        - generic [ref=f1e750]: 选择
+                      - generic [ref=f1e751]:
+                        - generic [ref=f1e752]: 选项
+                        - generic [ref=f1e753]: 号码
+                        - generic [ref=f1e754]: 组合占成金额
+                        - generic [ref=f1e755]: 选择
+                    - generic [ref=f1e756]:
+                      - generic [ref=f1e757] [cursor=pointer]:
+                        - generic [ref=f1e758]: 鼠
+                        - generic [ref=f1e759]: 07, 19, 31, 43
+                        - button "0" [disabled] [ref=f1e760]
+                        - generic [ref=f1e763]:
+                          - checkbox
+                      - generic [ref=f1e765] [cursor=pointer]:
+                        - generic [ref=f1e766]: 牛
+                        - generic [ref=f1e767]: 06, 18, 30, 42
+                        - button "0" [disabled] [ref=f1e768]
+                        - generic [ref=f1e771]:
+                          - checkbox
+                      - generic [ref=f1e773] [cursor=pointer]:
+                        - generic [ref=f1e774]: 虎
+                        - generic [ref=f1e775]: 05, 17, 29, 41
+                        - button "0" [disabled] [ref=f1e776]
+                        - generic [ref=f1e779]:
+                          - checkbox
+                      - generic [ref=f1e781] [cursor=pointer]:
+                        - generic [ref=f1e782]: 兔
+                        - generic [ref=f1e783]: 04, 16, 28, 40
+                        - button "0" [disabled] [ref=f1e784]
+                        - generic [ref=f1e787]:
+                          - checkbox
+                      - generic [ref=f1e789] [cursor=pointer]:
+                        - generic [ref=f1e790]: 龙
+                        - generic [ref=f1e791]: 03, 15, 27, 39
+                        - button "0" [disabled] [ref=f1e792]
+                        - generic [ref=f1e795]:
+                          - checkbox
+                      - generic [ref=f1e797] [cursor=pointer]:
+                        - generic [ref=f1e798]: 蛇
+                        - generic [ref=f1e799]: 02, 14, 26, 38
+                        - button "0" [disabled] [ref=f1e800]
+                        - generic [ref=f1e803]:
+                          - checkbox
+                      - generic [ref=f1e805] [cursor=pointer]:
+                        - generic [ref=f1e806]: 马
+                        - generic [ref=f1e807]: 01, 13, 25, 37, 49
+                        - button "0" [disabled] [ref=f1e808]
+                        - generic [ref=f1e811]:
+                          - checkbox
+                      - generic [ref=f1e813] [cursor=pointer]:
+                        - generic [ref=f1e814]: 羊
+                        - generic [ref=f1e815]: 12, 24, 36, 48
+                        - button "0" [disabled] [ref=f1e816]
+                        - generic [ref=f1e819]:
+                          - checkbox
+                      - generic [ref=f1e821] [cursor=pointer]:
+                        - generic [ref=f1e822]: 猴
+                        - generic [ref=f1e823]: 11, 23, 35, 47
+                        - button "0" [disabled] [ref=f1e824]
+                        - generic [ref=f1e827]:
+                          - checkbox
+                      - generic [ref=f1e829] [cursor=pointer]:
+                        - generic [ref=f1e830]: 鸡
+                        - generic [ref=f1e831]: 10, 22, 34, 46
+                        - button "0" [disabled] [ref=f1e832]
+                        - generic [ref=f1e835]:
+                          - checkbox
+                      - generic [ref=f1e837] [cursor=pointer]:
+                        - generic [ref=f1e838]: 狗
+                        - generic [ref=f1e839]: 09, 21, 33, 45
+                        - button "0" [disabled] [ref=f1e840]
+                        - generic [ref=f1e843]:
+                          - checkbox
+                      - generic [ref=f1e845] [cursor=pointer]:
+                        - generic [ref=f1e846]: 猪
+                        - generic [ref=f1e847]: 08, 20, 32, 44
+                        - button "0" [disabled] [ref=f1e848]
+                        - generic [ref=f1e851]:
+                          - checkbox
+                  - generic [ref=f1e853]:
+                    - radiogroup [ref=f1e856]:
+                      - generic [ref=f1e857]:
+                        - radio "关连" [checked] [ref=f1e858]
+                        - generic [ref=f1e859] [cursor=pointer]: 关连
+                      - generic [ref=f1e860]:
+                        - radio "不关连" [ref=f1e861]
+                        - generic [ref=f1e862] [cursor=pointer]: 不关连
+                    - generic [ref=f1e863]:
+                      - generic [ref=f1e864]: 共用自留上限
+                      - generic [ref=f1e866]:
+                        - generic [ref=f1e867]:
+                          - button "减少数值" [ref=f1e868]:
+                            - img [ref=f1e870]
+                          - button "增加数值" [ref=f1e872] [cursor=pointer]:
+                            - img [ref=f1e874]
+                          - spinbutton "共用自留上限" [ref=f1e878]: "0"
+                        - generic [ref=f1e879]: 此设定下共用自留上限将存为 0，该玩法所有组合无条件全飞
+                    - generic [ref=f1e880]:
+                      - generic [ref=f1e881]: 自动飞单
+                      - generic [ref=f1e883]:
+                        - switch "自动飞单"
+            - generic [ref=f1e585]:
+              - button "保存" [ref=f1e586] [cursor=pointer]:
+                - generic [ref=f1e587]: 保存
+              - generic [ref=f1e588] [cursor=pointer]:
+                - generic [ref=f1e589]:
+                  - checkbox "保存后立即触发本次选项自动飞单"
+                - generic [ref=f1e591]: 保存后立即触发本次选项自动飞单
+              - generic [ref=f1e592]: 仅扫描本次存档变更的选项；其余选项的自动飞单交由下一次排程（最多1分钟）触发

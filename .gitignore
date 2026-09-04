@@ -56,6 +56,11 @@ data/profitRate/
 # 測試報告與 playwright 產物
 reports/allure-results/
 reports/allure-report/
+# 帶自訂後綴的版本（同一 working tree 多 session 併行時，用後綴避免互相覆蓋，
+# 見 CLAUDE.md §8.1；2026-09-03 發現 reports/allure-*-k7-coverage-20260903/ 未被涵蓋，
+# 被 lint_docs 的 W 工作區殘留誤判為未分類檔案，故擴充為萬用模式）
+reports/allure-results-*/
+reports/allure-report-*/
 test-results/
 # created_accounts manifest 為 run 產物、含 QAT 帳密/token，不版控；
 # 流水號避重的權威來源是線上搜尋（見 account_naming.py），非此檔。保留目錄以 .gitkeep。

@@ -8,6 +8,7 @@
 
 格式與 `MEMORY.md` 完全相同：`- [標題](檔名.md) — 一句話的鉤子`
 
+- [測試案例須讓一般 QA 可獨立執行](testcase-readable-by-general-qa.md) — 固定資料、控制組、判準、覆蓋缺口及還原方式都要明寫
 - [語言慣例](lang-traditional-chinese.md) — 回覆/註解/文件一律繁體中文
 - [API 與 UI 分工規則](api-vs-ui-rule.md) — API 僅限非被測行為的前置準備；被測行為一律走 UI
 - [UI 測試任務指引](ui-test-task-guidelines.md) — 任務描述四要素；拆小、點名被測行為、先探索後實作

@@ -3,7 +3,7 @@
 用途：不執行任何測試，把 pytest 收集到的每個 item 匯出成 JSON —— nodeid、檔案:行號、
       中文標題（allure.title > docstring 首行 > 函式名）、markers、allure 五層標籤、
       fixtures（供反推前置依賴，如 wbot_target）、是否需瀏覽器、參數化 id、
-      ★ 步驟／測試範圍／判准（靜態解析 `allure.step`／`allure.attach`，見 `_steps_and_criteria`；
+      ★ 前置條件／步驟／測試範圍／判准／已知問題（靜態解析 `allure.step`／`allure.attach`，見 `_steps_and_criteria`；
       「測試範圍」是 `allure.attach(name="測試範圍：...")` 依前綴獨立拆出的欄位，見 `_SCOPE_PREFIX`）。
 使用方式（由平台 collect/case_index.py 以 subprocess 呼叫，帶 90s timeout）：
     .venv\\Scripts\\python.exe -m pytest --collect-only -q -p no:cacheprovider \\
@@ -51,7 +51,9 @@ _INTERNAL_MARKS = {"allure_label", "allure_description", "allure_description_htm
 #   （完整列出彩種＋玩法，見 `docs/新綜合/新綜合_測試案例撰寫規則.md` Step 5）。
 #   案例裡用 `allure.attach(..., name="測試範圍：...")` 宣告，這裡依名稱前綴把它
 #   從一般判准 attach 裡挑出來，獨立成 `scope` 欄位，不跟真正的判准佐證混在一起。
+_PRECONDITION_PREFIX = "前置條件"
 _SCOPE_PREFIX = "測試範圍"
+_KNOWN_ISSUE_PREFIX = "已知問題"
 
 
 # ---------------------------------------------------------------- 步驟／判准（靜態解析）
@@ -152,17 +154,28 @@ def _helper_names(node: ast.AST) -> list[str]:
     return out
 
 
-def _split_scope(titles: list[str]) -> tuple[list[str], list[str]]:
-    """把 attach 標題依 `_SCOPE_PREFIX` 前綴拆成 (測試範圍, 真正的判准)，保持原順序。"""
+def _split_sections(titles: list[str]) -> tuple[list[str], list[str], list[str], list[str]]:
+    """依附件標題前綴拆成（前置條件、測試範圍、判準、已知問題）。
+
+    舊案例沒有前置條件／已知問題附件時，對應欄位保持空陣列，維持向下相容。
+    """
+    preconditions = [t for t in titles if t.startswith(_PRECONDITION_PREFIX)]
     scope = [t for t in titles if t.startswith(_SCOPE_PREFIX)]
-    criteria = [t for t in titles if not t.startswith(_SCOPE_PREFIX)]
-    return scope, criteria
+    known_issues = [t for t in titles if t.startswith(_KNOWN_ISSUE_PREFIX)]
+    criteria = [
+        t for t in titles
+        if not t.startswith((_PRECONDITION_PREFIX, _SCOPE_PREFIX, _KNOWN_ISSUE_PREFIX))
+    ]
+    return preconditions, scope, criteria, known_issues
 
 
-def _steps_and_criteria(fn: ast.AST, helpers: dict, src: str) -> tuple[list[str], list[str], list[str], bool]:
-    """步驟／測試範圍／判准（attach 標題）／有沒有 assert——本體 ＋ 往下追一層同檔 helper（跟 lint_cases.py 同規則）。"""
+def _steps_and_criteria(fn: ast.AST, helpers: dict, src: str) -> tuple[list[str], list[str], list[str], list[str], list[str], bool]:
+    """前置條件／步驟／測試範圍／判準／已知問題／有沒有 assert。
+
+    內容來自本體及往下追一層同檔 helper（跟 lint_cases.py 同規則）。
+    """
     steps = _step_texts(fn, src)
-    scope, criteria = _split_scope(_attach_titles(fn, src))
+    preconditions, scope, criteria, known_issues = _split_sections(_attach_titles(fn, src))
     body_seg = ast.get_source_segment(src, fn) or ""
     has_assert = "assert " in body_seg
     for name in _helper_names(fn):
@@ -170,24 +183,78 @@ def _steps_and_criteria(fn: ast.AST, helpers: dict, src: str) -> tuple[list[str]
         if h is None:
             continue
         steps += _step_texts(h, src)
-        h_scope, h_criteria = _split_scope(_attach_titles(h, src))
+        h_preconditions, h_scope, h_criteria, h_known_issues = _split_sections(_attach_titles(h, src))
+        preconditions += h_preconditions
         scope += h_scope
         criteria += h_criteria
+        known_issues += h_known_issues
         has_assert = has_assert or "assert " in (ast.get_source_segment(src, h) or "")
-    return steps, scope, criteria, has_assert
+    return preconditions, steps, scope, criteria, known_issues, has_assert
 
 
-def _static_steps(item) -> tuple[list[str], list[str], list[str], bool]:
+def _static_steps(item) -> tuple[list[str], list[str], list[str], list[str], list[str], bool]:
     """單筆失敗不可拖垮整份索引——解析失敗一律退回空結果，不往外丟例外。"""
     try:
         path = str(item.path)
         src, cases, helpers = _parse_file(path)
         fn = cases.get(getattr(item, "originalname", None) or item.name)
         if fn is None:
-            return [], [], [], False
+            return [], [], [], [], [], False
         return _steps_and_criteria(fn, helpers, src)
     except Exception:  # noqa: BLE001
-        return [], [], [], False
+        return [], [], [], [], [], False
+
+
+def _inferred_preconditions(fixtures: list[str], suite: str | None, markers: set[str]) -> list[str]:
+    """補上平台可直接閱讀的基本前置條件。
+
+    案例原始碼以 fixture 宣告登入角色；平台不應要求 QA 反查 Python fixture 名稱。
+    這裡只對飛單選項明細設置輸出通用前置，其他產品維持既有資料形狀。
+    """
+    if suite != "飞单选项明细设置":
+        return []
+    if "level1_agent_page" in fixtures:
+        account = "帳號：一級代理"
+    elif "company_page" in fixtures:
+        account = "帳號：公司帳號"
+    elif "platform_page" in fixtures:
+        account = "帳號：平台層公司帳號"
+    elif "browser" in fixtures:
+        account = "帳號：依案例指定的一至九級代理帳號"
+    else:
+        account = "帳號：依案例指定帳號"
+    page = "頁面：系統設置 → 飛單選項明細設置"
+    restore = (
+        "原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認"
+        if "write_action" in markers
+        else "原值：唯讀案例不需記錄或修改設定"
+    )
+    return [account, page, restore]
+
+
+def _inferred_evidence(
+    suite: str | None,
+    markers: set[str],
+    steps: list[str],
+    criteria: list[str],
+) -> list[str]:
+    """提供一般 QA 看得懂的佐證方式提示；實際附件仍由案例執行時產生。"""
+    if suite != "飞单选项明细设置":
+        return []
+    evidence = [
+        "截圖：保留關鍵欄位、按鈕、勾選狀態或提示文字",
+        "頁面值：記錄操作前後畫面顯示的實際數值或狀態",
+    ]
+    joined = " ".join(steps + criteria)
+    if "write_action" in markers or any(k in joined for k in ("API", "PUT", "GET", "網路")):
+        evidence.append("自動化紀錄：需要時附上 API GET／PUT 或網路請求紀錄")
+    return evidence
+
+
+def _explicit_evidence_titles(criteria: list[str]) -> list[str]:
+    """把「實際結果／登入失敗佐證」附件從預期結果移到佐證方式。"""
+    prefixes = ("實際結果", "登入失敗佐證", "佐證方式", "截圖")
+    return [t for t in criteria if t.startswith(prefixes)]
 
 
 def pytest_addoption(parser):
@@ -233,7 +300,21 @@ def _collect_one(item, rootdir: str) -> dict:
     path = os.path.relpath(str(item.path), rootdir).replace("\\", "/")
     title, title_src = _title(item)
     fixtures = [f for f in getattr(item, "fixturenames", []) if not f.startswith("_")]
-    steps, scope, criteria, has_assert = _static_steps(item)
+    preconditions, steps, scope, criteria, known_issues, has_assert = _static_steps(item)
+    markers = sorted({m.name for m in item.iter_markers()} - _INTERNAL_MARKS)
+    inferred = _inferred_preconditions(
+        fixtures,
+        (labels.get("suite") or [None])[0],
+        set(markers),
+    )
+    # 顯式附件可覆蓋／補充通用前置；目前舊案例多未寫附件，因此先以 fixture 推導。
+    preconditions = inferred + [p for p in preconditions if p not in inferred]
+    evidence = _inferred_evidence(
+        (labels.get("suite") or [None])[0], set(markers), steps, criteria
+    )
+    explicit_evidence = _explicit_evidence_titles(criteria)
+    expected = [t for t in criteria if t not in explicit_evidence]
+    evidence += [t for t in explicit_evidence if t not in evidence]
 
     return {
         "nodeid": item.nodeid,  # 中文原樣（JSON 以 ensure_ascii=False 寫出）
@@ -243,7 +324,7 @@ def _collect_one(item, rootdir: str) -> dict:
         "param_id": cs.id if cs else None,
         "title": title,
         "title_source": title_src,
-        "markers": sorted({m.name for m in item.iter_markers()} - _INTERNAL_MARKS),
+        "markers": markers,
         "allure": {
             "feature": labels.get("feature", []),
             "story": labels.get("story", []),
@@ -260,8 +341,12 @@ def _collect_one(item, rootdir: str) -> dict:
         # ★ scope＝「測試範圍」attach（見上方 _SCOPE_PREFIX 說明），目前僅新綜合(xzh)案例使用，
         #   其餘產品案例沒有這個 attach 就是空陣列，不影響原本 steps/criteria 的顯示。
         "scope": scope,
+        "preconditions": preconditions,
         "steps": steps,
         "criteria": criteria,
+        "expected": expected,
+        "evidence": evidence,
+        "known_issues": known_issues,
         "has_assert": has_assert,
     }
 

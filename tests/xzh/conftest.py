@@ -37,3 +37,19 @@ def company_page(page, xzh_qat):
     lp.goto(xzh_qat["backend_company_url"])
     lp.login(username, password)
     return page
+
+
+@pytest.fixture
+def level1_agent_page(page, xzh_qat):
+    """已登入一級代理層的 page。
+
+    代理測試帳號是可審查的 QAT 測試資料；密碼與現有 QAT admin 共用，
+    只由既有設定讀取，不另寫入測試碼、文件或 Allure 附件。
+    """
+    _, password = admin_credentials()
+    lp = LoginPage(page)
+    lp.goto(xzh_qat["backend_company_url"])
+    lp.login("aaa111", password)
+    if lp.is_otp_page():
+        lp.submit_otp("123456")
+    return page

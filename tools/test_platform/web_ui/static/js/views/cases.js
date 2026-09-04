@@ -7,14 +7,16 @@ import { toast } from '../ui/toast.js';
 import { navigate } from '../router.js';
 import { pageLoading } from '../ui/loading.js';
 
-let idx = null, filters = { q: '', product: '', marker: '', prereq: false, browser: '' };
+let idx = null, filters = { q: '', product: '', marker: '', browser: '' };
 
 // ⚠️ 這裡顯示的是**靜態解析**結果（`pytest_case_export.py` 用 AST 抓 `allure.step`／
 //    `allure.attach` 的字面文字），不是執行結果——`--collect-only` 不會真的跑案例，
 //    抓不到「這次跑出來的值」。要看實際跑出來的結果，去看 allure report。
 function renderStepsAndCriteria(c) {
-  const scope = c.scope || [], steps = c.steps || [], criteria = c.criteria || [];
-  if (!steps.length && !criteria.length) {
+  const scope = c.scope || [], steps = c.steps || [],
+    criteria = c.expected && c.expected.length ? c.expected : (c.criteria || []),
+    knownIssues = c.known_issues || [];
+  if (!steps.length && !criteria.length && !scope.length && !knownIssues.length) {
     return html`<div class="alert is-warn small" style="margin-top:10px">⚠️ 沒解析到步驟／判准——案例本身可能沒寫 <span class="mono">allure.step</span>／<span class="mono">allure.attach</span>，或寫法是 <span class="mono">scripts/lint_cases.py</span> 抓不到的形式（見該檔說明）</div>`;
   }
   // ★ 測試範圍：目前僅新綜合(xzh)案例會有（`allure.attach(name="測試範圍：...")`），
@@ -23,6 +25,7 @@ function renderStepsAndCriteria(c) {
     ${scope.length ? html`<div style="margin-top:10px"><b>測試範圍</b><ul class="small" style="margin:4px 0 0;padding-left:20px">${scope.map((s) => html`<li>${s}</li>`)}</ul></div>` : ''}
     ${steps.length ? html`<div style="margin-top:10px"><b>步驟</b><ol class="small" style="margin:4px 0 0;padding-left:20px">${steps.map((s) => html`<li>${s}</li>`)}</ol></div>` : ''}
     ${criteria.length ? html`<div style="margin-top:8px"><b>判准（attach 佐證）</b><ul class="small" style="margin:4px 0 0;padding-left:20px">${criteria.map((s) => html`<li>${s}</li>`)}</ul></div>` : ''}
+    ${knownIssues.length ? html`<div class="alert is-warn small" style="margin-top:8px"><b>已知問題</b><ul style="margin:4px 0 0;padding-left:20px">${knownIssues.map((s) => html`<li>${s}</li>`)}</ul></div>` : ''}
     ${c.has_assert && !criteria.length ? html`<div class="alert is-warn small" style="margin-top:6px">有 <span class="mono">assert</span> 卻沒有 <span class="mono">allure.attach</span>——判准看不到實際值 vs 期望值</div>` : ''}`;
 }
 
@@ -46,7 +49,6 @@ export async function mount(root) {
     <div class="page-bar">
       <input id="cs-q" type="text" placeholder="搜尋中文標題／nodeid／函式名…" value="${filters.q}" style="flex:1;min-width:220px;padding:5px 9px;background:var(--code-bg);border:1px solid var(--border-strong);color:var(--text)">
       <select id="cs-marker"><option value="">全部標記</option><option value="smoke">smoke（不寫入）</option><option value="write_action">write_action</option><option value="none">無標記</option></select>
-      <label class="small row" style="gap:4px"><input type="checkbox" id="cs-prereq"> 只看需前置</label>
       <select id="cs-browser"><option value="">瀏覽器：全部</option><option value="1">需瀏覽器</option><option value="0">純單元</option></select>
       <button class="btn sm ghost" id="cs-clear">清除選取</button>
     </div>
@@ -67,7 +69,6 @@ export async function mount(root) {
     filters.product = b.dataset.p; drawProductTabs(); draw();
   };
   $('#cs-marker', root).onchange = (e) => { filters.marker = e.target.value; draw(); };
-  $('#cs-prereq', root).onchange = (e) => { filters.prereq = e.target.checked; draw(); };
   $('#cs-browser', root).onchange = (e) => { filters.browser = e.target.value; draw(); };
   $('#cs-clear', root).onclick = () => { state.selection.clear(); draw(); };
   $('#cs-rebuild', root).onclick = async () => { const b = $('#cs-rebuild', root); b.classList.add('loading'); try { const d = await api.post('/api/cases/rebuild'); toast(`已重建：${d.count} 條`, 'success'); await load(); } catch (e) { toast(e.message, 'danger'); } b.classList.remove('loading'); };
@@ -211,7 +212,6 @@ export async function mount(root) {
     if (filters.marker === 'smoke' && !c.markers.includes('smoke')) return false;
     if (filters.marker === 'write_action' && !c.markers.includes('write_action')) return false;
     if (filters.marker === 'none' && c.markers.length) return false;
-    if (filters.prereq && !c.needs_prereq) return false;
     if (filters.browser === '1' && !c.needs_browser) return false;
     if (filters.browser === '0' && c.needs_browser) return false;
     if (filters.q && !(c.title + ' ' + c.nodeid + ' ' + c.func).toLowerCase().includes(filters.q)) return false;
@@ -233,13 +233,13 @@ export async function mount(root) {
 
   function draw() {
     if (!idx) return;
-    const anyFilter = filters.q || filters.product || filters.marker || filters.prereq || filters.browser;
+    const anyFilter = filters.q || filters.product || filters.marker || filters.browser;
     // ⚠️ 2026-08-28 修正：`expandAll` 原本跟 `anyFilter` 綁在一起，導致單純點「新綜合」
     // 這類產品分頁（只是縮小顯示範圍，不是在裡面搜東西）也會被強制全展開，
     // 使用者完全無法再收合裡面的檔案／子頁節點——「可以展開/收合」的訴求因此形同虛設。
-    // 只有真的「在裡面找東西」（文字搜尋／標記／前置／瀏覽器篩選）才需要自動展開好讓
+    // 只有真的「在裡面找東西」（文字搜尋／標記／瀏覽器篩選）才需要自動展開好讓
     // 命中結果看得見；純粹選產品分頁不該連帶關掉收合功能。
-    const searching = filters.q || filters.marker || filters.prereq || filters.browser;
+    const searching = filters.q || filters.marker || filters.browser;
     renderTree($('#cs-tree', root), idx.tree || [], { selection: state.selection, filter: anyFilter ? filterFn : null, expandAll: !!searching, onToggle: () => { window.__tp_selection = state.selection; syncSelectionProducts(); drawBar(); }, onOpenCase: openCase });
     const total = idx.count || 0, vis = anyFilter ? (idx.flat || []).filter(filterFn).length : total;
     $('#cs-cnt', root).textContent = anyFilter ? `${vis} / ${total} 條` : `${total} 條`;
