@@ -3464,7 +3464,7 @@ def test_lay_off_detail_quick_set_property_matches_rules(company_page):
     )
 
 
-@allure.title("[邏輯驗證] B70：在「快速设置」同時選「红波」與「大」後，是否選中符合任一條件的號碼")
+@allure.title("[邏輯驗證] B70：在「快速设置」同時選波色與「大」後，是否選中符合任一條件的號碼")
 @allure.suite("飞单选项明细设置")
 @pytest.mark.write_action
 def test_lay_off_detail_quick_set_multiple_properties_are_union(company_page):
@@ -3473,24 +3473,27 @@ def test_lay_off_detail_quick_set_multiple_properties_are_union(company_page):
     測試範圍:
     彩種：英國天天彩、香港六合彩、賓果六合彩
     玩法：特码、正码、正特码
+    波色組合：红波＋大、蓝波＋大、绿波＋大（2026-09-04 由「红波＋大」單組擴充為三波色各一組）
 
     步驟：
     1. 使用公司帳號進入「飛單選項明細設置」，選擇特码、正码或正特码。
-    2. 只選「红波」，記錄畫面選中的號碼；再清除選取，只選「大」，記錄第二份號碼。
-    3. 同時選擇「红波」與「大」，記錄畫面選中的號碼。
-    4. 將第三份結果與前兩份結果的聯集比較，確認同時選取時的結果符合規則。
+    2. 讀取畫面上每個號碼球的顏色分類，計算红波／蓝波／绿波與「大」的聯集。
+    3. 依序只選「红波」與「大」、只選「蓝波」與「大」、只選「绿波」與「大」，各自記錄畫面選中的號碼。
+    4. 將三組結果分別與對應的聯集比較，確認同時選取時的結果符合規則。
     5. 清除所有快速設置選取。
 
     判準（attach 佐證）
-    同時勾選「红波」與「大」時，選中號碼應為兩者的聯集（不是交集）。
+    同時勾選任一波色與「大」時，選中號碼應為兩者的聯集（不是交集），紅／藍／綠三色皆須成立。
     """
     page = company_page
     sp = LayOffDetailSettingPage(page)
     games = ["英国天天彩", "香港六合彩", "宾果六合彩"]
+    color_pairs = [("红波", "red"), ("蓝波", "blue"), ("绿波", "green")]
     allure.attach(
         "彩種：英國天天彩、香港六合彩、賓果六合彩\n"
-        f"玩法：{'、'.join(_QUICK_SET_CATEGORIES)}",
-        name="測試範圍：彩種＝英國天天彩、香港六合彩、賓果六合彩；玩法＝特码、正码、正特码（只有這3個玩法顯示「快速设置」）",
+        f"玩法：{'、'.join(_QUICK_SET_CATEGORIES)}\n"
+        "波色組合：红波＋大、蓝波＋大、绿波＋大",
+        name="測試範圍：彩種＝英國天天彩、香港六合彩、賓果六合彩；玩法＝特码、正码、正特码（只有這3個玩法顯示「快速设置」）；波色組合＝红波＋大、蓝波＋大、绿波＋大",
         attachment_type=allure.attachment_type.TEXT,
     )
 
@@ -3499,7 +3502,7 @@ def test_lay_off_detail_quick_set_multiple_properties_are_union(company_page):
 
     report_lines: list[str] = []
     violations: list[str] = []
-    with allure.step("清除原有選取；先只勾「红波」記錄號碼，再只勾「大」記錄號碼，最後同時勾選兩者並逐一比對聯集結果，完成後清空選取"):
+    with allure.step("清除原有選取；依序驗證红波＋大、蓝波＋大、绿波＋大三組聯集結果，完成後清空選取"):
         for game in games:
             sp.switch_game(game)
             for category in _QUICK_SET_CATEGORIES:
@@ -3507,28 +3510,31 @@ def test_lay_off_detail_quick_set_multiple_properties_are_union(company_page):
                 category_switch_original = _ensure_category_switch_enabled(sp)
 
                 colors = sp.ball_color_map()
-                red = {n for n, c in colors.items() if c == "red"}
                 big = set(range(25, 50))
-                expected = red | big
 
-                sp.quick_set_reset()
-                sp.quick_set_select_by_property("红波")
-                sp.quick_set_select_by_property("大")
-                actual = set(sp.quick_set_selected_numbers())
-                report_lines.append(
-                    f"{game}／{category}：實際{sorted(actual)}，預期聯集{sorted(expected)}"
-                )
-                if actual != expected:
-                    violations.append(
-                        f"{game}／{category}：同時勾選「红波」「大」選中號碼不是聯集——"
-                        f"實際{sorted(actual)}，預期{sorted(expected)}"
+                for color_label, color_key in color_pairs:
+                    color_set = {n for n, c in colors.items() if c == color_key}
+                    expected = color_set | big
+
+                    sp.quick_set_reset()
+                    sp.quick_set_select_by_property(color_label)
+                    sp.quick_set_select_by_property("大")
+                    actual = set(sp.quick_set_selected_numbers())
+                    report_lines.append(
+                        f"{game}／{category}／{color_label}＋大：實際{sorted(actual)}，預期聯集{sorted(expected)}"
                     )
-                sp.quick_set_reset()
+                    if actual != expected:
+                        violations.append(
+                            f"{game}／{category}：同時勾選「{color_label}」「大」選中號碼不是聯集——"
+                            f"實際{sorted(actual)}，預期{sorted(expected)}"
+                        )
+                    sp.quick_set_reset()
+
                 _restore_category_switch(sp, category_switch_original)
 
     allure.attach(
         "\n".join(report_lines),
-        name="判準：同時勾選「红波」與「大」後，所有符合红波或符合大的號碼都應被選中，不得缺少或多出號碼",
+        name="判準：同時勾選红波／蓝波／绿波任一波色與「大」後，所有符合該波色或符合大的號碼都應被選中，不得缺少或多出號碼",
         attachment_type=allure.attachment_type.TEXT,
     )
     assert not violations, "以下項目驗證失敗（共 %d 項）：\n%s" % (
