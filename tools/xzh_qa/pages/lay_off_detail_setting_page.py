@@ -232,6 +232,17 @@ class LayOffDetailSettingPage:
 
     _TRIGGER_NOW_LABEL = "保存后立即触发本次选项自动飞单"
 
+    def trigger_now_visible(self) -> bool:
+        """確認保存區的「保存後立即觸發」勾選元件是否可見。
+
+        不使用 ``get_by_text(..., exact=True)``，因 QAT 的 Element Plus checkbox
+        文字含有額外巢狀節點時，精確文字 locator 會誤判不存在；後續讀取／點擊皆
+        應共用 checkbox 元件根節點的定位方式。
+        """
+        return self.page.locator(
+            ".el-checkbox", has_text=self._TRIGGER_NOW_LABEL
+        ).last.is_visible()
+
     def trigger_now_checkbox(self):
         """取得保存區「保存後立即觸發本次選項自動飛單」的原生 checkbox。
 
@@ -332,6 +343,13 @@ class LayOffDetailSettingPage:
 
     def option_cap_value(self, option_number: int) -> str:
         return self.option_row(option_number).get_by_role("cell").nth(self._cap_cell_index()).inner_text()
+
+    def option_share_amount(self, option_number: int) -> int:
+        """讀取標準型選項列的「實際占成金額」。"""
+        cells = self.option_row(option_number).get_by_role("cell")
+        share_cell_index = self._cap_cell_index() - 1
+        raw = cells.nth(share_cell_index).inner_text().strip().replace(",", "")
+        return int(float(raw or "0"))
 
     def open_option_cap_editor(self, option_number: int):
         """開啟指定列的「每選項自留上限」編輯器並回傳 number input。"""
@@ -507,6 +525,71 @@ class LayOffDetailSettingPage:
         switch = self.page.get_by_role("switch", name="自动飞单").nth(block_index)
         return switch.get_attribute("aria-checked") == "true"
 
+    def set_combo_auto_lay_off(self, enable: bool, block_index: int = 0) -> None:
+        """切換組合型分類的單一「自動飛單」開關。"""
+        if self.combo_auto_lay_off_enabled(block_index) == enable:
+            return
+        self.page.get_by_role("switch", name="自动飞单").nth(block_index).locator("xpath=ancestor::*[contains(@class, 'el-switch')][1]").click()
+        self.page.wait_for_timeout(300)
+
+    def combo_share_amount(self, index: int) -> int:
+        """讀取組合型第 ``index`` 列的「組合占成金額」。
+
+        K7 有三種實際排版：``number-row``（不中／多選中一／特平中）、
+        ``option-row``（六肖／連肖／連尾／合肖）及 ``group-row`` 內的單一
+        ``cell``（過關／部分比較玩法）。三者都以同一顆 ``share-amount-cell``
+        呈現金額，先從選擇 checkbox 找最近的承載列即可避免依頁面全域索引誤抓。
+        """
+        row = self._combo_amount_row(index)
+        raw = row.locator("button.share-amount-cell").first.inner_text().strip().replace(",", "")
+        return int(float(raw or "0"))
+
+    def _combo_amount_row(self, index: int):
+        checkbox = self.page.get_by_role("checkbox").nth(index)
+        row = checkbox.locator(
+            "xpath=ancestor::*[contains(@class, 'number-row') or "
+            "contains(@class, 'option-row') or contains(@class, 'cell')][1]"
+        )
+        expect(row).to_have_count(1)
+        expect(row.locator("button.share-amount-cell").first).to_have_count(1)
+        return row
+
+    def combo_share_detail(self, index: int) -> list[dict[str, object]]:
+        """開啟組合占成金額明細，讀取每筆投注選項／占成金額／補貨後關閉。
+
+        這個視窗是 B85 的核心行為證據；欄位名稱與資料皆從實際 dialog/table 語意定位，
+        不以整頁第 N 個 table 或猜測 CSS 結構取值。
+        """
+        row = self._combo_amount_row(index)
+        row.locator("button.share-amount-cell").first.click()
+        dialog = self.page.get_by_role("dialog").last
+        expect(dialog).to_be_visible()
+        headers = [text.strip() for text in dialog.get_by_role("columnheader").all_inner_texts()]
+        expected_headers = ("投注选项", "占成金额", "补货")
+        missing = [header for header in expected_headers if header not in headers]
+        if missing:
+            raise AssertionError(
+                f"占成明细缺少欄位{missing}；實際欄位={headers}；視窗文字={dialog.inner_text()!r}"
+            )
+        column_indices = {header: headers.index(header) for header in expected_headers}
+        details: list[dict[str, object]] = []
+        for detail_row in dialog.get_by_role("row").all()[1:]:
+            cells = [text.strip() for text in detail_row.get_by_role("cell").all_inner_texts()]
+            if not cells:
+                continue
+            details.append({
+                "bet_option": cells[column_indices["投注选项"]].replace("、", ","),
+                "share_amount": int(float(cells[column_indices["占成金额"]].replace(",", "") or "0")),
+                "replenishment": int(float(cells[column_indices["补货"]].replace(",", "") or "0")),
+            })
+        close = dialog.get_by_role("button", name="关闭", exact=True)
+        if close.count():
+            close.click()
+        else:
+            dialog.locator(".el-dialog__headerbtn").click()
+        expect(dialog).to_be_hidden()
+        return details
+
     def combo_item_marked(self, index: int) -> bool:
         """讀取第 `index` 個組合列（正1特～正6特＋特码，0-based）的「選擇」checkbox 是否勾選。"""
         return self.page.get_by_role("checkbox").nth(index).evaluate("el => el.checked")
@@ -518,6 +601,18 @@ class LayOffDetailSettingPage:
             "(boxes, count) => boxes.slice(0, count).flatMap((box, index) => box.checked ? [index] : [])",
             count,
         )
+
+    def combo_ui_state(self, block_index: int = 0) -> dict[str, object]:
+        """從目前畫面讀取組合型設定狀態，供保存後重新整理的 UI 顯示核對使用。
+
+        這裡刻意只讀畫面，不呼叫 API：T43／B84 要驗的是後端資料已保存後，前端重新整理
+        是否仍正確呈現「关连／不关连」、「共用自留上限」與所有「選擇」勾選狀態。
+        """
+        return {
+            "relation_linked": self.is_relation_linked(block_index),
+            "shared_cap": self.shared_cap_value(block_index),
+            "marked_indices": self.combo_marked_indices(),
+        }
 
     def set_combo_marked_indices(self, marked_indices: list[int]) -> None:
         """批次把組合列調整成指定勾選集合（只點擊狀態不同的視覺 checkbox）。

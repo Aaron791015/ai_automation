@@ -63,3 +63,26 @@ def admin_credentials() -> tuple[str, str]:
     """回傳 (帳號, 密碼)——平台層／公司層目前共用同一組帳密。"""
     admin = qat().get("admin", {})
     return admin.get("username", ""), admin.get("password", "")
+
+
+def player_credentials() -> tuple[str, str]:
+    """回傳 QAT 會員前台測試帳密。"""
+    player = qat().get("player", {})
+    return player.get("username", ""), player.get("password", "")
+
+
+def agent_password(username: str) -> str:
+    """取得指定 QAT 代理測試帳號密碼；未配置時回傳空字串。
+
+    二至九級代理不應猜測或沿用公司管理員密碼。可在 ``xzh.qat`` 下以
+    ``agent_accounts`` 對照表提供各帳號憑證，B82 便能逐層接續驗證。
+    ``aaa111`` 為既有已確認共用管理員密碼的測試帳號，保留相容 fallback。
+    """
+    config = qat()
+    account = config.get("agent_accounts", {}).get(username, {})
+    password = account.get("password", "") if isinstance(account, dict) else ""
+    if password:
+        return password
+    if username == "aaa111":
+        return admin_credentials()[1]
+    return ""

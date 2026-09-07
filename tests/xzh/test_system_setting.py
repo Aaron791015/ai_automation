@@ -23,13 +23,23 @@
 from __future__ import annotations
 
 import allure
+import os
+import json
+import re
+import time
+from decimal import Decimal
+from pathlib import Path
 import pytest
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from qa_common.shot import capture_annotated
-from xzh_qa.config_loader import admin_credentials
+from xzh_qa.config_loader import admin_credentials, agent_password, player_credentials
 from xzh_qa.pages.lay_off_detail_setting_page import LayOffDetailSettingPage
 from xzh_qa.pages.login_page import LoginPage
+from xzh_qa.pages.player_bet_page import PlayerBetPage
+from xzh_qa.real_combo_batch import (
+    BatchJournal, MarketClosed, run_batch, run_multi_level_batch,
+)
 from xzh_qa.pages.system_setting_page import SystemSettingPage
 
 
@@ -2815,6 +2825,114 @@ def test_lay_off_detail_compare_shared_cap_declaration(company_page):
     )
 
 
+@allure.title("[功能驗證] B84：組合型玩法修改設定並保存後，重新整理頁面資料是否保留")
+@allure.suite("飞单选项明细设置")
+@pytest.mark.write_action
+def test_lay_off_detail_combo_ui_values_after_refresh(company_page):
+    """[功能驗證] B84：組合型玩法修改設定並保存後，重新整理頁面資料是否保留
+
+    測試範圍：
+    彩種：香港六合彩。
+    玩法：过关。本案例專門補足前端重新整理後的呈現缺口；过关同時具備关连／不关连、
+    共用自留上限及多個選擇勾選，可用一次操作區分「後端已保存但前端顯示舊值」與正常結果。
+
+    步驟：
+    1. 進入「飛單選項明細設置」的香港六合彩／过关，從畫面記錄關聯模式、共用自留上限、
+       所有「選擇」勾選及總開關原值；選一個可改變的勾選作目標，其餘組合作控制組。
+    2. 從畫面切換關聯模式、輸入不同的共用自留上限並只改變目標勾選，再按「保存」。
+    3. 重新整理頁面並回到相同彩種與玩法，從畫面讀取三項設定，確認修改值保留且控制組不變。
+    4. 從畫面還原全部原值並保存，再次重新整理，確認畫面恢復原始狀態。
+
+    判準（attach 佐證）
+    重新整理後，關聯模式、共用自留上限與目標勾選應顯示修改值，其餘所有組合勾選應維持原值；
+    收尾再次重新整理後，三項設定與總開關應恢復進入案例前的原值。
+    """
+    page = company_page
+    sp = LayOffDetailSettingPage(page)
+    game = "香港六合彩"
+    category = "过关"
+
+    with allure.step("進入「飛單選項明細設置」的香港六合彩／过关，從畫面記錄關聯模式、共用自留上限、所有選擇勾選及總開關原值"):
+        sp.goto()
+        sp.switch_game(game)
+        category_switch_original = _goto_combo_target_and_ensure_switch(
+            sp, page, game, category, None
+        )
+        original = sp.combo_ui_state()
+        item_count = sp.combo_item_count()
+        assert item_count >= 2, f"过关至少需要2個組合作目標與控制組，實際{item_count}個"
+
+    original_marked = list(original["marked_indices"])
+    original_marked_set = set(original_marked)
+    unmarked = [index for index in range(item_count) if index not in original_marked_set]
+    if unmarked:
+        target_index = unmarked[0]
+        expected_marked = sorted(original_marked_set | {target_index})
+    else:
+        target_index = 0
+        expected_marked = [index for index in original_marked if index != target_index]
+    assert expected_marked, "保存組合型設定時至少須保留一個已勾選組合"
+    control_indices = [index for index in range(item_count) if index != target_index]
+    original_cap = int(float(str(original["shared_cap"] or "0")))
+    expected_cap = original_cap + 137 if original_cap <= 999862 else original_cap - 137
+    expected_relation = not bool(original["relation_linked"])
+    expected = {
+        "relation_linked": expected_relation,
+        "shared_cap": str(expected_cap),
+        "marked_indices": expected_marked,
+    }
+    refreshed: dict[str, object] = {}
+    restored: dict[str, object] = {}
+
+    try:
+        with allure.step("從畫面切換关连／不关连、輸入不同的共用自留上限，只改變一個目標勾選後按「保存」"):
+            sp.set_relation_linked(expected_relation)
+            actual_cap = _set_shared_cap_confirmed(sp, str(expected_cap))
+            assert actual_cap == str(expected_cap), (
+                f"共用自留上限輸入失敗：預期{expected_cap}，畫面實際{actual_cap}"
+            )
+            sp.set_combo_marked_indices(expected_marked)
+            sp.save()
+            page.wait_for_timeout(800)
+
+        with allure.step("重新整理頁面並回到香港六合彩／过关，從畫面讀取關聯模式、共用自留上限與所有選擇勾選"):
+            page.reload()
+            _reload_and_navigate_with_retry(sp, page, game, category)
+            refreshed = sp.combo_ui_state()
+    finally:
+        with allure.step("從畫面還原關聯模式、共用自留上限、所有選擇勾選與總開關，保存後再次重新整理確認"):
+            if "/setting/lay-off-setting-detail" not in page.url:
+                page.reload()
+                _reload_and_navigate_with_retry(sp, page, game, category)
+            if not sp.is_master_switch_enabled():
+                sp.set_master_switch(True)
+            sp.wait_until_category_unlocked()
+            sp.set_relation_linked(bool(original["relation_linked"]))
+            _set_shared_cap_confirmed(sp, str(original["shared_cap"]))
+            sp.set_combo_marked_indices(original_marked)
+            sp.save()
+            page.wait_for_timeout(800)
+            page.reload()
+            _reload_and_navigate_with_retry(sp, page, game, category)
+            restored = sp.combo_ui_state()
+            _restore_category_switch(sp, category_switch_original)
+
+    control_unchanged = all(
+        ((index in refreshed.get("marked_indices", [])) == (index in original_marked_set))
+        for index in control_indices
+    )
+    allure.attach(
+        "進入案例前（UI）：%s\n修改後預期（UI）：%s\n重新整理後實際（UI）：%s\n"
+        "控制組索引：%s；控制組是否維持原勾選狀態：%s\n還原後實際（UI）：%s"
+        % (original, expected, refreshed, control_indices, control_unchanged, restored),
+        name="判準：重新整理後三項修改值應保留、控制組不變；還原後畫面應恢復原值",
+        attachment_type=allure.attachment_type.TEXT,
+    )
+    assert refreshed == expected, f"重新整理後畫面顯示與修改值不一致：預期{expected}，實際{refreshed}"
+    assert control_unchanged, "目標勾選以外的控制組狀態被意外改變"
+    assert restored == original, f"還原後畫面未恢復原值：預期{original}，實際{restored}"
+
+
 @allure.title("[畫面驗證] B38：飛單選項明細設置：開啟總開關後飛單設置頁的「開啟飛單選項明細設定」開關是否仍可切換")
 @allure.suite("飞单设置")
 @pytest.mark.write_action
@@ -2961,9 +3079,9 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
 
     步驟：
     1. 使用公司帳號進入「飛單選項明細設置」頁，確認畫面可正常載入。
-    2. 依序切換三個彩種，逐一查看25個玩法，確認總開關、保存按鈕及「保存後立即觸發」皆存在。
+    2. 依序切換三個彩種，逐一查看25個玩法，確認總開關、保存按鈕及必要設定欄位皆存在。
     3. 查看標準型玩法，確認表頭與首列、中間列、末列數量符合畫面規格；只有指定玩法顯示快速設置。
-    4. 查看組合型55個設定畫面，確認每個畫面都有保存、立即觸發、关连、共用自留上限及可勾選組合。
+    4. 查看組合型55個設定畫面，確認每個畫面都有保存、关连、共用自留上限及可勾選組合。
     5. 回到「飛單設置」頁，確認對應玩法的開關狀態與明細頁一致。
 
     判準（attach 佐證）
@@ -2971,7 +3089,7 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
     每选项自留上限」3 個表頭且列數符合預期；「自动飞单」是代理層欄位，由 B82 驗證。
     組合型 55 個設定畫面都應有关连選項與共用自留上限欄位（「六肖」
     為 2 組、其餘為 1 組）且組合列數大於 0；快速設置面板僅「特码／正码／正特码」3 個分類顯示，
-    其餘分類不顯示；K7 與 K4「飛單設置」頁對應狀態一致。
+    其餘分類不顯示；公司層不顯示「保存後立即觸發」，該代理層欄位另由下方二級代理案例驗證。
     """
     page = company_page
     sp = LayOffDetailSettingPage(page)
@@ -3015,9 +3133,7 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
                 record: dict = {
                     "is_combo": is_combo,
                     "save_visible": page.get_by_role("button", name="保存").is_visible(),
-                    "auto_trigger_visible": page.get_by_text(
-                        "保存后立即触发本次选项自动飞单"
-                    ).is_visible(),
+                    "auto_trigger_visible": sp.trigger_now_visible(),
                     "quick_set_visible": sp.quick_set_panel_visible(),
                 }
                 if is_combo:
@@ -3046,7 +3162,7 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
         sp.switch_game("香港六合彩")
 
     combo_target_records: dict[tuple[str, str], dict] = {}
-    with allure.step("依序進入三個彩種的55個組合型設定畫面，確認每個子項都有「保存」、「保存后立即触发本次选项自动飞单」、「关连」、「共用自留上限」及至少一個可勾選組合"):
+    with allure.step("依序進入三個彩種的55個組合型設定畫面，確認每個子項都有「保存」、「关连」、「共用自留上限」及至少一個可勾選組合"):
         for game in games:
             sp.switch_game(game)
             for label, category, sub_item, _play_type_id, expected_blocks in _combo_targets():
@@ -3054,9 +3170,7 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
                 combo_target_records[(game, label)] = {
                     "is_combo": sp.is_current_category_combo(),
                     "save_visible": page.get_by_role("button", name="保存", exact=True).is_visible(),
-                    "auto_trigger_visible": page.get_by_text(
-                        "保存后立即触发本次选项自动飞单", exact=True
-                    ).is_visible(),
+                    "auto_trigger_visible": sp.trigger_now_visible(),
                     "relation_block_count": sp.relation_radio_block_count(),
                     "shared_cap_block_count": sp.shared_cap_field_count(),
                     "combo_item_count": sp.combo_item_count(),
@@ -3069,7 +3183,7 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
         "\n".join(f"{game}／{name}: {record}" for (game, name), record in per_game_category.items())
         + "\n\n組合型55個設定畫面：\n"
         + "\n".join(f"{game}／{label}: {record}" for (game, label), record in combo_target_records.items()),
-        name="判準：公司層標準型應顯示正確表頭與列數；三彩種的55個組合型設定畫面都應有保存、立即觸發、关连、共用自留上限及至少一個組合",
+        name="判準：公司層標準型應顯示正確表頭與列數；三彩種的55個組合型設定畫面都應有保存、关连、共用自留上限及至少一個組合",
         attachment_type=allure.attachment_type.TEXT,
     )
 
@@ -3078,9 +3192,6 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
     for (game, name), record in per_game_category.items():
         if not record["save_visible"]:
             violations.append(f"{game}／{name}：保存按鈕未找到")
-        if not record["auto_trigger_visible"]:
-            violations.append(f"{game}／{name}：保存後立即觸發 checkbox 未找到")
-
         expected_quick_set = name in expected_quick_set_categories
         if record["quick_set_visible"] != expected_quick_set:
             violations.append(
@@ -3125,8 +3236,6 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
             violations.append(f"{game}／{label}：預期是組合型，卻讀到標準型")
         if not record["save_visible"]:
             violations.append(f"{game}／{label}：保存按鈕未找到")
-        if not record["auto_trigger_visible"]:
-            violations.append(f"{game}／{label}：保存後立即觸發勾選框未找到")
         if record["combo_item_count"] <= 0:
             violations.append(f"{game}／{label}：組合列數應大於 0，實際 {record['combo_item_count']}")
         expected_blocks = record["expected_blocks"]
@@ -3285,97 +3394,173 @@ def test_lay_off_detail_agent_levels_show_auto_lay_off_column(browser, xzh_qat):
     判準：公司層看不到「自动飞单」是正常設計（B68）；一至九級代理在
     三彩種的15個標準型玩法皆應顯示該欄，任一組缺少即為權限／畫面缺陷。
     """
-    _, password = admin_credentials()
     games = list(_GAME_ID)
-    login_failures: list[str] = []
     violations: list[str] = []
     report_lines: list[str] = []
-    login_shot_written = False
+    blocked_lines: list[str] = []
     shot_written = False
 
     allure.attach(
-        "層級：一至九級代理\n"
+        "層級：一級代理至九級代理\n"
         "彩種：英國天天彩、香港六合彩、賓果六合彩\n"
         f"玩法：{'、'.join(_STANDARD_CATEGORIES_15)}",
-        name="測試範圍：帳號層級＝一級至九級代理；彩種＝英國天天彩、香港六合彩、賓果六合彩；標準型玩法＝特码、正码、正特码、两面、生肖中、生肖不中、半波、特肖、尾数中、尾数不中、色波、七码、五行、一肖量、尾数量",
-        attachment_type=allure.attachment_type.TEXT,
-    )
-    allure.attach(
-        "已知問題：2026-09-03 實測二至九級代理帳號登入時，畫面顯示「账号或密码错误」；在帳密校正前只記錄此阻塞，不判定為「自动飞单」欄位缺陷。",
-        name="已知問題：二至九級代理帳密前置尚未排除",
+        name="測試範圍：帳號層級＝一至九級代理；彩種＝英國天天彩、香港六合彩、賓果六合彩；標準型玩法＝15項",
         attachment_type=allure.attachment_type.TEXT,
     )
 
     for level, username in _AGENT_LEVEL_ACCOUNTS:
-        # 每個層級使用全新 browser context，避免上一個代理的 cookie／storage
-        # 與後一個帳號互相污染（同 context 連續切帳已實測會導致登入失敗）。
-        page = browser.new_page()
-        with allure.step("使用本層級代理帳號登入；若登入失敗，記錄畫面上的錯誤訊息並截圖"):
-            logged_in, login_diagnostic = _login_company_backend_as(
-                page, xzh_qat["backend_company_url"], username, password
+        password = agent_password(username)
+        if not password:
+            blocked_lines.append(
+                f"{level}／{username}：未配置有效密碼，尚未執行 3 彩種 × 15 玩法"
             )
-        if not logged_in:
-            login_failures.append(f"{level}：連續2次登入失敗（{login_diagnostic}）")
-            report_lines.append(f"{level}：登入失敗（{login_diagnostic}）")
-            if not login_shot_written:
-                allure.attach(
-                    page.screenshot(full_page=True),
-                    name="登入失敗佐證：畫面顯示「账号或密码错误」",
-                    attachment_type=allure.attachment_type.PNG,
-                )
-                login_shot_written = True
-            page.context.close()
             continue
-        sp = LayOffDetailSettingPage(page)
-        with allure.step("登入成功後進入「飛單選項明細設置」，逐一切換三個彩種與15個標準型玩法，檢查「自动飞单」表頭"):
-            sp.goto()
-        for game in games:
-            sp.switch_game(game)
-            for category in _STANDARD_CATEGORIES_15:
-                sp.select_category(category, wait_for_networkidle=False)
-                visible = page.get_by_role(
-                    "columnheader", name="自动飞单", exact=True
-                ).count() > 0
-                report_lines.append(f"{level}／{game}／{category}：自动飞单欄={visible}")
-                if visible:
-                    continue
-                violations.append(f"{level}／{game}／{category}：未顯示「自动飞单」欄")
-                if not shot_written:
-                    header_row = sp._table().get_by_role("row").first
-                    header_row.evaluate(
-                        "el => el.setAttribute('data-bug-shot-target', 'xzh-002')"
+
+        # 每個層級使用全新 browser context，避免代理帳號之間 cookie／storage 互相污染。
+        page = browser.new_page()
+        try:
+            with allure.step(f"使用{level}帳號登入；登入成功後檢查三彩種與15個標準型玩法"):
+                logged_in, login_diagnostic = _login_company_backend_as(
+                    page, xzh_qat["backend_company_url"], username, password
+                )
+                if not logged_in:
+                    allure.attach(
+                        page.screenshot(full_page=True),
+                        name=f"登入失敗佐證：{level}（不含密碼）",
+                        attachment_type=allure.attachment_type.PNG,
                     )
-                    try:
-                        capture_annotated(
-                            page,
-                            "docs/新綜合/bugs/shots/XINZONGHE-002_01_代理層缺少自動飛單欄.png",
-                            marks=[{
-                                "selector": "[data-bug-shot-target='xzh-002']",
-                                "label": "代理層標準型表頭實際只有3欄，缺少預期的「自动飛單」第4欄。",
-                            }],
-                            note=f"XINZONGHE-002｜{level}／{game}／{category}\n"
-                                 "實際：未顯示「自动飛單」；預期：代理層應顯示該欄。",
-                            full_page=False,
+                    violations.append(f"{level}／{username}：登入失敗：{login_diagnostic}")
+                    continue
+
+                sp = LayOffDetailSettingPage(page)
+                sp.goto()
+                for game in games:
+                    sp.switch_game(game)
+                    for category in _STANDARD_CATEGORIES_15:
+                        sp.select_category(category, wait_for_networkidle=False)
+                        visible = page.get_by_role(
+                            "columnheader", name="自动飞单", exact=True
+                        ).count() > 0
+                        report_lines.append(
+                            f"{level}／{game}／{category}：自动飞单欄={visible}"
                         )
-                        shot_written = True
-                    finally:
-                        header_row.evaluate(
-                            "el => el.removeAttribute('data-bug-shot-target')"
+                        if visible:
+                            continue
+                        violations.append(
+                            f"{level}／{game}／{category}：未顯示「自动飞单」欄"
                         )
-        page.context.close()
+                        if not shot_written:
+                            header_row = sp._table().get_by_role("row").first
+                            header_row.evaluate(
+                                "el => el.setAttribute('data-bug-shot-target', 'xzh-002')"
+                            )
+                            try:
+                                capture_annotated(
+                                    page,
+                                    "docs/新綜合/bugs/shots/XINZONGHE-002_01_代理層缺少自動飛單欄.png",
+                                    marks=[{
+                                        "selector": "[data-bug-shot-target='xzh-002']",
+                                        "label": "代理層標準型表頭實際只有3欄，缺少預期的「自动飛單」第4欄。",
+                                    }],
+                                    note=f"XINZONGHE-002｜{level}／{game}／{category}\n"
+                                         "實際：未顯示「自动飛單」；預期：代理層應顯示該欄。",
+                                    full_page=False,
+                                )
+                                shot_written = True
+                            finally:
+                                header_row.evaluate(
+                                    "el => el.removeAttribute('data-bug-shot-target')"
+                                )
+        finally:
+            page.context.close()
 
     with allure.step("逐一確認每個代理層級、彩種與標準型玩法都顯示「自动飞单」表頭"):
         allure.attach(
-            "\n".join(report_lines),
-            name="判準：一至九級代理登入成功後，每個彩種的15個標準型玩法都應顯示「自动飞单」表頭",
+            "\n".join(report_lines) or "本次沒有具備有效密碼的代理層級",
+            name="已執行結果：具備有效密碼的代理層級，每個彩種的15個標準型玩法都應顯示「自动飞单」表頭",
             attachment_type=allure.attachment_type.TEXT,
         )
-    assert not login_failures, "代理帳號登入前置失敗，未進入欄位判定（共 %d 項）：\n%s" % (
-        len(login_failures), "\n".join(login_failures)
-    )
+        allure.attach(
+            "\n".join(blocked_lines) or "無帳密前置阻塞",
+            name="未執行範圍：缺少有效密碼的代理層級",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+    assert report_lines, "B82 沒有任何具備有效密碼、可執行驗證的代理層級"
     assert not violations, "代理層缺少自動飛單欄（共 %d 項）：\n%s" % (
         len(violations), "\n".join(violations)
     )
+
+
+@allure.title("[畫面驗證] 二級代理：三彩種全部55個組合型子項的設定欄位是否完整顯示")
+@allure.suite("飞单选项明细设置")
+@pytest.mark.smoke
+def test_lay_off_detail_level2_agent_all_combo_targets_screen_elements(browser, xzh_qat):
+    """二級代理 aaa222：三彩種各 55 個組合型子項的唯讀畫面驗證。
+
+    公司層不顯示「保存后立即触发本次选项自动飞单」；這是二級代理實際設定飛單
+    時才具備的操作欄位。因此本案例以 aaa222 驗證每個組合型子項都有保存、立即
+    觸發、關聯、共用自留上限與至少一個組合列，全程不保存或修改任何設定。
+    """
+    page = browser.new_page()
+    games = (("英国天天彩", "ukLucky7"), ("香港六合彩", "markSix"), ("宾果六合彩", "bingo6"))
+    targets = _combo_targets()
+    report_lines: list[str] = []
+    violations: list[str] = []
+
+    try:
+        password = agent_password("aaa222")
+        assert password, "二級代理 aaa222 未配置有效密碼，無法驗證代理層組合型子項"
+        logged_in, diagnostic = _login_company_backend_as(
+            page, xzh_qat["backend_company_url"], "aaa222", password
+        )
+        assert logged_in, f"二級代理 aaa222 登入失敗：{diagnostic}"
+
+        sp = LayOffDetailSettingPage(page)
+        sp.goto()
+        with allure.step("二級代理逐一切換三彩種的55個組合型子項，唯讀確認保存、立即觸發、关连、共用自留上限與組合列"):
+            for game, _game_id in games:
+                sp.switch_game(game)
+                for label, category, sub_item, _play_type_id, expected_blocks in targets:
+                    _goto_combo_target(sp, category, sub_item)
+                    record = {
+                        "save": page.get_by_role("button", name="保存", exact=True).is_visible(),
+                        "trigger": sp.trigger_now_visible(),
+                        "relation_blocks": sp.relation_radio_block_count(),
+                        "cap_blocks": sp.shared_cap_field_count(),
+                        "combo_items": sp.combo_item_count(),
+                    }
+                    report_lines.append(f"{game}／{label}：{record}")
+                    if not record["save"]:
+                        violations.append(f"{game}／{label}：保存按鈕未找到")
+                    if not record["trigger"]:
+                        violations.append(f"{game}／{label}：保存後立即觸發勾選框未找到")
+                    if record["relation_blocks"] != expected_blocks:
+                        violations.append(
+                            f"{game}／{label}：关连區塊預期{expected_blocks}，實際{record['relation_blocks']}"
+                        )
+                    if record["cap_blocks"] != expected_blocks:
+                        violations.append(
+                            f"{game}／{label}：共用自留上限區塊預期{expected_blocks}，實際{record['cap_blocks']}"
+                        )
+                    if record["combo_items"] <= 0:
+                        violations.append(f"{game}／{label}：組合列數應大於0，實際{record['combo_items']}")
+
+        allure.attach(
+            "\n".join(report_lines),
+            name="二級代理／三彩種／55個組合型子項畫面驗證結果",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+        if violations:
+            allure.attach(
+                "\n".join(violations),
+                name="二級代理組合型子項缺失清單",
+                attachment_type=allure.attachment_type.TEXT,
+            )
+        assert not violations, "二級代理組合型子項畫面缺失（共 %d 項）：\n%s" % (
+            len(violations), "\n".join(violations)
+        )
+    finally:
+        page.context.close()
 
 
 @allure.title("[功能驗證] B69：在「快速设置」選擇波色、大小或單雙條件後，選中的號碼是否符合條件")
@@ -4414,6 +4599,1344 @@ def test_lay_off_detail_batch_tools_override_manual_toggle(level1_agent_page):
     assert not violations, "以下項目驗證失敗（共 %d 項）：\n%s" % (
         len(violations), "\n".join(violations),
     )
+
+
+@allure.title("[功能驗證] B85：二全中三個下注項超額投注後，組合占成金額是否依三組組合正確飛單")
+@allure.suite("飞单选项明细设置")
+@pytest.mark.write_action
+def test_pick_two_three_numbers_auto_lay_off_calculation(page, xzh_qat):
+    """B85：二全中選1/2/3形成三組組合，每個下注項占成應為100+100=200。"""
+    player_username, player_password = player_credentials()
+    player_page = page.context.new_page()
+    player = PlayerBetPage(player_page)
+    backend = page
+    backend_login = LoginPage(backend)
+    original_items = None
+    k4_original = None
+    master_original = None
+    trigger_original = None
+    try:
+        with allure.step("登入會員前台，選擇賓果六合彩→連碼→二全中，確認目前有開盤中期別"):
+            player.login(xzh_qat["frontend_url"], player_username, player_password)
+            player.select_bingo6_pick_two_all_hit()
+            if not player.is_open():
+                pytest.skip("B85 BLOCKED：賓果六合彩目前尚未開盤，未修改後台設定、未送出注單")
+            issue = player.current_issue()
+
+            with allure.step("會員前台先選1/2/3、每注輸入5000，確認三組組合後送出投注"):
+                success_message = player.place_pick_two_bet(("1", "2", "3"), "5000")
+
+            with allure.step("以二級代理登入後台，開啟賓果六合彩連碼／二全中明細模式"):
+                backend_login.goto(xzh_qat["backend_company_url"])
+                backend_login.login("aaa222", agent_password("aaa222"))
+                if backend_login.is_otp_page():
+                    backend_login.submit_otp("123456")
+                k4 = SystemSettingPage(backend)
+                k4.goto("飞单设置")
+                k4.switch_game("宾果六合彩")
+                k4_original = k4.is_lay_off_detail_mode_enabled("二全中")
+                k4.set_lay_off_detail_mode("二全中", True)
+                if not k4_original:
+                    backend.get_by_role("dialog", name="启用飞单选项明细").get_by_role("button", name="确定").click()
+                k4.save()
+
+        with allure.step("設定關聯、共用自留上限100、自動飛單、選擇1/2/3與保存後立即觸發，再由UI保存"):
+            detail = LayOffDetailSettingPage(backend)
+            detail.goto()
+            detail.switch_game("宾果六合彩")
+            detail.select_category("连码")
+            detail.select_sub_item("二全中")
+            master_original = detail.is_master_switch_enabled()
+            detail.set_master_switch(True)
+            original_items = _get_lay_off_setting_detail(backend, "bingo6", "pickTwoAllHit")
+            trigger_original = detail.trigger_now_enabled()
+            detail.set_relation_linked(True)
+            detail.set_shared_cap("100")
+            detail.set_combo_auto_lay_off(True)
+            detail.set_combo_marked_indices([0, 1, 2])
+            detail.set_trigger_now(True)
+            detail.save()
+
+        with allure.step("後台重新載入二全中，讀取下注項1/2/3的組合占成金額"):
+            backend.reload()
+            detail.goto()
+            detail.switch_game("宾果六合彩")
+            detail.select_category("连码")
+            detail.select_sub_item("二全中")
+            amounts = [detail.combo_share_amount(index) for index in (0, 1, 2)]
+            expected_details = {
+                0: {("01,02", 100, 0), ("01,03", 100, 0)},
+                1: {("01,02", 100, 0), ("02,03", 100, 0)},
+                2: {("01,03", 100, 0), ("02,03", 100, 0)},
+            }
+            actual_details = {}
+            for index in (0, 1, 2):
+                rows = detail.combo_share_detail(index)
+                actual_details[index] = {
+                    (row["bet_option"], row["share_amount"], row["replenishment"])
+                    for row in rows
+                }
+
+        allure.attach(
+            "期號：%s\n下注：二全中 1/2/3，每組5000\n組合：[1,2]、[1,3]、[2,3]\n"
+            "下注項1：100([1,2]) + 100([1,3]) = 200，實際=%s\n"
+            "下注項2：100([1,2]) + 100([2,3]) = 200，實際=%s\n"
+            "下注項3：100([1,3]) + 100([2,3]) = 200，實際=%s\n成功訊息：%s"
+            % (issue, amounts[0], amounts[1], amounts[2], success_message),
+            name="B85 組合展開與飛單算式（實際值 vs 期望值）",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+        assert amounts == [200, 200, 200]
+        assert actual_details == expected_details, (
+            f"三個下注項的占成明細不符：預期={expected_details}，實際={actual_details}"
+        )
+    finally:
+        if original_items is not None and "/auth/sign-in" not in backend.url:
+            _put_lay_off_setting_detail(
+                backend, "bingo6", "pickTwoAllHit", original_items,
+                triggerImmediateAutoLayOff=bool(trigger_original),
+            )
+        if master_original is not None and "/auth/sign-in" not in backend.url:
+            cleanup_detail = LayOffDetailSettingPage(backend)
+            cleanup_detail.goto()
+            cleanup_detail.switch_game("宾果六合彩")
+            cleanup_detail.select_category("连码")
+            cleanup_detail.select_sub_item("二全中")
+            cleanup_detail.set_master_switch(master_original)
+        if k4_original is not None and "/auth/sign-in" not in backend.url:
+            backend.goto(xzh_qat["backend_company_url"].replace("/auth/sign-in", "/setting/lay-off-setting"))
+            k4 = SystemSettingPage(backend)
+            k4.switch_game("宾果六合彩")
+            k4.set_lay_off_detail_mode("二全中", k4_original)
+            dialog = backend.get_by_role("dialog", name="启用飞单选项明细")
+            if dialog.count() and dialog.is_visible():
+                dialog.get_by_role("button", name="确定").click()
+            k4.save()
+        player_page.close()
+
+
+@allure.title("[功能驗證] B86：標準型玩法超額投注後，實際占成金額是否等於每選項自留上限")
+@allure.suite("飞单选项明细设置")
+@pytest.mark.write_action
+def test_standard_option_auto_lay_off_actual_share(page, xzh_qat):
+    """B86：特码選項1下注5000，自留上限100，實際占成必須為100。"""
+    username, password = player_credentials()
+    player_page = page.context.new_page()
+    player = PlayerBetPage(player_page)
+    backend = page
+    original_items = k4_original = master_original = trigger_original = None
+    try:
+        player.login(xzh_qat["frontend_url"], username, password)
+        player.select_bingo6_standard_special()
+        if not player.is_open():
+            pytest.skip("B86 BLOCKED：賓果六合彩目前尚未開盤，未修改設定、未送出注單")
+        issue = player.current_issue()
+        with allure.step("會員前台先對特码選項1下注5000並確認送出"):
+            success = player.place_standard_bet("1", "5000")
+
+        login = LoginPage(backend)
+        login.goto(xzh_qat["backend_company_url"])
+        login.login("aaa222", agent_password("aaa222"))
+        if login.is_otp_page():
+            login.submit_otp("123456")
+        k4 = SystemSettingPage(backend)
+        k4.goto("飞单设置")
+        k4.switch_game("宾果六合彩")
+        k4_original = k4.is_lay_off_detail_mode_enabled("特码")
+        k4.set_lay_off_detail_mode("特码", True)
+        if not k4_original:
+            backend.get_by_role("dialog", name="启用飞单选项明细").get_by_role("button", name="确定").click()
+        k4.save()
+
+        detail = LayOffDetailSettingPage(backend)
+        detail.goto()
+        detail.switch_game("宾果六合彩")
+        detail.select_category("特码")
+        master_original = detail.is_master_switch_enabled()
+        detail.set_master_switch(True)
+        detail.wait_until_category_unlocked()
+        original_items = _get_lay_off_setting_detail(backend, "bingo6", "bonusNumber")
+        trigger_original = detail.trigger_now_enabled()
+        detail.set_option_cap(1, "100")
+        detail.set_option_auto_lay_off(1, True)
+        detail.set_trigger_now(True)
+        detail.save()
+
+        backend.reload()
+        _reload_and_navigate_with_retry(detail, backend, "宾果六合彩", "特码")
+        actual = detail.option_share_amount(1)
+        allure.attach(
+            f"期號：{issue}\n投注：特码選項1，5000\n每選項自留上限：100\n實際占成金額：{actual}\n成功訊息：{success}",
+            name="B86 標準型自動飛單結果",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+        assert actual == 100
+    finally:
+        if original_items is not None and "/auth/sign-in" not in backend.url:
+            _put_lay_off_setting_detail(
+                backend, "bingo6", "bonusNumber", original_items,
+                triggerImmediateAutoLayOff=bool(trigger_original),
+            )
+        if master_original is not None and "/auth/sign-in" not in backend.url:
+            cleanup_detail = LayOffDetailSettingPage(backend)
+            cleanup_detail.goto()
+            cleanup_detail.switch_game("宾果六合彩")
+            cleanup_detail.select_category("特码")
+            cleanup_detail.set_master_switch(master_original)
+        if k4_original is not None and "/auth/sign-in" not in backend.url:
+            backend.goto(xzh_qat["backend_company_url"].replace("/auth/sign-in", "/setting/lay-off-setting"))
+            k4 = SystemSettingPage(backend)
+            k4.switch_game("宾果六合彩")
+            k4.set_lay_off_detail_mode("特码", k4_original)
+            dialog = backend.get_by_role("dialog", name="启用飞单选项明细")
+            if dialog.count() and dialog.is_visible():
+                dialog.get_by_role("button", name="确定").click()
+            k4.save()
+        player_page.close()
+
+
+@allure.title("[功能驗證] B87：二全中不關聯模式超額投注後，三個下注項組合占成金額是否全飛為0")
+@allure.suite("飞单选项明细设置")
+@pytest.mark.write_action
+def test_pick_two_unrelated_auto_lay_off_all_share_zero(page, xzh_qat):
+    """B87：二全中選1/2/3，不關聯且共用上限100，三列組合占成必須皆為0。"""
+    username, password = player_credentials()
+    player_page = page.context.new_page()
+    player = PlayerBetPage(player_page)
+    backend = page
+    original_items = k4_original = master_original = trigger_original = None
+    try:
+        player.login(xzh_qat["frontend_url"], username, password)
+        player.select_bingo6_pick_two_all_hit()
+        if not player.is_open():
+            pytest.skip("B87 BLOCKED：賓果六合彩目前尚未開盤，未修改設定、未送出注單")
+        issue = player.current_issue()
+        with allure.step("會員前台先選1/2/3、每注輸入5000，確認三組組合後送出投注"):
+            success = player.place_pick_two_bet(("1", "2", "3"), "5000")
+
+        login = LoginPage(backend)
+        login.goto(xzh_qat["backend_company_url"])
+        login.login("aaa222", agent_password("aaa222"))
+        if login.is_otp_page():
+            login.submit_otp("123456")
+        k4 = SystemSettingPage(backend)
+        k4.goto("飞单设置")
+        k4.switch_game("宾果六合彩")
+        k4_original = k4.is_lay_off_detail_mode_enabled("二全中")
+        k4.set_lay_off_detail_mode("二全中", True)
+        if not k4_original:
+            backend.get_by_role("dialog", name="启用飞单选项明细").get_by_role("button", name="确定").click()
+        k4.save()
+
+        detail = LayOffDetailSettingPage(backend)
+        detail.goto()
+        detail.switch_game("宾果六合彩")
+        detail.select_category("连码")
+        detail.select_sub_item("二全中")
+        master_original = detail.is_master_switch_enabled()
+        detail.set_master_switch(True)
+        original_items = _get_lay_off_setting_detail(backend, "bingo6", "pickTwoAllHit")
+        trigger_original = detail.trigger_now_enabled()
+        detail.set_relation_linked(False)
+        detail.set_shared_cap("100")
+        detail.set_combo_auto_lay_off(True)
+        detail.set_combo_marked_indices([0, 1, 2])
+        detail.set_trigger_now(True)
+        detail.save()
+
+        backend.reload()
+        detail.goto()
+        detail.switch_game("宾果六合彩")
+        detail.select_category("连码")
+        detail.select_sub_item("二全中")
+        amounts = [detail.combo_share_amount(index) for index in (0, 1, 2)]
+        allure.attach(
+            f"期號：{issue}\n下注：[1,2]、[1,3]、[2,3]，每組5000\n模式：不关连\n共用自留上限：100\n"
+            f"下注項1/2/3組合占成：{amounts}\n成功訊息：{success}",
+            name="B87 不關聯模式全飛結果",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+        assert amounts == [0, 0, 0]
+    finally:
+        if original_items is not None and "/auth/sign-in" not in backend.url:
+            _put_lay_off_setting_detail(
+                backend, "bingo6", "pickTwoAllHit", original_items,
+                triggerImmediateAutoLayOff=bool(trigger_original),
+            )
+        if master_original is not None and "/auth/sign-in" not in backend.url:
+            cleanup_detail = LayOffDetailSettingPage(backend)
+            cleanup_detail.goto()
+            cleanup_detail.switch_game("宾果六合彩")
+            cleanup_detail.select_category("连码")
+            cleanup_detail.select_sub_item("二全中")
+            cleanup_detail.set_master_switch(master_original)
+        if k4_original is not None and "/auth/sign-in" not in backend.url:
+            backend.goto(xzh_qat["backend_company_url"].replace("/auth/sign-in", "/setting/lay-off-setting"))
+            k4 = SystemSettingPage(backend)
+            k4.switch_game("宾果六合彩")
+            k4.set_lay_off_detail_mode("二全中", k4_original)
+            dialog = backend.get_by_role("dialog", name="启用飞单选项明细")
+            if dialog.count() and dialog.is_visible():
+                dialog.get_by_role("button", name="确定").click()
+            k4.save()
+        player_page.close()
+
+
+def _dismiss_backend_overlay(page) -> str | None:
+    """關掉後台偶發的「網路測速」浮層，回傳關掉的訊息文字；沒有則回 None（交接檔 T30）。
+
+    這個浮層會攔截所有點擊，讓 write_action 案例隨機逾時失敗。T52 上一次覆核就是反覆
+    撞上它而失去現場，所以高頻彩種的搶時間流程每一步之前都先呼叫一次。
+    """
+    box = page.locator(".el-message-box")
+    if box.count() and box.first.is_visible():
+        text = " ".join(box.first.inner_text().split())
+        confirm = box.first.get_by_role("button", name=re.compile(r"^(確定|确定|確認|确认)$"))
+        (confirm.last if confirm.count() else box.first.locator("button").last).click()
+        try:
+            box.first.wait_for(state="hidden", timeout=5_000)
+        except Exception:
+            pass
+        return text
+    drawer = page.get_by_role("dialog", name=re.compile("网络测速|網路測速"))
+    if drawer.count() and drawer.first.is_visible():
+        close = drawer.first.locator(".el-drawer__close-btn, .el-dialog__headerbtn")
+        if close.count():
+            close.first.click()
+            return "网络测速"
+    return None
+
+
+def _combo_share_snapshot(detail, page, game_id, play_type_id, indices, stage, notes):
+    """同時取「組合占成金額」聚合欄位與「占成明細」視窗內容，供兩者一致性比對。
+
+    T52 的疑似異常正是這兩者互相矛盾（聚合 1000、明細 0），所以必須同一時點一起讀，
+    分開讀就分不出是真的不一致還是兩次讀取之間狀態變了。
+    """
+    items = _get_lay_off_setting_detail(page, game_id, play_type_id)
+    snapshot: dict[str, dict] = {}
+    for index in indices:
+        name = items[index]["selection"]
+        entry = {"selection": name,
+                 "api_actual_share": items[index].get("actualShareAmount"),
+                 "api_retention_cap": items[index].get("retentionCap"),
+                 "api_relation_mode": items[index].get("relationMode"),
+                 "api_is_marked": items[index].get("isMarked"),
+                 "api_is_auto": items[index].get("isAutoEnabled")}
+        _dismiss_backend_overlay(page)
+        try:
+            entry["ui_aggregate"] = detail.combo_share_amount(index)
+        except Exception as exc:
+            entry["ui_aggregate"] = None
+            notes.append(f"{stage}／{name}：聚合欄位讀取失敗 {type(exc).__name__}: {exc}")
+        _dismiss_backend_overlay(page)
+        try:
+            entry["detail_rows"] = detail.combo_share_detail(index)
+            entry["detail_sum"] = sum(row["share_amount"] for row in entry["detail_rows"])
+        except Exception as exc:
+            entry["detail_rows"] = None
+            entry["detail_sum"] = None
+            notes.append(f"{stage}／{name}：占成明細讀取失敗 {type(exc).__name__}: {exc}")
+        snapshot[name] = entry
+    return snapshot
+
+
+@allure.title("[真實飛單] T52 覆核：賓果六合彩二全中不關聯觸發後，組合占成金額與占成明細是否一致")
+@allure.suite("飞单选项明细设置")
+@pytest.mark.write_action
+def test_pick_two_unrelated_aggregate_matches_share_detail(page, xzh_qat):
+    """T52 覆核：同一期內完整核對 01／02／03 三組的聚合欄位與占成明細。
+
+    測試範圍：賓果六合彩／连码／二全中／不關聯／二級代理 aaa222。
+    前置條件：後台先登入並把總開關開好、自動飛單先關掉（避免新注單在讀取前被排程飛掉）；
+              賓果期距只有 1～2 分鐘，全程必須在同一期完成，跨期即作廢重跑。
+    步驟：
+    1. 後台登入 aaa222 並導覽到「系统设置→飞单选项明细设置→宾果六合彩→连码→二全中」。
+    2. 前台以 aaa010 選 01／02／03、每注 5,000 送出（三組組合各一注）。
+    3. 觸發前讀 01／02／03 的「組合占成金額」與各自的「占成明細」視窗。
+    4. 後台設「不关连」、共用自留上限 100、自動飛單、勾選 01／02／03，
+       勾「保存后立即触发」並保存。
+    5. 觸發後再讀一次三組的聚合欄位與占成明細，並確認期號未變。
+    預期結果：不關聯模式共用自留上限存為 0、全部無條件飛出，
+              三組的聚合欄位與明細合計都應為 0 且兩者一致。
+    佐證方式：Allure 附上觸發前後的逐項算式明細（聚合值 vs 明細逐筆值 vs API 值）與期號。
+    已知問題：T52 上一次觀察到聚合欄位 1000、明細 0 互相矛盾，但只核對到 01 一組就失去現場。
+    """
+    username, password = player_credentials()
+    player_context = page.context.browser.new_context()
+    player_page = player_context.new_page()
+    player = PlayerBetPage(player_page)
+    backend = page
+    backend.set_default_timeout(15000)
+    indices = (0, 1, 2)
+    notes: list[str] = []
+    report: dict[str, object] = {}
+    try:
+        with allure.step("後台先登入二級代理並把總開關與自動飛單前置擺好（避免新注單在讀取前被排程飛掉）"):
+            login = LoginPage(backend)
+            login.goto(xzh_qat["backend_company_url"])
+            login.login("aaa222", agent_password("aaa222"))
+            if login.is_otp_page():
+                login.submit_otp("123456")
+            prep_targets = [{"game_id": "bingo6", "play_type_id": "pickTwoAllHit"}]
+            notes += _enable_selection_detail_for_targets(backend, prep_targets)
+            notes += _disable_auto_lay_off_for_targets(backend, prep_targets)
+            detail = LayOffDetailSettingPage(backend)
+            _dismiss_backend_overlay(backend)
+            detail.goto()
+            detail.switch_game("宾果六合彩")
+            detail.select_category("连码")
+            detail.select_sub_item("二全中")
+
+        with allure.step("會員前台選 01／02／03、每注 5,000 送出三組組合"):
+            player.login(xzh_qat["frontend_url"], username, password)
+            player.select_bingo6_pick_two_all_hit()
+            if not player.is_open():
+                pytest.skip("賓果六合彩目前未開盤或已封盤，未修改設定、未送出注單")
+            issue_before = player.current_issue()
+            success = player.place_pick_two_bet(("1", "2", "3"), "5000")
+            issue_after_bet = player.current_issue()
+            assert issue_after_bet == issue_before, (
+                f"下注期間跨期（{issue_before}→{issue_after_bet}），本次證據作廢"
+            )
+
+        with allure.step("觸發前讀 01／02／03 的組合占成金額與占成明細"):
+            before = _combo_share_snapshot(detail, backend, "bingo6", "pickTwoAllHit",
+                                           indices, "觸發前", notes)
+            report["before"] = before
+
+        with allure.step("設不关连、共用自留上限 100、自動飛單、勾選三組，勾立即觸發後保存"):
+            _dismiss_backend_overlay(backend)
+            detail.set_master_switch(True)
+            detail.wait_until_category_unlocked(timeout_ms=20000)
+            detail.set_relation_linked(False)
+            assert _set_shared_cap_confirmed(detail, "100") == "100"
+            if backend.get_by_role("switch", name="自动飞单").count():
+                detail.set_combo_auto_lay_off(True)
+            detail.set_combo_marked_indices(list(indices))
+            detail.set_trigger_now(True)
+            _dismiss_backend_overlay(backend)
+            detail.save()
+            backend.wait_for_timeout(1500)
+
+        with allure.step("觸發後再讀一次三組的聚合欄位與占成明細，並確認仍在同一期"):
+            _goto_combo_target(detail, "连码", "二全中", fast=True)
+            after = _combo_share_snapshot(detail, backend, "bingo6", "pickTwoAllHit",
+                                          indices, "觸發後", notes)
+            report["after"] = after
+            issue_at_check = player.current_issue()
+
+        lines = [f"期號：下注前 {issue_before}／下注後 {issue_after_bet}／讀回時 {issue_at_check}",
+                 f"下注：01/02/03 三組組合各 5,000（{success}）",
+                 "模式：不关连；共用自留上限：100；自動飛單：開；保存後立即觸發：勾選", ""]
+        for stage, snapshot in (("觸發前", before), ("觸發後", after)):
+            for name, entry in snapshot.items():
+                rows = entry["detail_rows"]
+                detail_text = ("讀取失敗" if rows is None else
+                               "；".join(f"{r['bet_option']}＝{r['share_amount']}（補貨{r['replenishment']}）"
+                                         for r in rows) or "（無明細列）")
+                lines.append(
+                    f"{stage}／選項 {name}：聚合欄位＝{entry['ui_aggregate']}、"
+                    f"API actualShareAmount＝{entry['api_actual_share']}、"
+                    f"明細合計＝{entry['detail_sum']}｜明細逐筆：{detail_text}"
+                )
+            lines.append("")
+        if notes:
+            lines.append("讀取異常：" + "；".join(notes))
+        allure.attach("\n".join(lines), name="T52 覆核：聚合欄位 vs 占成明細（觸發前後逐項）",
+                      attachment_type=allure.attachment_type.TEXT)
+
+        assert issue_at_check == issue_before, (
+            f"讀回時已跨期（{issue_before}→{issue_at_check}），不可用新一期的值下結論"
+        )
+        mismatches = [
+            f"{stage}／{name}：聚合 {entry['ui_aggregate']} vs 明細合計 {entry['detail_sum']}"
+            for stage, snapshot in (("觸發前", before), ("觸發後", after))
+            for name, entry in snapshot.items()
+            if entry["detail_sum"] is not None and entry["ui_aggregate"] is not None
+            and Decimal(str(entry["ui_aggregate"])) != Decimal(str(entry["detail_sum"]))
+        ]
+        assert not mismatches, "聚合欄位與占成明細不一致：\n" + "\n".join(mismatches)
+        assert all(Decimal(str(entry["api_actual_share"])) == 0 for entry in after.values()), (
+            "不關聯觸發後三組占成應全為 0：" + json.dumps(after, ensure_ascii=False)
+        )
+    finally:
+        # 依 2026-09-05 裁示，設定刻意保留不還原。
+        allure.attach(json.dumps(report, ensure_ascii=False, indent=2),
+                      name="T52 覆核原始讀值", attachment_type=allure.attachment_type.JSON)
+        player_page.close()
+        player_context.close()
+
+
+# ---- 組合玩法真實飛單矩陣（使用者 2026-09-04 明確授權）----
+_REAL_COMBO_ALREADY_EXECUTED = {
+    # 前批次 toast／DOM 延遲期間注單仍已成功建立（11／12 及 34／35），避免重複扣款；
+    # 後續可用既有注單補做 API／UI 讀回核對。
+    ("英国天天彩", "连码", "二全中", "related"),
+    ("英国天天彩", "连码", "二全中", "unrelated"),
+    # 批次流程驗證（XZH_REAL_COMBO_LIMIT=1）已建立二中特兩種模式注單並完成讀回。
+    ("英国天天彩", "连码", "二中特", "related"),
+    ("英国天天彩", "连码", "二中特", "unrelated"),
+    # B85／B87：賓果六合彩「二全中」兩種模式已建立真實注單並完成核心斷言。
+    ("宾果六合彩", "连码", "二全中", "related"),
+    ("宾果六合彩", "连码", "二全中", "unrelated"),
+    # 批次流程驗證（XZH_REAL_COMBO_LIMIT=1）已建立二中特兩種模式注單並完成讀回。
+    ("宾果六合彩", "连码", "二中特", "related"),
+    ("宾果六合彩", "连码", "二中特", "unrelated"),
+    # 2026-09-05 移除「英國天天彩／過關／關聯」：先行探針只建立過一筆注單，從未取得
+    # 逐層驗證結果，卻讓這一格在三輪批次裡都被跳過，形成看不出來的覆蓋空白。
+    # 同玩法在香港六合彩的關聯模式為八層全滅，這一格必須實際驗過才能判定。
+}
+
+
+def _real_combo_skipped(game: str, category: str, sub_item, relation_mode: str) -> bool:
+    """這一格是否要跳過（已有既存真實注單，不重複扣款）。
+
+    ⚠️ 2026-09-06 補 `XZH_REAL_COMBO_FORCE`：上面那些格子當初是**單層**驗過就登記為
+    「已執行」，但九層批次是後來才做的——結果它們在八層矩陣裡永遠被跳過，缺口從
+    journal 盤點才看得出來（英國天天彩因此只有 106/110 格）。要補跑時設
+    `XZH_REAL_COMBO_FORCE=英国天天彩/连码/二全中,英国天天彩/连码/二中特`（`all` 表全部不跳）。
+    """
+    forced = os.environ.get("XZH_REAL_COMBO_FORCE", "").strip()
+    if forced == "all":
+        return False
+    if forced and f"{game}/{category}/{sub_item or ''}" in {
+        item.strip() for item in forced.split(",")
+    }:
+        return False
+    return (game, category, sub_item, relation_mode) in _REAL_COMBO_ALREADY_EXECUTED
+
+
+def _real_parlay_option_ids(selection_offset: int) -> set[str]:
+    options = ["1大", "1小", "2大", "2小", "3大", "3小", "4大", "4小", "5大", "5小", "6大", "6小", "特大", "特小"]
+    ids = {"1大": "1-big", "1小": "1-small", "2大": "2-big", "2小": "2-small", "3大": "3-big", "3小": "3-small", "4大": "4-big", "4小": "4-small", "5大": "5-big", "5小": "5-small", "6大": "6-big", "6小": "6-small", "特大": "special-big", "特小": "special-small"}
+    first = options[selection_offset % (len(options) - 1)]
+    second = options[(selection_offset + 1) % (len(options) - 1)]
+    return {ids[first], ids[second]}
+
+
+# 生肖玩法的後台 selection 用英文名，且**依英文名字母序排列**（dog, dragon, goat, horse,
+# monkey, ox, pig, rabbit, rat, rooster, snake, tiger），與前台的中文生肖順序
+#（鼠牛虎兔龙蛇马羊猴鸡狗猪）完全不同。2026-09-05 實測確認：六肖下注「羊猴鸡狗猪鼠」後，
+# 有正占成的正是 goat／monkey／rooster／dog／pig／rat 六列——舊版用「中文生肖位置＝後台列
+# 索引」推導，勾到的是完全不同的列，连肖8＋合肖8＋六肖1 共 17 個目標因此全部讀到 0 占成。
+_ZODIAC_API_NAMES = {
+    "鼠": "rat", "牛": "ox", "虎": "tiger", "兔": "rabbit", "龙": "dragon", "蛇": "snake",
+    "马": "horse", "羊": "goat", "猴": "monkey", "鸡": "rooster", "狗": "dog", "猪": "pig",
+}
+
+
+def _real_zodiac_selection_names(count: int, selection_offset: int) -> list[str]:
+    """回傳前台本次實際點選的生肖英文名（與 `PlayerBetPage._select_zodiacs` 同一套算式）。"""
+    zodiacs = PlayerBetPage._ZODIACS
+    start = selection_offset % len(zodiacs)
+    return [_ZODIAC_API_NAMES[zodiacs[(start + index) % len(zodiacs)]] for index in range(count)]
+
+
+def _real_combo_mark_indices(
+    category: str, sub_item: str | None, items: list[dict], block_count: int, selection_offset: int = 0
+) -> list[int]:
+    """依前台本次投注內容，找出後台 K7 應勾選的組合列索引。"""
+    per_block = len(items) // block_count
+    if category == "过关":
+        # 前台每批選兩個大小選項；K7 過關項目順序與 selection id 對應。
+        wanted = _real_parlay_option_ids(selection_offset)
+        return [i for i, item in enumerate(items) if item.get("selection") in wanted]
+    if category == "比大小":
+        # 前台投注球按 offset 輪換；K7 金額聚合在正1特～正6特／特码。
+        return [selection_offset % per_block]
+    # 六肖：前台每次各送一筆「六肖中」及「六肖不中」，兩區塊各勾同樣的六個生肖。
+    count = 6 if category == "六肖" else PlayerBetPage._required_count(sub_item or "一")
+    indices: list[int] = []
+    for block in range(block_count):
+        indices.extend(
+            block * per_block + ((selection_offset + i) % per_block)
+            for i in range(min(count, per_block))
+        )
+    return indices
+
+
+def _real_combo_selected_names(
+    category: str, sub_item: str | None, items: list[dict], block_count: int, selection_offset: int = 0
+) -> list[str]:
+    """回傳本次投注在 K7 **API** 裡對應的 `selection` 名稱。
+
+    ⚠️⚠️ 生肖類玩法（连肖／合肖／六肖）**畫面順序與 API 順序不同**，不能共用索引：
+    畫面是中文生肖序（鼠牛虎兔龙蛇马羊猴鸡狗猪），API 是英文名字母序
+    （dog, dragon, goat, horse, monkey, ox, pig, rabbit, rat, rooster, snake, tiger）。
+    因此**勾選要用畫面索引**（`_real_combo_mark_indices`），**讀占成要用名稱比對**（本函式）。
+    2026-09-05 實測佐證：六肖下注「羊猴鸡狗猪鼠」後，有正占成的正是 goat／monkey／
+    rooster／dog／pig／rat 六列，而畫面前六列（鼠牛虎兔龙蛇）只有 rat 一列相符。
+    """
+    if category in ("连肖", "合肖", "六肖"):
+        count = 6 if category == "六肖" else PlayerBetPage._required_count(sub_item or "一")
+        names = _real_zodiac_selection_names(count, selection_offset)
+        wanted = {f"hit:{n}" for n in names} | {f"miss:{n}" for n in names} | set(names)
+        return [item["selection"] for item in items if item.get("selection") in wanted]
+    return [
+        items[i]["selection"]
+        for i in _real_combo_mark_indices(category, sub_item, items, block_count, selection_offset)
+    ]
+
+
+@allure.title("[真實飛單矩陣] 前台集中下注→後台集中確認：三彩種 55 組合目標 × 關聯")
+@allure.suite("飞单选项明细设置")
+@pytest.mark.write_action
+@pytest.mark.parametrize(
+    "game,game_id,relation_mode",
+    [
+        ("英国天天彩", "ukLucky7", "related"),
+        ("香港六合彩", "markSix", "related"),
+        ("宾果六合彩", "bingo6", "related"),
+    ],
+)
+def test_real_combo_targets_relation_modes(page, xzh_qat, game, game_id, relation_mode):
+    """先集中以前台真實下注，再由 K7 集中設定、觸發並讀回實際占成。
+
+    每目標下注金額 5,000；「六肖」為同一目標的中／不中兩區塊各送一筆。已完成的
+    B85、B87 及過關探針列在 ``_REAL_COMBO_ALREADY_EXECUTED``，不重複扣款；其餘
+    目標都會留下實際注單。前台下注階段完成後才登入一次後台，逐項寫入關聯設定、
+    保存後讀回實際占成，再還原原始設定；每列的 retentionCap、isMarked、
+    actualShareAmount 會附在 Allure，讓規格預期與現況公式差異可逐項追蹤。
+    """
+    player_username, player_password = player_credentials()
+    player_page = page.context.new_page()
+    player = PlayerBetPage(player_page)
+    detail = LayOffDetailSettingPage(page)
+    reports: list[str] = []
+    failures: list[str] = []
+    pending_targets: list[dict] = []
+    relation_linked = relation_mode == "related"
+    target_limit = int(os.environ.get("XZH_REAL_COMBO_LIMIT", "0") or 0)
+    processed = 0
+
+    try:
+        # 階段一：同一彩種／關聯模式只登入一次前台，先建立全部可執行目標的真實注單。
+        # 後續後台設定可直接針對這批既有注單逐項觸發，不再為每個目標重做前台流程。
+        player.login(xzh_qat["frontend_url"], player_username, player_password)
+        player.select_game(game)
+        if not player.is_open():
+            pytest.skip(f"{game}目前未開盤，無法執行真實飛單矩陣")
+
+        for label, category, sub_item, play_type_id, block_count in _combo_targets():
+            key = (game, category, sub_item, relation_mode)
+            if _real_combo_skipped(*key):
+                reports.append(f"{game}／{label}／{relation_mode}：跳過（既有真實案例已驗證）")
+                continue
+            if target_limit and processed >= target_limit:
+                reports.append(f"{game}／{label}／{relation_mode}：未執行（本批次限制 {target_limit}）")
+                continue
+
+            processed += 1
+            selection_offset = (10 + (processed - 1) * 7 + (0 if relation_linked else 23)) % 49
+            try:
+                with allure.step(f"{game}／{label}／{relation_mode}：前台建立真實注單"):
+                    if category == "六肖":
+                        success_hit = player.place_combo_target_bet(
+                            category, sub_item, "5000", selection_offset
+                        )
+                        success_miss = player.place_six_zodiac_mode_bet(
+                            "不中", "5000", selection_offset
+                        )
+                        bet_message = f"中={success_hit}；不中={success_miss}"
+                    else:
+                        bet_message = player.place_combo_target_bet(
+                            category, sub_item, "5000", selection_offset
+                        )
+                pending_targets.append(
+                    {
+                        "label": label,
+                        "category": category,
+                        "sub_item": sub_item,
+                        "play_type_id": play_type_id,
+                        "block_count": block_count,
+                        "selection_offset": selection_offset,
+                        "bet_message": bet_message,
+                    }
+                )
+            except Exception as exc:
+                failures.append(f"{game}／{label}／{relation_mode}：前台下注失敗 {type(exc).__name__}: {exc}")
+
+        allure.attach(
+            "\n".join(
+                f"{target['label']}：{target['bet_message']}（offset={target['selection_offset']}）"
+                for target in pending_targets
+            ),
+            name=f"{game}／{relation_mode} 前台集中下注清單",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+
+        # 階段二：前台注單全部建立後，才登入一次後台逐項設定與確認。
+        backend_login = LoginPage(page)
+        backend_login.goto(xzh_qat["backend_company_url"])
+        backend_login.login("aaa222", agent_password("aaa222"))
+        if backend_login.is_otp_page():
+            backend_login.submit_otp("123456")
+        detail.goto()
+        detail.switch_game(game)
+        for target in pending_targets:
+            label = target["label"]
+            category = target["category"]
+            sub_item = target["sub_item"]
+            play_type_id = target["play_type_id"]
+            block_count = target["block_count"]
+            selection_offset = target["selection_offset"]
+            bet_message = target["bet_message"]
+            original_items: list[dict] | None = None
+            master_original: bool | None = None
+            trigger_original: bool | None = None
+            try:
+                category_switch_original = _goto_combo_target_and_ensure_switch(
+                    detail, page, game, category, sub_item, fast=True
+                )
+                master_original = category_switch_original
+                detail.set_master_switch(True)
+                detail.wait_until_category_unlocked(timeout_ms=45000)
+                original_items = _get_lay_off_setting_detail(page, game_id, play_type_id)
+                trigger_original = detail.trigger_now_enabled()
+                marked_indices = _real_combo_mark_indices(category, sub_item, original_items, block_count, selection_offset)
+                if not marked_indices:
+                    raise AssertionError("找不到與前台投注對應的後台組合列")
+
+                for block in range(block_count):
+                    detail.set_relation_linked(relation_linked, block)
+                    _set_shared_cap_confirmed(detail, "100", block)
+                    # table=10（連碼）有子項層級「自動飛單」；table=0（過關／六肖／
+                    # 連肖／連尾／合肖／比大小）沒有這顆獨立開關，API 預設即為 true，
+                    # 不能對不存在的 locator 強行操作。
+                    if detail.page.get_by_role("switch", name="自动飞单").count():
+                        detail.set_combo_auto_lay_off(True, block)
+                detail.set_combo_marked_indices(marked_indices)
+                detail.set_trigger_now(True)
+                detail.save()
+                page.wait_for_timeout(800)
+
+                # reload 後讀畫面金額，避免只讀前端暫存；API 同時附上 retentionCap 與映射。
+                page.reload()
+                detail.goto()
+                detail.switch_game(game)
+                # 讀占成前用完整等待，table=10 的分享金額按鈕可能比 checkbox 晚一個非同步
+                # render 週期出現；過快讀取會把真實按鈕誤判成不存在。
+                _goto_combo_target(detail, category, sub_item, fast=False)
+                current_items = _get_lay_off_setting_detail(page, game_id, play_type_id)
+                # API GET 是後端實際計算值的穩定來源；表格的 share-amount button 在不同
+                # 組合排版下可能晚於 checkbox 非同步渲染，UI 讀取只作旁證，不讓短暫 DOM
+                # 時序把已完成的真實飛單判成失敗。
+                amounts = [int(current_items[i].get("actualShareAmount") or 0) for i in marked_indices]
+                try:
+                    ui_amounts = [detail.combo_share_amount(i) for i in marked_indices]
+                except Exception as exc:
+                    ui_amounts = f"UI讀取延遲：{type(exc).__name__}"
+                result_rows = [
+                    {
+                        "selection": current_items[i].get("selection"),
+                        "retentionCap": current_items[i].get("retentionCap"),
+                        "isMarked": current_items[i].get("isMarked"),
+                        "actualShareAmount": current_items[i].get("actualShareAmount"),
+                    }
+                    for i in marked_indices
+                ]
+                reports.append(
+                    f"{game}／{label}／{relation_mode}：注單={bet_message}；"
+                    f"勾選索引={marked_indices}；API實際占成={amounts}；UI旁證={ui_amounts}；API={result_rows}"
+                )
+            except Exception as exc:  # 單一目標失敗仍繼續收集其餘 54 目標
+                failures.append(f"{game}／{label}／{relation_mode}：{type(exc).__name__}: {exc}")
+            finally:
+                if original_items is not None and "/auth/sign-in" not in page.url:
+                    try:
+                        _put_lay_off_setting_detail(
+                            page, game_id, play_type_id, original_items,
+                            triggerImmediateAutoLayOff=bool(trigger_original),
+                        )
+                    except Exception as exc:
+                        failures.append(f"{game}／{label}／{relation_mode}：還原 K7 失敗 {exc}")
+                if master_original is not None and "/auth/sign-in" not in page.url:
+                    try:
+                        cleanup = LayOffDetailSettingPage(page)
+                        cleanup.goto(); cleanup.switch_game(game)
+                        _goto_combo_target(cleanup, category, sub_item, fast=True)
+                        cleanup.set_master_switch(master_original)
+                    except Exception as exc:
+                        failures.append(f"{game}／{label}／{relation_mode}：還原總開關失敗 {exc}")
+
+        allure.attach(
+            "\n".join(reports),
+            name=f"{game}／{relation_mode} 真實飛單結果",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+        if failures:
+            allure.attach("\n".join(failures), name=f"{game}／{relation_mode} 執行失敗清單", attachment_type=allure.attachment_type.TEXT)
+        assert not failures, "此批次有目標執行或還原失敗（共 %d）：\n%s" % (len(failures), "\n".join(failures))
+    finally:
+        player_page.close()
+
+
+def _real_batch_targets(relation_mode: str = "unrelated"):
+    """組合型真實飛單目標清單；`XZH_REAL_COMBO_OFFSET_SHIFT` 可整體位移選號。
+
+    ⚠️ 站台對「同一期、同一選項」設有累計上限（實測英國天天彩為 10,000）。英國／香港是
+    低頻彩種，一期長達數小時，同一期內若已對某選項下過注，再跑同一批就會被
+    「单项累计已达上限」擋掉。位移選號可讓重跑改用同期內全新的選項，不需要等下一期；
+    位移同時套用到後台勾選索引的推導，前後台仍然對齊。
+
+    ⚠️⚠️ **關聯批與不關聯批必須是兩批不同的注單，且要換選號**——同一批注單第一次觸發後
+    占成已歸零，改模式再觸發讀到的 0 分不出是「這次正確飛掉」還是「上次就已經是 0」。
+    `relation_mode` 只決定紀錄鍵與後台要寫入的模式，選號一律由呼叫端用
+    `XZH_REAL_COMBO_OFFSET_SHIFT` 明確指定成沒被下過的一組。
+    """
+    shift = int(os.environ.get("XZH_REAL_COMBO_OFFSET_SHIFT", "0") or 0)
+    targets = []
+    for game, game_id in _GAME_ID.items():
+        ordinal = 0
+        for label, category, sub_item, play_type_id, blocks in _combo_targets():
+            if _real_combo_skipped(game, category, sub_item, relation_mode):
+                continue
+            targets.append({"game": game, "game_id": game_id, "label": label,
+                            "category": category, "sub_item": sub_item,
+                            "play_type_id": play_type_id, "block_count": blocks,
+                            "relation_mode": relation_mode,
+                            "selection_offset": (33 + ordinal * 7 + shift) % 49})
+            ordinal += 1
+    return targets
+
+
+def _real_unrelated_targets():
+    """相容既有呼叫端的不關聯目標清單。"""
+    return _real_batch_targets("unrelated")
+
+
+# 「关连」模式的期望值（2026-09-05 實測導出）：共用自留上限是**每個組合各自**保留的上限，
+# 所以觸發後該選項的占成＝（涵蓋它的組合數 k）×（自留上限 100），不是單一的 100，也不是 0。
+# ⚠️ 不可用「觸發前占成 ÷ 固定單位」反推 k——實測九個代理層級的占成比例各不相同
+# （同一筆 5,000 注單：aaa999 讀到 500、aaa888 讀到 540、aaa333 讀到 824.74），
+# 而且不是整數。因此判準改為「觸發後必須是自留上限的整數倍，且低於觸發前、又不為 0」，
+# 商數即為該選項實際被幾個組合涵蓋，逐項記進 JSONL 供覆核。
+_REAL_COMBO_SHARED_CAP = Decimal("100")
+
+
+def _enable_selection_detail_for_targets(page, targets) -> list[str]:
+    """把本批玩法在**本層級**的「啟用飛單選項明細」總開關一次全部打開（下注前置）。
+
+    ⚠️⚠️ 這是效能前置，不是替代被測行為。2026-09-05 實測發現：總開關是**每個 playType
+    各一個**（＝K4 表格該列的 `isSelectionDetailEnabled`），所以逐目標都得開一次；而用 UI
+    點開之後，該分類的「共用自留上限」欄位仍讀到 `aria-disabled="true"`，**要整頁重新載入
+    才會解鎖**——批次因此每個目標白等 20 秒逾時再走 reload 補救，單目標 26 秒。九層 × 55
+    目標 × 兩種模式等於多花 6 小時。改成登入後用 `PUT /api/LayOffSetting` 一次把本批玩法
+    全部打開，頁面第一次渲染就是解鎖狀態，單目標降到數秒。總開關本身的行為由 B37 覆蓋，
+    這裡只是把它先擺到位。
+    """
+    notes: list[str] = []
+    by_game: dict[str, set[str]] = {}
+    for target in targets:
+        by_game.setdefault(target["game_id"], set()).add(target["play_type_id"])
+    for game_id, play_type_ids in by_game.items():
+        try:
+            status = page.evaluate(
+                """async ([gameId, playTypeIds]) => {
+                    const token = localStorage.getItem('accessToken');
+                    const headers = {Authorization: `Bearer ${token}`};
+                    const res = await fetch(`/api/LayOffSetting?gameId=${gameId}`, {headers});
+                    if (!res.ok) return `GET ${res.status}`;
+                    const rows = await res.json();
+                    const wanted = new Set(playTypeIds);
+                    const settings = rows.filter(r => wanted.has(r.playTypeId))
+                        .map(r => Object.assign({}, r, {isSelectionDetailEnabled: true}));
+                    if (!settings.length) return 'no-match';
+                    const put = await fetch('/api/LayOffSetting', {
+                        method: 'PUT',
+                        headers: Object.assign({'Content-Type': 'application/json'}, headers),
+                        body: JSON.stringify({gameId, settings}),
+                    });
+                    return put.ok ? `ok:${settings.length}` : `PUT ${put.status}`;
+                }""",
+                [game_id, sorted(play_type_ids)],
+            )
+            if not str(status).startswith("ok"):
+                notes.append(f"{game_id}：開啟飛單選項明細總開關未完成（{status}）")
+        except Exception as exc:
+            notes.append(f"{game_id}：開啟總開關失敗 {type(exc).__name__}: {exc}")
+    return notes
+
+
+def _disable_auto_lay_off_for_targets(page, targets) -> list[str]:
+    """把本批次會用到的玩法在**本層級**的「自動飛單」全部關掉（下注前的必要前置）。
+
+    ⚠️ 這不是「還原設定」——依 2026-09-05 裁示，前一輪的設定刻意保留著，於是那些玩法
+    仍是「自動飛單開啟＋未勾選項目自留上限 0」。新注單一落地就會被排程（最多 1 分鐘）
+    自動飛掉，「觸發前確有正占成」這個前提根本不可能成立（前一輪 44 筆 `backend_failed`
+    就是這樣來的）。關掉自動飛單是讓驗證成立的前置條件，做了要在報告寫明。
+    """
+    notes: list[str] = []
+    for game_id, play_type_id in sorted({(t["game_id"], t["play_type_id"]) for t in targets}):
+        try:
+            items = _get_lay_off_setting_detail(page, game_id, play_type_id)
+            if not isinstance(items, list) or not items:
+                notes.append(f"{game_id}/{play_type_id}：讀不到選項清單，未關閉")
+                continue
+            if not any(item.get("isAutoEnabled") for item in items):
+                continue
+            for item in items:
+                item["isAutoEnabled"] = False
+            status = _put_lay_off_setting_detail(page, game_id, play_type_id, items)
+            if status >= 400:
+                notes.append(f"{game_id}/{play_type_id}：關閉自動飛單被拒 HTTP {status}")
+        except Exception as exc:
+            notes.append(f"{game_id}/{play_type_id}：關閉自動飛單失敗 {type(exc).__name__}: {exc}")
+    return notes
+
+
+_DEFAULT_UNRELATED_JOURNAL = "reports/xzh-real-combo/unrelated.jsonl"
+
+
+def _import_interrupted_unrelated_batch(journal, targets):
+    """接回本 session 的舊英國批次；成功提示缺期號，須稽核而非自動重下。
+
+    2026-09-05 12:22 已落盤的附件在後台登入前產生，故當時尚未輪到香港／賓果。
+    同批未列在附件的項目亦可能已送出，全部保留待核對狀態。
+    """
+    source = Path("reports/allure-results/cad8bd27-0261-4914-b002-aab06e383045-attachment.txt")
+    # 即使 Allure 附件被清理，也不能把已執行過的英國目標當成新目標重送。
+    evidence = source.read_text(encoding="utf-8") if source.exists() else ""
+    by_label = {line.split("：", 1)[0]: line for line in evidence.splitlines() if "：" in line}
+    for target in targets:
+        if target["game_id"] == "ukLucky7" and journal.key(target) not in journal.rows:
+            journal.record(target, "legacy_audit", evidence=by_label.get(target["label"], "舊批次無成功紀錄"),
+                           source=str(source), note="舊批次缺期號／注單ID／逐項後台結果，不自動重送")
+
+
+_STANDARD_RETENTION_CAP = 100
+
+
+def _standard_targets():
+    """標準型 15 個玩法的真實飛單目標清單。
+
+    標準型沒有「關聯／不關聯」之分（那是組合型的欄位），`relation_mode` 固定填
+    `standard` 只為了讓 `BatchJournal.key()` 的欄位齊全。
+    """
+    only = [part for part in os.environ.get("XZH_REAL_STD_ONLY", "").split(",") if part]
+    games = [part for part in os.environ.get("XZH_REAL_STD_GAMES", "").split(",") if part]
+    index = int(os.environ.get("XZH_REAL_STD_OPTION_INDEX", "0") or 0)
+    targets = []
+    for game, game_id in _GAME_ID.items():
+        if games and game not in games:
+            continue
+        for category, option_count in _STANDARD_CATEGORIES_15.items():
+            if only and not any(part in category for part in only):
+                continue
+            for sub_item, shift in _standard_sub_items(category):
+                targets.append({
+                    "game": game, "game_id": game_id,
+                    "label": f"{category}／{sub_item}" if sub_item else category,
+                    "category": category, "sub_item": sub_item,
+                    "play_type_id": _STANDARD_PLAY_TYPE_IDS[category],
+                    "option_count": option_count,
+                    "option_index": (index + shift) % option_count,
+                    # ⚠️ 標準型沒有關聯模式，這個欄位只是 `BatchJournal.key()` 的組成之一。
+                    # 正特码 6 個子項共用同一個 `play_type_id`，不把子項編進 key 的話，
+                    # 六筆會互相覆蓋、而且第一筆驗完之後其餘五筆會被當成已完成而靜默跳過。
+                    "relation_mode": f"standard-{sub_item}" if sub_item else "standard",
+                })
+    return targets
+
+
+def _standard_sub_items(category: str) -> list[tuple["str | None", int]]:
+    """回傳 (子項, 選項位移)；沒有子項的玩法回傳單一 (None, 0)。
+
+    正特码前台有正1特～正6特六個子項，後端 `positionSingle` 是 6×49＝294 個選項
+    （`1-01`～`6-49`）。**後台畫面只有 49 列，是跨子項的號碼聚合**——2026-09-05
+    於賓果六合彩實測：對「正2特」的號碼 04 下注 5000，API 的 `2-04` 由 0 變 500，
+    後台畫面第 4 列同步顯示 500，證實聚合而非漏做子項，不是缺陷。
+    因為聚合，六個子項必須各下不同號碼，否則會累加到同一列、無從分辨是誰的占成。
+    """
+    if category == "正特码":
+        return [(f"正{n}特", n - 1) for n in range(1, 7)]
+    return [(None, 0)]
+
+
+@allure.title("[真實飛單] 標準型15玩法先集中下注，再逐一登入各級代理確認占成歸零")
+@allure.suite("飞单选项明细设置")
+@pytest.mark.write_action
+def test_real_standard_targets_multi_level(page, xzh_qat):
+    """標準型玩法的真實自動飛單驗證：前台下注一次，後台逐層設定並讀回。
+
+    測試範圍：指定彩種 × 15 個標準型玩法 × 指定代理層級（預設二級至九級）。
+    步驟：前台每個玩法對一個投注格下注 5000 →逐層登入後台→找出有正占成的選項列→
+    設每選項自留上限 100、開自動飛單、勾立即觸發並保存→重讀該列占成。
+    判準：觸發前該列占成須為正值，觸發後須為 0；讀不到正占成即不算驗到。
+
+    ⚠️ 全程以「畫面列號」定位，不使用 API 的 selection 索引——生肖類玩法的畫面是
+    中文生肖序、API 是英文名字母序，兩者對不起來。改以「畫面上哪幾列有正占成」
+    反查本次下注的選項，排序差異就影響不到判定。
+    """
+    targets = _standard_targets()
+    assert targets, "標準型目標清單為空，請檢查 XZH_REAL_STD_ONLY／GAMES 篩選條件"
+    levels = [part.strip() for part in
+              os.environ.get("XZH_REAL_STD_LEVELS",
+                             "aaa999,aaa888,aaa777,aaa666,aaa555,aaa444,aaa333,aaa222").split(",")
+              if part.strip()]
+    journal = BatchJournal(os.environ.get("XZH_REAL_STD_JOURNAL")
+                           or "reports/xzh-real-combo/standard-multi-level.jsonl")
+    player_page = page.context.new_page()
+    player_page.set_default_timeout(10000)
+    page.set_default_timeout(10000)
+    player = PlayerBetPage(player_page)
+    detail = LayOffDetailSettingPage(page)
+    frontend_game = None
+    backend_game = None
+
+    def issue(game):
+        body = player_page.locator("body").inner_text()
+        match = re.search(re.escape(game) + r"\s+(\d{4,})\b", body)
+        if not match:
+            raise AssertionError(f"{game}：無法識別當期期號")
+        return match.group(1)
+
+    def place(target):
+        nonlocal frontend_game
+        game = target["game"]
+        if frontend_game != game:
+            player.select_game(game)
+            player_page.wait_for_timeout(1500)
+            frontend_game = game
+        if not player.is_open():
+            raise MarketClosed(game)
+        before_issue = issue(game)
+        message = player.place_standard_category_bet(
+            target["category"], "5000", target["option_index"], target.get("sub_item"))
+        if "成功提示未捕捉" in message:
+            raise AssertionError("未取得成功提示，需查注單紀錄")
+        assert issue(game) == before_issue, "下注期間跨期，需查注單歸屬"
+        return {"issue": before_issue, "bet_message": message}
+
+    def login_backend(level, prepare=False):
+        nonlocal backend_game
+        password = agent_password(level)
+        assert password, f"{level} 未配置密碼，無法驗證該層級"
+        ok, diagnosis = _login_company_backend_as(
+            page, xzh_qat["backend_company_url"], level, password)
+        assert ok, f"{level} 登入後台失敗：{diagnosis}"
+        backend_game = None
+        detail.goto()
+
+    def rows_with_share(target):
+        """回傳本次下注那一列的列號（1-based）。
+
+        ⚠️ 早期版本是「掃描全部選項、取所有占成大於 0 的列」，看似穩健，實際會把
+        **先前批次殘留的注單**一併納入驗證——那些注單多半屬於已結算的期別，立即觸發
+        本來就不會動它們，於是被誤判成飛單失效（實測：英國天天彩「特码」第 1 列在
+        六個層級都讀到 170～808 的殘留占成，觸發前後不變）。
+        本次下注的是畫面第 `option_index + 1` 格，號碼型玩法的前後台列序一致，
+        直接指名該列即可；非號碼型玩法待前台選取方式補齊後再一併處理。
+
+        ⚠️ 必須跟前台一樣對選項數取餘。前台 `place_standard_category_bet()` 會把
+        `option_index` 限制在該玩法的選項數之內，後台若直接用 `option_index + 1`，
+        選項數少於它的玩法就會指到不存在的列——實測 `五行`(5)／`一肖量`(6)／
+        `尾数量`(6) 在 `option_index=7` 時全部逾時，而同樣的玩法在 `option_index=3`
+        時是通過的，正是這個錯位造成的。
+        """
+        return [target["option_index"] % target["option_count"] + 1]
+
+    def check(target, level):
+        nonlocal backend_game
+        game = target["game"]
+        if backend_game != game:
+            detail.switch_game(game)
+            backend_game = game
+        detail.select_category(target["category"], wait_for_networkidle=False)
+        detail.set_master_switch(True)
+        detail.wait_until_category_unlocked(timeout_ms=20000)
+        hits = rows_with_share(target)
+        assert hits, "觸發前畫面上沒有任何選項有正占成，無法證明本次下注被這一層承接"
+        before = {n: detail.option_share_amount(n) for n in hits}
+        # ⚠️ 沒有這道前置檢查，占成為 0 的列會被 `min(0, 上限) == 0` 判成通過——
+        # 那是「本次下注根本沒反映到這一列」的假通過，不是飛單成功。
+        for n in hits:
+            assert before[n] > 0, (
+                f"第{n}列觸發前占成為0，本次下注未反映到{level}的這一列，不算驗到")
+        journal.record(target, "configuring", scope=level, rows=hits,
+                       before_amounts={str(n): v for n, v in before.items()})
+        for n in hits:
+            detail.set_option_cap(n, str(_STANDARD_RETENTION_CAP))
+            detail.set_option_auto_lay_off(n, True)
+        detail.set_trigger_now(True)
+        detail.save()
+        detail.select_category(target["category"], wait_for_networkidle=False)
+        after = {n: detail.option_share_amount(n) for n in hits}
+        # ⚠️ 標準型的判準是「收斂到自留上限」，不是組合型不關聯模式那種「歸零」：
+        # 超過上限的部分才飛出去，上限以內的本來就該留著。原值低於上限時不會飛。
+        for n in hits:
+            expected = min(before[n], _STANDARD_RETENTION_CAP)
+            assert after[n] == expected, (
+                f"觸發後第{n}列占成應為{expected}（自留上限{_STANDARD_RETENTION_CAP}），"
+                f"實際{after[n]}，觸發前{before[n]}")
+        return {"rows": hits, "before_amounts": {str(n): v for n, v in before.items()},
+                "after_amounts": {str(n): v for n, v in after.items()}}
+
+    try:
+        with allure.step("前台逐一對標準型玩法下注，再依序登入各級代理確認占成歸零"):
+            username, password = player_credentials()
+            player.login(xzh_qat["frontend_url"], username, password)
+            issues = run_multi_level_batch(
+                targets, journal, place, levels, login_backend, check,
+                resume_backend_failed=os.environ.get("XZH_REAL_COMBO_RECOVER_BACKEND") == "1",
+            )
+        assert not issues, "標準型批次未完成項目：\n" + "\n".join(issues)
+    finally:
+        allure.attach(json.dumps(list(journal.rows.values()), ensure_ascii=False, indent=2),
+                      name="標準型玩法逐層真實飛單紀錄（設定保留）",
+                      attachment_type=allure.attachment_type.JSON)
+        player_page.close()
+
+
+@allure.title("[真實飛單] 三彩種組合玩法先集中下注，再逐一登入各級代理確認占成，保留設定")
+@allure.suite("飞单选项明细设置")
+@pytest.mark.write_action
+def test_real_combo_targets_relation_modes_unrelated(page, xzh_qat):
+    """依使用者 2026-09-05 裁示：英國→香港→賓果全部前台完成後才登入後台。
+
+    測試範圍：三彩種各55目標、指定關聯模式、一至九級代理（預設僅二級 aaa222），
+    略過既有完成項。
+    步驟：下注前先關掉本批玩法在各層級的自動飛單（必要前置，見
+    `_disable_auto_lay_off_for_targets`）→前台每組5000（六肖中／不中各一筆）→
+    逐層登入後台→逐項設定關聯模式、共用自留上限100、自動飛單及立即觸發→讀回占成。
+    設定與開關刻意保留、不還原。
+    判準：同一期、觸發前確有正占成；不關聯批觸發後所有選取項實際占成為0，
+    關聯批則應剩下「每個組合各保留 100」的金額且必須低於觸發前；缺值或跨期不可算通過。
+    每次動作即時寫入 JSONL（後台結果逐層獨立記錄）；任何已嘗試或中斷項目先核對既有注單，
+    不自動重下。
+
+    環境變數：`XZH_REAL_COMBO_RELATION`（related／unrelated）、`XZH_REAL_COMBO_LEVELS`
+    （逗號分隔的代理帳號，由下往上例如 aaa999,...,aaa111）、`XZH_REAL_COMBO_JOURNAL`、
+    `XZH_REAL_COMBO_OFFSET_SHIFT`、`XZH_REAL_COMBO_ONLY`／`GAMES`／`LIMIT`、
+    `XZH_REAL_COMBO_SKIP_PREP`（略過關閉自動飛單的前置）。
+    """
+    relation_mode = os.environ.get("XZH_REAL_COMBO_RELATION", "unrelated")
+    assert relation_mode in ("related", "unrelated"), f"未知的關聯模式：{relation_mode}"
+    relation_linked = relation_mode == "related"
+    levels = [part.strip() for part in
+              os.environ.get("XZH_REAL_COMBO_LEVELS", "aaa222").split(",") if part.strip()]
+    targets = _real_batch_targets(relation_mode)
+    # 紀錄檔可用 `XZH_REAL_COMBO_JOURNAL` 指定：舊批次的稽核證據必須原封保留，
+    # 重開一輪時改寫入新檔，不清空舊檔重跑（交接檔明文禁止）。
+    journal_path = os.environ.get("XZH_REAL_COMBO_JOURNAL") or _DEFAULT_UNRELATED_JOURNAL
+    journal = BatchJournal(journal_path)
+    if journal_path == _DEFAULT_UNRELATED_JOURNAL:
+        # 舊批次的英國目標標記只對舊紀錄檔成立；新一輪的英國目標是真的還沒下注，
+        # 不可以套上 legacy_audit 而被狀態機擋掉。
+        _import_interrupted_unrelated_batch(journal, targets)
+    # `XZH_REAL_COMBO_ONLY`（逗號分隔的顯示名稱片段）／`XZH_REAL_COMBO_GAMES`（彩種名）
+    # 用來重跑特定目標；不影響判準，只縮小這一批的範圍。
+    only = [part for part in os.environ.get("XZH_REAL_COMBO_ONLY", "").split(",") if part]
+    if only:
+        targets = [t for t in targets if any(part in t["label"] for part in only)]
+    games = [part for part in os.environ.get("XZH_REAL_COMBO_GAMES", "").split(",") if part]
+    if games:
+        targets = [t for t in targets if t["game"] in games]
+    limit = int(os.environ.get("XZH_REAL_COMBO_LIMIT", "0") or 0)
+    if limit:
+        targets = [target for game in _GAME_ID for target in
+                   [t for t in targets if t["game"] == game][:limit]]
+    # ⚠️ 前台必須用**獨立的 browser context**：逐層切換代理帳號時要清 cookie／
+    # localStorage，共用 context 會把已登入的會員前台一起清掉，`issue()` 就再也讀不到
+    # 期號（同一批注單也就無法判定是否跨期）。
+    player_context = page.context.browser.new_context()
+    player_page = player_context.new_page()
+    player_page.set_default_timeout(10000)
+    page.set_default_timeout(10000)
+    player = PlayerBetPage(player_page)
+    detail = LayOffDetailSettingPage(page)
+    frontend_game = None
+    backend_game = None
+    prep_notes: list[str] = []
+
+    def issue(game):
+        # 讀當前選定彩種的期號；無法識別時停止該項，不用新一期的0占成代替舊注單結果。
+        body = player_page.locator("body").inner_text()
+        # 期號長度三彩種不同：英國 11 碼（20260905248）、賓果 9 碼（115050221）、
+        # 香港只有 5 碼（26096）——舊版寫死 `\d{6,}` 會讓香港永遠讀不到期號。
+        match = re.search(re.escape(game) + r"\s+(\d{4,})\b", body)
+        if not match:
+            raise AssertionError(f"{game}：無法識別當期期號，需補期號對照")
+        return match.group(1)
+
+    def place(target):
+        nonlocal frontend_game
+        game = target["game"]
+        if frontend_game != game:
+            player.select_game(game)
+            player_page.wait_for_timeout(1500)
+            frontend_game = game
+        if not player.is_open():
+            raise MarketClosed(game)
+        before_issue = issue(game)
+        args = (target["category"], target["sub_item"], "5000", target["selection_offset"])
+        message = player.place_combo_target_bet(*args)
+        # 舊POM的「視窗已關閉」fallback 不代表注單成功，不可用來計完成。
+        if "成功提示未捕捉" in message:
+            raise AssertionError("未取得成功提示，需查注單紀錄")
+        journal.record(target, "partial", issue=before_issue, bet_message=message)
+        if target["category"] == "六肖":
+            second = player.place_six_zodiac_mode_bet("不中", "5000", target["selection_offset"])
+            if "成功提示未捕捉" in second:
+                raise AssertionError("六肖不中送出結果待查；六肖中不可重複下注")
+            message += "；不中=" + second
+        assert issue(game) == before_issue, "下注期間跨期，需查注單歸屬"
+        return {"issue": before_issue, "bet_message": message}
+
+    def login_backend(level, prepare=False):
+        nonlocal backend_game
+        password = agent_password(level)
+        assert password, f"{level} 未配置密碼，無法驗證該層級"
+        ok, diagnosis = _login_company_backend_as(
+            page, xzh_qat["backend_company_url"], level, password
+        )
+        assert ok, f"{level} 登入後台失敗：{diagnosis}"
+        backend_game = None
+        if prepare:
+            # 兩件前置都必須在下注前完成，且兩件都會改動站台設定（已在報告寫明）：
+            # ①關閉自動飛單，否則新注單會在 1 分鐘內被排程飛掉；
+            # ②先把總開關擺到位，否則每個目標要多花 20 秒等欄位解鎖。
+            notes = _disable_auto_lay_off_for_targets(page, targets)
+            notes += _enable_selection_detail_for_targets(page, targets)
+            prep_notes.append(f"{level}：關閉自動飛單＋開啟飛單選項明細總開關前置完成"
+                              + ("；未完成 " + "／".join(notes) if notes else ""))
+        detail.goto()
+
+    def check(target, level):
+        nonlocal backend_game, frontend_game
+        game, game_id = target["game"], target["game_id"]
+        if frontend_game != game:
+            player.select_game(game)
+            frontend_game = game
+        issue_at_check = issue(game)
+        if backend_game != game:
+            detail.switch_game(game)
+            backend_game = game
+        _goto_combo_target(detail, target["category"], target["sub_item"], fast=True)
+        before = _get_lay_off_setting_detail(page, game_id, target["play_type_id"])
+        assert isinstance(before, list) and before, "K7讀回非有效選項清單"
+        # 勾選走畫面索引、讀占成走 API selection 名稱——生肖類兩者順序不同，見
+        # `_real_combo_selected_names` 檔頭。
+        indices = _real_combo_mark_indices(target["category"], target["sub_item"], before,
+                                          target["block_count"], target["selection_offset"])
+        assert indices, "無法對應本次投注選項"
+        selected = _real_combo_selected_names(target["category"], target["sub_item"], before,
+                                              target["block_count"], target["selection_offset"])
+        assert selected, "無法對應本次投注的後台選項名稱"
+        by_before = {row["selection"]: row for row in before}
+        before_amounts = [Decimal(str(by_before[name]["actualShareAmount"])) for name in selected]
+        assert all(amount > 0 for amount in before_amounts), "觸發前並非所有投注項都有正占成，不能證明本次全飛"
+        journal.record(target, "configuring", scope=level, selections=selected,
+                       before_amounts=[str(a) for a in before_amounts])
+        # 逐步耗時：批次要跑 9 層 × 55 目標，單一步驟多花 10 秒就是多花 1.5 小時，
+        # 沒有分段計時只能靠猜。預設關閉，`XZH_REAL_COMBO_TIMING=1` 開啟。
+        timing = os.environ.get("XZH_REAL_COMBO_TIMING") == "1"
+        marks: list[str] = []
+        clock = [time.monotonic()]
+
+        def lap(name):
+            if timing:
+                now = time.monotonic()
+                marks.append(f"{name}={now - clock[0]:.1f}s")
+                clock[0] = now
+
+        detail.set_master_switch(True)
+        lap("master")
+        try:
+            detail.wait_until_category_unlocked(timeout_ms=20000)
+        except Exception:
+            # 已知時序競態：切彩種／切分類後欄位鎖定狀態偶爾追不上總開關
+            #（見 `_goto_combo_target_and_ensure_switch` 檔頭）。重新導覽一次再等，
+            # 不放寬判準——等不到就讓這一項失敗。
+            page.reload()
+            detail.goto()
+            detail.switch_game(game)
+            backend_game = game
+            _goto_combo_target(detail, target["category"], target["sub_item"], fast=False)
+            detail.set_master_switch(True)
+            detail.wait_until_category_unlocked(timeout_ms=45000)
+        lap("unlock")
+        for block in range(target["block_count"]):
+            detail.set_relation_linked(relation_linked, block)
+            lap(f"relation{block}")
+            assert _set_shared_cap_confirmed(detail, "100", block) == "100"
+            lap(f"cap{block}")
+            if page.get_by_role("switch", name="自动飞单").count():
+                detail.set_combo_auto_lay_off(True, block)
+            lap(f"auto{block}")
+        detail.set_combo_marked_indices(indices)
+        lap("marks")
+        detail.set_trigger_now(True)
+        lap("trigger")
+        detail.save()
+        lap("save")
+        # 以UI切回同子項刷新；不每項reload整個後台，也不還原設定。
+        _goto_combo_target(detail, target["category"], target["sub_item"], fast=True)
+        lap("reopen")
+        current = _get_lay_off_setting_detail(page, game_id, target["play_type_id"])
+        lap("readback")
+        if timing:
+            print("    耗時 " + " ".join(marks), flush=True)
+        by_selection = {row["selection"]: row for row in current}
+        rows = [by_selection[selection] for selection in selected]
+        journal.record(target, "readback", scope=level, actual_rows=rows)
+        verdicts = []
+        for name, before_amount in zip(selected, before_amounts):
+            row = by_selection[name]
+            assert row["relationMode"] == relation_mode, f"關聯設定未生效：{row}"
+            assert row["isMarked"] is True, f"選項未勾選：{row}"
+            assert row["isAutoEnabled"] is True, f"自動飛單未啟用：{row}"
+            after = Decimal(str(row["actualShareAmount"]))
+            if not relation_linked:
+                # 不关连＝共用自留上限存為 0、該玩法所有組合無條件全飛。
+                assert after == 0, f"不關聯觸發後實際占成應為0：{row}"
+                verdicts.append(f"{name}：{before_amount}→{after}（期望 0）")
+                continue
+            # 关连＝每個組合各自保留到共用自留上限，超額部分才飛出。
+            assert after > 0, f"關聯觸發後不應全飛（自留上限 100 應保留）：{row}"
+            assert after < before_amount, f"關聯觸發後未見任何飛出：{row}（觸發前 {before_amount}）"
+            assert Decimal(str(row["retentionCap"])) == _REAL_COMBO_SHARED_CAP, f"自留上限未寫入：{row}"
+            assert after % _REAL_COMBO_SHARED_CAP == 0, (
+                f"關聯觸發後占成不是自留上限的整數倍：{row}（觸發前 {before_amount}）"
+            )
+            verdicts.append(
+                f"{name}：{before_amount}→{after}"
+                f"（＝{after / _REAL_COMBO_SHARED_CAP} 個組合各保留 {_REAL_COMBO_SHARED_CAP}）"
+            )
+        return {"actual_rows": rows, "issue_at_check": issue_at_check,
+                "issue_rotated": issue_at_check != target["issue"],
+                "before_amounts": [str(a) for a in before_amounts],
+                "after_amounts": [str(by_selection[n]["actualShareAmount"]) for n in selected],
+                "selections": selected, "verdicts": verdicts}
+
+    try:
+        with allure.step(
+            f"前台依序完成三彩種的全部{relation_mode}目標，再依序登入 {'／'.join(levels)} "
+            f"逐項確認占成，保留設定"
+        ):
+            username, password = player_credentials()
+            player.login(xzh_qat["frontend_url"], username, password)
+            if os.environ.get("XZH_REAL_COMBO_SKIP_PREP") != "1":
+                # 前一輪保留下來的「自動飛單開啟」會讓新注單在 1 分鐘內被排程飛掉，
+                # 「觸發前有正占成」的前提就不成立——下注前必須逐層關掉（必要前置）。
+                for level in levels:
+                    login_backend(level, prepare=True)
+                    print(prep_notes[-1], flush=True)
+            issues = run_multi_level_batch(
+                targets, journal, place, levels, login_backend, check,
+                resume_backend_failed=os.environ.get("XZH_REAL_COMBO_RECOVER_BACKEND") == "1",
+            )
+        assert not issues, f"{relation_mode} 批次未完成項目：\n" + "\n".join(issues)
+    finally:
+        allure.attach("\n".join(prep_notes) or "（本次未執行關閉自動飛單前置）",
+                      name="下注前的必要前置：逐層關閉自動飛單",
+                      attachment_type=allure.attachment_type.TEXT)
+        allure.attach(json.dumps(list(journal.rows.values()), ensure_ascii=False, indent=2),
+                      name="三彩種集中下注與逐層後台驗證紀錄（設定保留）",
+                      attachment_type=allure.attachment_type.JSON)
+        player_page.close()
+        player_context.close()
 
 
 @allure.suite("公告管理")

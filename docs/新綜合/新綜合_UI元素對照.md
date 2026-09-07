@@ -75,13 +75,12 @@
 | 一肖量 | `肖2` |
 | 尾数量 | `尾2` |
 
-⚠️ 上表只在**其他彩種尚未逐一核對過**——目前只實測了香港六合彩，英國天天彩／賓果六合彩的
-「选项」欄第1列內容假設一致（同一批玩法名稱、同一套前端渲染邏輯），但沒有實測驗證，
-差異未知即為缺口，追蹤見 `新綜合_驗證交接.md`。
+✅ **2026-09-06 已逐一核對三彩種**（見下方新增小節）：上表「选项」欄第1列內容三彩種完全一致
+（同一批 `playTypeId`、同一套後端結構），先前「假設一致但未實測」的缺口已補齊。
 組合型再依 `table=10`（连码／不中／多选中一／特平中）與 `table=0`（过关／六肖／连肖／连尾／合肖／比大小）
 分兩種子變體，但兩個子變體的 UI 欄位名稱相同（皆用「組合占成金額」「共用自留上限」）。
 
-#### 組合型玩法 playTypeId 對照（2026-09-03 由 QAT 香港六合彩 API 回應查得）
+#### 組合型玩法 playTypeId 對照（2026-09-03 由 QAT 香港六合彩 API 回應查得；2026-09-06 逐子項核對＋更正一筆）
 
 | 玩法 | playTypeId | 子項數 |
 | --- | --- | --- |
@@ -96,10 +95,90 @@
 | 合肖 | `comboZodiac2Hit/Miss`～`comboZodiac5Hit/Miss` | 8（二合肖中/不中、三合肖.../四合肖.../五合肖.../不中） |
 | 比大小 | compareBigSmall1v1 ～ compareBigSmall1v6（6個獨立playTypeId） | 6（一比一～一比六） |
 
+⚠️ **2026-09-06 更正**：`连码／二中特` 原記為 `pickTwoBonusHit`，經 network 攔截重新確認為
+**`pickTwoHitBonus`**（順序相反）。上表已是更正後的值；下方「逐子項完整對照」章節同步更新。
+
 ✅ **T39 已於 2026-09-03 完成**：8 個帶子項的玩法共 53 個子項，加上「过关」與「六肖」
 兩個無子項玩法，共 55 個組合型目標。完整 `playTypeId` 已由
 `GET /api/LayOffSetting?gameId=markSix` 的實際回應取得並寫入自動化共用清單；B46／B47／B49／B64
 共用這份清單，不再只測進入玩法時的預設子項。
+
+#### ⭐ 三彩種完整玩法／選項清單（2026-09-06 三彩種逐一 API 實測，非推論）
+
+**結論：25 個分類的 `playTypeId`、選項數、選項內容，英國天天彩／香港六合彩／賓果六合彩
+三者完全相同**——各自對 `gameId=ukLucky7`／`markSix`／`bingo6` 分別發 `GET /api/LayOffSettingDetail`
+逐一分類實測比對，沒有任何一項有差異。三彩種共用同一套後端玩法定義，只有金額（占成、賠率）
+依各自帳號與注單各自計算，玩法結構本身不因彩種而異。
+
+**標準型（15 個，每個彩種皆相同）：**
+
+| 玩法 | playTypeId | 選項數 | 選項內容 |
+| --- | --- | --- | --- |
+| 特码 | `bonusNumber` | 49 | 01～49 號碼 |
+| 正码 | `mainNumber` | 49 | 01～49 號碼 |
+| 正特码 | `positionSingle` | 294（49×6） | 每個號碼 × 6 個位置（正1特～正6特），如 `1-01`～`6-49` |
+| 两面 | `twoWay` | 62 | 6 個位置 ×（大/小/单/双/合数单/合数双）＋特码大小单双，如 `1-big`、`1-digitSumEven` |
+| 生肖中 | `zodiacHit` | 12 | 十二生肖，API 為英文字母序：`dog、dragon、goat、horse、monkey、ox、pig、rabbit、rat、rooster、snake、tiger` |
+| 生肖不中 | `zodiacMiss` | 12 | 同上十二生肖 |
+| 尾数中 | `tailNumberHit` | 10 | 尾數 0～9 |
+| 尾数不中 | `tailNumberMiss` | 10 | 尾數 0～9 |
+| 半波 | `halfColor` | 12 | 紅/藍/綠 × 大/小/单/双，如 `halfColorBlueBig` |
+| 色波 | `color` | 21 | 7 個位置（正1～6特＋特码）× 紅/藍/绿，如 `1-red` |
+| 特肖 | `bonusNumberZodiac` | 12 | 十二生肖 |
+| 七码 | `sevenNumber` | 32 | 单/双/大/小 × 0～7，如 `sevenNumberBig0`～`sevenNumberBig7` |
+| 五行 | `fiveElements` | 5 | `metal`／`wood`／`water`／`fire`／`earth` |
+| 一肖量 | `zodiacCount` | 6 | `zodiacCount2`～`zodiacCount7` |
+| 尾数量 | `tailCount` | 6 | `tailCount2`～`tailCount7` |
+
+**組合型（10 個，7 個有子項選單，共 49 個子項＋2 個 flat 玩法＝55 個組合型目標）：**
+
+| 玩法 | 子項數 | 子項清單（畫面順序） | 每子項選項數 |
+| --- | --- | --- | --- |
+| 连码 | 6 | 二全中、二中特、二特串、三全中、三中二、四全中 | 各 49（號碼） |
+| 连肖 | 8 | 二肖连中、二肖连不中、三肖连中、三肖连不中、四肖连中、四肖连不中、五肖连中、五肖连不中 | 各 12（生肖） |
+| 连尾 | 6 | 二尾连中、二尾连不中、三尾连中、三尾连不中、四尾连中、四尾连不中 | 各 10（尾數） |
+| 不中 | 8 | 五不中、六不中、七不中、八不中、九不中、十不中、十一不中、十二不中 | 各 49（號碼） |
+| 多选中一 | 6 | 五中一、六中一、七中一、八中一、九中一、十中一 | 各 49（號碼） |
+| 特平中 | 5 | 一粒任中、二粒任中、三粒任中、四粒任中、五粒任中 | 各 49（號碼） |
+| 合肖 | 8 | 二合肖中、二合肖不中、三合肖中、三合肖不中、四合肖中、四合肖不中、五合肖中、五合肖不中 | 各 12（生肖） |
+| 比大小 | 6 | 一比一、一比二、一比三、一比四、一比五、一比六 | 各 7（主球位置 1～6＋特码） |
+| 过关（無子項） | — | — | 28（6 個位置 × 大/小/单/双） |
+| 六肖（無子項，兩區塊） | — | — | 24（`hit:`12＋`miss:`12） |
+
+逐子項 `playTypeId` 完整對照：
+
+| 子項 | playTypeId | 子項 | playTypeId |
+| --- | --- | --- | --- |
+| 连码／二全中 | `pickTwoAllHit` | 连尾／三尾连不中 | `chainTail3Miss` |
+| 连码／二中特 | `pickTwoHitBonus` | 连尾／四尾连中 | `chainTail4Hit` |
+| 连码／二特串 | `pickTwoBonusChain` | 连尾／四尾连不中 | `chainTail4Miss` |
+| 连码／三全中 | `pickThreeAllHit` | 不中／五～十二不中 | `miss5`～`miss12` |
+| 连码／三中二 | `pickThreeHitTwo` | 多选中一／五～十中一 | `pickHitOne5`～`pickHitOne10` |
+| 连码／四全中 | `pickFourAllHit` | 特平中／一～五粒任中 | `anyNumberHit1`～`anyNumberHit5` |
+| 连肖／二～五肖连中 | `chainZodiac2Hit`～`chainZodiac5Hit` | 合肖／二～五合肖中 | `comboZodiac2Hit`～`comboZodiac5Hit` |
+| 连肖／二～五肖连不中 | `chainZodiac2Miss`～`chainZodiac5Miss` | 合肖／二～五合肖不中 | `comboZodiac2Miss`～`comboZodiac5Miss` |
+| 连尾／二尾连中 | `chainTail2Hit` | 比大小／一比一～一比六 | `compareBigSmall1v1`～`compareBigSmall1v6` |
+| 连尾／二尾连不中 | `chainTail2Miss` | | |
+| 连尾／三尾连中 | `chainTail3Hit` | | |
+
+> 佐證來源：`需求驗證報告_自動飛單三彩種全玩法逐層驗證_2026-09-06.md`，該輪對三彩種
+> 各自即時 API 掃描全部 25 分類取得，非由單一彩種類推而來。
+
+⚠️⚠️ **生肖類玩法：畫面列順序 ≠ API 回傳順序**（2026-09-05 實測確認，不可用同一組索引）。
+`连肖`／`合肖`／`六肖` 的 K7 表格**畫面**依中文生肖序排列（鼠 牛 虎 兔 龙 蛇 马 羊 猴 鸡 狗 猪），
+但 `GET /api/LayOffSettingDetail` 回傳的 `selection` 是**英文名、且依字母序排列**：
+`dog, dragon, goat, horse, monkey, ox, pig, rabbit, rat, rooster, snake, tiger`
+（`六肖` 為 `hit:` 12 列在前、`miss:` 12 列在後，各自內部同樣是字母序）。
+
+- **勾選「選擇」checkbox → 用畫面索引**（中文生肖位置）。
+- **讀 `actualShareAmount`／驗 `isMarked` → 用 `selection` 名稱比對**，不可用索引。
+
+佐證：六肖下注「羊猴鸡狗猪鼠」後，有正占成的正是 `goat`／`monkey`／`rooster`／`dog`／`pig`／`rat`
+六列；畫面前六列（鼠牛虎兔龙蛇）中只有 `rat` 一列相符。混用索引會讓 17 個生肖類目標
+（连肖8＋合肖8＋六肖1）全部讀到 0 占成而誤判失敗——`tests/xzh/test_system_setting.py`
+的 `_real_combo_selected_names()` 已依此拆成兩套映射。
+⚠️ `过关`（`parlay`）疑似有同一類順序落差（2026-09-05 讀回 `isMarked` 不符，見交接檔本輪紀錄），
+尚未確認其 API 排序規則。
 
 ⚠️⚠️ **共用自留上限的套用對象隨「关连／不关连」完全相反**（暫記疑似缺陷，見 §7.11.7、T38）：
 「关连」時已勾選項拿到設定值、未勾選項強制歸零；「不关连」時**已勾選項反而被強制歸零、
