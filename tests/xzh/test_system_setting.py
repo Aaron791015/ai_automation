@@ -2389,7 +2389,7 @@ def test_lay_off_detail_combo_requires_at_least_one_selection(company_page):
 @pytest.mark.write_action
 @pytest.mark.xfail(
     strict=True,
-    reason="XINZONGHE-004：不关连時共用自留上限的套用對象反向",
+    reason="Snotra-004：不关连時共用自留上限的套用對象反向",
 )
 def test_lay_off_detail_unrelated_shared_cap_keeps_selected_target(company_page):
     """B83：用香港六合彩／过关單點重現 T38，並在 finally 完整還原 API 資料。
@@ -2469,13 +2469,13 @@ def test_lay_off_detail_unrelated_shared_cap_keeps_selected_target(company_page)
                 )
             capture_annotated(
                 page,
-                "docs/新綜合/bugs/shots/XINZONGHE-004_01_不关连時共用上限反向套用.png",
+                "docs/新綜合/bugs/shots/Snotra-004_01_不关连時共用上限反向套用.png",
                 marks=[
                     {"selector": "[data-bug-shot-target='xzh-004-0']", "label": "目前選擇「不关连」"},
                     {"selector": "[data-bug-shot-target='xzh-004-1']", "label": "共用自留上限設為 54321"},
                     {"selector": "[data-bug-shot-target='xzh-004-2']", "label": "此組合已勾選，但 API 讀回 cap=0"},
                 ],
-                note="XINZONGHE-004｜香港六合彩／过关\n"
+                note="Snotra-004｜香港六合彩／过关\n"
                      "关连：已勾選=54321、未勾選=0；不关连：已勾選=0、未勾選=54321。",
                 full_page=False,
             )
@@ -3457,12 +3457,12 @@ def test_lay_off_detail_agent_levels_show_auto_lay_off_column(browser, xzh_qat):
                             try:
                                 capture_annotated(
                                     page,
-                                    "docs/新綜合/bugs/shots/XINZONGHE-002_01_代理層缺少自動飛單欄.png",
+                                    "docs/新綜合/bugs/shots/Snotra-002_01_代理層缺少自動飛單欄.png",
                                     marks=[{
                                         "selector": "[data-bug-shot-target='xzh-002']",
                                         "label": "代理層標準型表頭實際只有3欄，缺少預期的「自动飛單」第4欄。",
                                     }],
-                                    note=f"XINZONGHE-002｜{level}／{game}／{category}\n"
+                                    note=f"Snotra-002｜{level}／{game}／{category}\n"
                                          "實際：未顯示「自动飛單」；預期：代理層應顯示該欄。",
                                     full_page=False,
                                 )

@@ -58,7 +58,7 @@ from bug_paths import ID_PREFIX                   # noqa: E402
 PRODUCTS = {pid: product_base(pid) for pid in _PRODUCT_IDS}
 
 # ⚠️ ID_RE／SHOT_NAME_RE 的前綴**必須包含** `ID_PREFIX` 目前登記的值，不可只寫死 CRUX／WBOT／QX ——
-#    2026-08-26 接「新綜合」（前綴 XINZONGHE）時踩到：上面的 PRODUCTS 已經改成動態讀取，
+#    2026-08-26 接「新綜合」（前綴 Snotra）時踩到：上面的 PRODUCTS 已經改成動態讀取，
 #    但這裡兩個 regex 沒有跟著改，導致新產品的 Bug 單與截圖被 W2「命名不合規」誤報。
 #    是同一份 docstring 警告過的「同一份資訊散在多處，改一處漏一處」，只是換了地方犯。
 #    ⚠️ 但也不能**只**用 `ID_PREFIX`：CRUX／WBOT／QX 是三個原型產品的固定樣板前綴，

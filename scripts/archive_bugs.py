@@ -46,7 +46,7 @@ ARCHIVABLE = ("fixed", "rejected", "superseded")
 REF_DIRS = ("", ARCHIVE_DIR, "_reports", "_handover")
 
 # ⚠️ 前綴**必須包含** `ID_PREFIX` 目前登記的值，不可只寫死 CRUX／WBOT／QX ——
-#    2026-08-26 接「新綜合」（前綴 XINZONGHE）時發現 `lint_bug_assets.py` 犯過同一種寫死，
+#    2026-08-26 接「新綜合」（前綴 Snotra）時發現 `lint_bug_assets.py` 犯過同一種寫死，
 #    順手一併檢查修掉這裡，否則歸檔新產品的單時 DOC_RE／圖片配對會完全掃不到。
 #    ⚠️ 但也與 CRUX／WBOT／QX 取聯集（理由同 `lint_bug_assets.py` 的 `_PREFIXES` 註解）：
 #    這三個是 `tests/tooling/` 通用測資固定寫死的樣板前綴，不論這個 clone 接了哪個產品都要認得。
