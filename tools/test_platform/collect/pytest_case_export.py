@@ -27,6 +27,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import re
 
 # allure 的取值邏輯直接沿用官方 util，避免自己重寫版本相容問題：
 #   · allure.title  → item.obj.__allure_display_name__（★ 屬性，不是 marker）
@@ -315,6 +316,15 @@ def _collect_one(item, rootdir: str) -> dict:
     explicit_evidence = _explicit_evidence_titles(criteria)
     expected = [t for t in criteria if t not in explicit_evidence]
     evidence += [t for t in explicit_evidence if t not in evidence]
+    # 明確宣告的 QA 文件優先；執行附件仍保留為佐證，未宣告者維持既有解析。
+    documented = _documented_case(getattr(getattr(item, "obj", None), "__doc__", None))
+    if documented:
+        preconditions = documented["前置條件"]
+        scope = documented["測試範圍"]
+        steps = documented["步驟"]
+        expected = documented["預期結果"]
+        criteria = expected
+        known_issues = documented.get("已知問題", [])
 
     return {
         "nodeid": item.nodeid,  # 中文原樣（JSON 以 ensure_ascii=False 寫出）
@@ -349,6 +359,28 @@ def _collect_one(item, rootdir: str) -> dict:
         "known_issues": known_issues,
         "has_assert": has_assert,
     }
+
+
+def _documented_case(doc: str | None) -> dict[str, list[str]] | None:
+    """只接受 opt-in 的完整平台案例文件，避免改變既有自由格式 docstring。"""
+    if not doc or not doc.strip().startswith("平台案例："):
+        return None
+    result: dict[str, list[str]] = {}
+    section = None
+    for raw in doc.splitlines()[1:]:
+        line = raw.strip()
+        if line == "實作備註：":
+            break
+        if line in {s + "：" for s in ("前置條件", "測試範圍", "步驟", "預期結果", "已知問題")}:
+            section = line[:-1]
+            result[section] = []
+        elif line and section:
+            result[section].append(re.sub(r"^(?:[-*] |\d+\. )", "", line))
+    if not all(result.get(k) for k in ("前置條件", "測試範圍", "步驟", "預期結果")):
+        raise ValueError("平台案例文件缺少前置條件、測試範圍、步驟或預期結果")
+    if not 2 <= len(result["步驟"]) <= 4:
+        raise ValueError("平台案例步驟需為 2～4 步")
+    return result
 
 
 def pytest_collection_finish(session):
