@@ -1,0 +1,10 @@
+{
+  "batch_id": "example-sub-unset-replace-before-use",
+  "kind": "sub-unset",
+  "game": "bingo6",
+  "panel": "a",
+  "options": ["special-sub", "special-main"],
+  "amount": "1",
+  "max_bets": 2,
+  "max_total": "2"
+}

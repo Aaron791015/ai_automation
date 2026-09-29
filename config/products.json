@@ -26,6 +26,18 @@
       "jira_key": null,
       "handovers": [
         "docs/新綜合/新綜合_驗證交接.md"
+      ],
+      "extra_paths": [
+        "data/xzh",
+        "tests/tooling/test_xzh_gap_coverage.py",
+        "tests/tooling/test_xzh_gap_regression.py",
+        "tests/tooling/test_xzh_gap_row_alignment.py",
+        "tests/tooling/test_xzh_odds_gap_audit.py",
+        "tests/tooling/test_xzh_odds_gap_chain_winner.py",
+        "tests/tooling/test_xzh_odds_gap_oracle.py",
+        "tests/tooling/test_xzh_odds_gap_safety.py",
+        "tests/tooling/test_xzh_platform_gap_cap.py",
+        "tests/tooling/test_xzh_real_combo_batch.py"
       ]
     }
   ],

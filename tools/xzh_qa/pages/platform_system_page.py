@@ -6,6 +6,9 @@
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from decimal import Decimal
+
 from playwright.sync_api import Page, expect
 
 #: 平台層目前實際啟用的 14 個彩種（見 `.claude/skills/xzh/SKILL.md` §1 不變量 #4）。
@@ -21,6 +24,30 @@ XZH_SCOPE_GAMES = ["香港六合彩", "英国天天彩", "宾果六合彩"]
 class PlatformSystemPage:
     def __init__(self, page: Page):
         self.page = page
+
+    def company_odds_gap_cap(self, account: str = "company1", screenshot=None) -> dict:
+        """唯讀指定公司編輯頁的百分比；不改值、不保存、不從剩餘差分反推。"""
+        self.page.get_by_role("menuitem", name="租户管理", exact=True).click()
+        row = self.page.get_by_role("row").filter(
+            has=self.page.get_by_text(account, exact=True))
+        expect(row).to_have_count(1)
+        row.get_by_role("button", name="编辑", exact=True).click()
+        # Element Plus表單的accessible name可能附帶必填／百分比字樣；按實際label容器定位。
+        field = self.page.locator(".el-form-item").filter(
+            has=self.page.get_by_text("赔率差上限", exact=True)).get_by_role("spinbutton")
+        expect(field).to_be_visible(timeout=15000)
+        account_field = self.page.locator(".el-form-item").filter(
+            has=self.page.get_by_text("账号", exact=True)).get_by_role("textbox")
+        expect(account_field).to_have_value(account, timeout=15000)
+        expect(field).not_to_have_value("", timeout=15000)
+        raw = field.input_value()
+        rate = percent_to_rate(raw)
+        if screenshot:
+            self.page.get_by_role("main").screenshot(path=str(screenshot))
+        return {"source": "platform-company-edit", "account": account,
+                "url": self.page.url, "label": "赔率差上限", "unit": "%",
+                "percent": raw, "rate": str(rate),
+                "observed_at": datetime.now(timezone.utc).isoformat()}
 
     # ---- 系統管理 → 全局設置（A5）----
     def goto_global_setting(self) -> None:
@@ -68,3 +95,11 @@ class PlatformSystemPage:
         radio = container.get_by_role("radio", name="启用")
         radio.wait_for(state="visible", timeout=15000)
         return radio.is_checked()
+
+
+def percent_to_rate(raw: str) -> Decimal:
+    """UI百分比必須有明確有限值且介於0～100；空值不得視為零。"""
+    value = Decimal(raw.strip())
+    if not value.is_finite() or not Decimal(0) <= value <= Decimal(100):
+        raise ValueError("赔率差上限百分比必須介於0～100")
+    return value / Decimal(100)

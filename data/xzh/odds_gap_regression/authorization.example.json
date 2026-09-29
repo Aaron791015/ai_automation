@@ -1,0 +1,10 @@
+{
+  "batch_id": "example-authorization-replace-before-use",
+  "kind": "authorization",
+  "game": "bingo6",
+  "panel": "a",
+  "options": ["tail-main"],
+  "amount": "1",
+  "max_bets": 3,
+  "max_total": "3"
+}

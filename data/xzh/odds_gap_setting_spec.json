@@ -1,0 +1,1043 @@
+{
+  "schemaVersion": 1,
+  "version": "2026-09-24-approved-v3",
+  "status": "approved-setting-page-spec",
+  "authority": "Aaron於2026-09-17本次對話提供玩法表、確認三彩種／副欄／七碼與名称對應1～15項，並要求列為正式設定頁規格；2026-09-24 Aaron確認五不中至十二不中不區分本命年，各子玩法改為單一輸入欄，取代原副欄要求；不包含生肖不中",
+  "scope": {
+    "games": {
+      "markSix": "香港六合彩",
+      "ukLucky7": "英國天天彩",
+      "bingo6": "賓果六合彩"
+    },
+    "rowCountPerGame": 101,
+    "mainFieldCountPerGame": 101,
+    "subFieldCountPerGame": 15,
+    "fieldCountPerGame": 116
+  },
+  "ordering": "本檔順序用於完整列舉與索引，未裁定UI必須採相同排序或分組位置",
+  "identifierPolicy": "specRowId為本文件識別碼，不是產品API的playTypeId；實作需另驗證API映射",
+  "namePolicy": "保留產品用字；表列name與nameAliases為已确认對應，副標籤同理",
+  "inputPrecision": {
+    "decimalPlaces": 4,
+    "rounding": null,
+    "excessPrecisionStatus": "pending-confirmation",
+    "authority": "Aaron最新指示：截斷規格需再確認，先列賠率差待確認事項，取代先前向零截斷裁定",
+    "pendingQuestion": "超過四位小數應截斷、四捨五入或拒絕？主副欄是否一致？",
+    "observation": {
+      "input": "-0.12346",
+      "saved": "-0.1235",
+      "verdict": "BLOCKED"
+    },
+    "verification": "保留實測，不以任一捨入方式判PASS或FAIL；還原及其他已定義條件仍獨立核對"
+  },
+  "sevenCode": {
+    "representativeCount": 8,
+    "mapping": "单k＝大k＝双(7-k)＝小(7-k)，k=0..7",
+    "ignoredReferenceDifference": {
+      "values": [
+        "19.04",
+        "19.2"
+      ],
+      "status": "temporarily-excluded-by-Aaron",
+      "effect": "不納入本次驗收判定，不阻擋其他項目，不代表已確認其中任一值正確"
+    }
+  },
+  "remainingValues": "動態計算，原始表數字為參考，沒有帳號鏈／設定／時點與公式來源時不得當全層固定期望",
+  "remainingDisplayPrecision": "Aaron於2026-09-17裁示暫不判定顯示位數及捨入方式，僅以原始值與獨立公式來源驗算剩餘計算；不套用輸入截斷規則",
+  "excludedPlays": [
+    "过关"
+  ],
+  "unresolved": [
+    "文字輸入處理",
+    "空值處理",
+    "超扣處理"
+  ],
+  "implementationStatus": "規格已建立；pytest正式規格接線與新一輪QAT驗收尚未完成",
+  "rows": [
+    {
+      "specRowId": "GAP-001",
+      "group": "基本玩法",
+      "name": "特码A",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-002",
+      "group": "基本玩法",
+      "name": "特码B",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-003",
+      "group": "基本玩法",
+      "name": "正码",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-004",
+      "group": "基本玩法",
+      "name": "正特码A",
+      "nameAliases": [
+        "正1特A"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-005",
+      "group": "基本玩法",
+      "name": "正特码B",
+      "nameAliases": [
+        "正1特B"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-006",
+      "group": "基本玩法",
+      "name": "六肖",
+      "nameAliases": [
+        "特码六肖"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-007",
+      "group": "基本玩法",
+      "name": "两面",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-008",
+      "group": "基本玩法",
+      "name": "特肖",
+      "nameAliases": [
+        "特码生肖"
+      ],
+      "hasSub": true,
+      "subLabel": "马",
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-009",
+      "group": "基本玩法",
+      "name": "五行",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "土",
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-010",
+      "group": "生肖、尾數",
+      "name": "生肖中",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "马",
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-011",
+      "group": "生肖、尾數",
+      "name": "生肖不中",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "马",
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-012",
+      "group": "生肖、尾數",
+      "name": "尾数中",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "0尾",
+      "subLabelAliases": [
+        "0"
+      ]
+    },
+    {
+      "specRowId": "GAP-013",
+      "group": "生肖、尾數",
+      "name": "尾数不中",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "0尾",
+      "subLabelAliases": [
+        "0"
+      ]
+    },
+    {
+      "specRowId": "GAP-014",
+      "group": "連碼",
+      "name": "二全中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-015",
+      "group": "連碼",
+      "name": "二中特",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "中二",
+      "subLabelAliases": [
+        "OTHER"
+      ]
+    },
+    {
+      "specRowId": "GAP-016",
+      "group": "連碼",
+      "name": "二特串",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-017",
+      "group": "連碼",
+      "name": "三全中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-018",
+      "group": "連碼",
+      "name": "三中二",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "中三",
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-019",
+      "group": "連碼",
+      "name": "四全中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-020",
+      "group": "不中",
+      "name": "五不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-021",
+      "group": "不中",
+      "name": "六不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-022",
+      "group": "不中",
+      "name": "七不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-023",
+      "group": "不中",
+      "name": "八不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-024",
+      "group": "不中",
+      "name": "九不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-025",
+      "group": "不中",
+      "name": "十不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-026",
+      "group": "不中",
+      "name": "十一不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-027",
+      "group": "不中",
+      "name": "十二不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-028",
+      "group": "生肖連",
+      "name": "二肖连中",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "马",
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-029",
+      "group": "生肖連",
+      "name": "二肖连不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-030",
+      "group": "生肖連",
+      "name": "三肖连中",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "马",
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-031",
+      "group": "生肖連",
+      "name": "三肖连不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-032",
+      "group": "生肖連",
+      "name": "四肖连中",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "马",
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-033",
+      "group": "生肖連",
+      "name": "四肖连不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-034",
+      "group": "生肖連",
+      "name": "五肖连中",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "马",
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-035",
+      "group": "生肖連",
+      "name": "五肖连不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-036",
+      "group": "尾數連",
+      "name": "二尾连中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-037",
+      "group": "尾數連",
+      "name": "二尾连不中",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "0",
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-038",
+      "group": "尾數連",
+      "name": "三尾连中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-039",
+      "group": "尾數連",
+      "name": "三尾连不中",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "0",
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-040",
+      "group": "尾數連",
+      "name": "四尾连中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-041",
+      "group": "尾數連",
+      "name": "四尾连不中",
+      "nameAliases": [],
+      "hasSub": true,
+      "subLabel": "0",
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-042",
+      "group": "多選中一",
+      "name": "五中一",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-043",
+      "group": "多選中一",
+      "name": "六中一",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-044",
+      "group": "多選中一",
+      "name": "七中一",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-045",
+      "group": "多選中一",
+      "name": "八中一",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-046",
+      "group": "多選中一",
+      "name": "九中一",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-047",
+      "group": "多選中一",
+      "name": "十中一",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-048",
+      "group": "特平中",
+      "name": "一粒任中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-049",
+      "group": "特平中",
+      "name": "二粒任中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-050",
+      "group": "特平中",
+      "name": "三粒任中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-051",
+      "group": "特平中",
+      "name": "四粒任中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-052",
+      "group": "特平中",
+      "name": "五粒任中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-053",
+      "group": "合肖",
+      "name": "二合肖中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-054",
+      "group": "合肖",
+      "name": "二合肖不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-055",
+      "group": "合肖",
+      "name": "三合肖中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-056",
+      "group": "合肖",
+      "name": "三合肖不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-057",
+      "group": "合肖",
+      "name": "四合肖中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-058",
+      "group": "合肖",
+      "name": "四合肖不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-059",
+      "group": "合肖",
+      "name": "五合肖中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-060",
+      "group": "合肖",
+      "name": "五合肖不中",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-061",
+      "group": "七碼",
+      "name": "单0·大0·双7·小7",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": [],
+      "sourceOptions": [
+        "七码单大0",
+        "七码双小7"
+      ]
+    },
+    {
+      "specRowId": "GAP-062",
+      "group": "七碼",
+      "name": "单1·大1·双6·小6",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": [],
+      "sourceOptions": [
+        "七码单大1",
+        "七码双小6"
+      ]
+    },
+    {
+      "specRowId": "GAP-063",
+      "group": "七碼",
+      "name": "单2·大2·双5·小5",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": [],
+      "sourceOptions": [
+        "七码单大2",
+        "七码双小5"
+      ]
+    },
+    {
+      "specRowId": "GAP-064",
+      "group": "七碼",
+      "name": "单3·大3·双4·小4",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": [],
+      "sourceOptions": [
+        "七码单大3",
+        "七码双小4"
+      ]
+    },
+    {
+      "specRowId": "GAP-065",
+      "group": "七碼",
+      "name": "单4·大4·双3·小3",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": [],
+      "sourceOptions": [
+        "七码单大4",
+        "七码双小3"
+      ]
+    },
+    {
+      "specRowId": "GAP-066",
+      "group": "七碼",
+      "name": "单5·大5·双2·小2",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": [],
+      "sourceOptions": [
+        "七码单大5",
+        "七码双小2"
+      ]
+    },
+    {
+      "specRowId": "GAP-067",
+      "group": "七碼",
+      "name": "单6·大6·双1·小1",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": [],
+      "sourceOptions": [
+        "七码单大6",
+        "七码双小1"
+      ]
+    },
+    {
+      "specRowId": "GAP-068",
+      "group": "七碼",
+      "name": "单7·大7·双0·小0",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": [],
+      "sourceOptions": [
+        "七码单大7",
+        "七码双小0"
+      ]
+    },
+    {
+      "specRowId": "GAP-069",
+      "group": "一肖量",
+      "name": "肖2",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-070",
+      "group": "一肖量",
+      "name": "肖3",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-071",
+      "group": "一肖量",
+      "name": "肖4",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-072",
+      "group": "一肖量",
+      "name": "肖5",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-073",
+      "group": "一肖量",
+      "name": "肖6",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-074",
+      "group": "一肖量",
+      "name": "肖7",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-075",
+      "group": "尾數量",
+      "name": "尾2",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-076",
+      "group": "尾數量",
+      "name": "尾3",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-077",
+      "group": "尾數量",
+      "name": "尾4",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-078",
+      "group": "尾數量",
+      "name": "尾5",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-079",
+      "group": "尾數量",
+      "name": "尾6",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-080",
+      "group": "尾數量",
+      "name": "尾7",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-081",
+      "group": "比大小",
+      "name": "一比一",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-082",
+      "group": "比大小",
+      "name": "一比二",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-083",
+      "group": "比大小",
+      "name": "一比三",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-084",
+      "group": "比大小",
+      "name": "一比四",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-085",
+      "group": "比大小",
+      "name": "一比五",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-086",
+      "group": "比大小",
+      "name": "一比六",
+      "nameAliases": [],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-087",
+      "group": "特碼半波與顏色",
+      "name": "红单",
+      "nameAliases": [
+        "红色：特码半波单双单"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-088",
+      "group": "特碼半波與顏色",
+      "name": "红双",
+      "nameAliases": [
+        "红色：特码半波单双双"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-089",
+      "group": "特碼半波與顏色",
+      "name": "红大",
+      "nameAliases": [
+        "红色：特码半波大小大"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-090",
+      "group": "特碼半波與顏色",
+      "name": "红小",
+      "nameAliases": [
+        "红色：特码半波大小小"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-091",
+      "group": "特碼半波與顏色",
+      "name": "红波",
+      "nameAliases": [
+        "红色：特码颜色"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-092",
+      "group": "特碼半波與顏色",
+      "name": "蓝单",
+      "nameAliases": [
+        "蓝色：特码半波单双单"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-093",
+      "group": "特碼半波與顏色",
+      "name": "蓝双",
+      "nameAliases": [
+        "蓝色：特码半波单双双"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-094",
+      "group": "特碼半波與顏色",
+      "name": "蓝大",
+      "nameAliases": [
+        "蓝色：特码半波大小大"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-095",
+      "group": "特碼半波與顏色",
+      "name": "蓝小",
+      "nameAliases": [
+        "蓝色：特码半波大小小"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-096",
+      "group": "特碼半波與顏色",
+      "name": "蓝波",
+      "nameAliases": [
+        "蓝色：特码颜色"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-097",
+      "group": "特碼半波與顏色",
+      "name": "绿单",
+      "nameAliases": [
+        "绿色：特码半波单双单"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-098",
+      "group": "特碼半波與顏色",
+      "name": "绿双",
+      "nameAliases": [
+        "绿色：特码半波单双双"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-099",
+      "group": "特碼半波與顏色",
+      "name": "绿大",
+      "nameAliases": [
+        "绿色：特码半波大小大"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-100",
+      "group": "特碼半波與顏色",
+      "name": "绿小",
+      "nameAliases": [
+        "绿色：特码半波大小小"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    },
+    {
+      "specRowId": "GAP-101",
+      "group": "特碼半波與顏色",
+      "name": "绿波",
+      "nameAliases": [
+        "绿色：特码颜色"
+      ],
+      "hasSub": false,
+      "subLabel": null,
+      "subLabelAliases": []
+    }
+  ]
+}

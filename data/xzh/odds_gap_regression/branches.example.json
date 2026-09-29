@@ -1,0 +1,10 @@
+{
+  "batch_id": "example-branches-replace-before-use",
+  "kind": "branches",
+  "game": "bingo6",
+  "panel": "a",
+  "options": ["tail-main", "tail-sub"],
+  "amount": "1",
+  "max_bets": 2,
+  "max_total": "2"
+}

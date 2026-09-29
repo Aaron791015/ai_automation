@@ -1,0 +1,2139 @@
+{
+  "_說明": "新綜合賠率差分「設定列」清單。來源＝2026-09-15 三彩種一級代理實測快照（scratchpad/remaining-direct-20260915-111851），屬回歸基準，不是已核准的規格。與現況不符時先判缺陷／開單，確認為規格變更後才更新本檔並註明依據（誰、何時、在哪說的）。",
+  "_版本": "2026-09-15-snapshot",
+  "_依據": [
+    "docs/新綜合/新綜合_賠率差公式.md",
+    "docs/新綜合/新綜合_UI元素對照.md §2"
+  ],
+  "_規則": {
+    "sub_column": "副欄是否存在依 subOddsLabel 與實際 DOM 核對，不可用 subOddsGap != null 判定。",
+    "no_parlay": "過關不支援賠率差，不應出現在設定頁（Aaron 2026-09-09 裁定）。",
+    "seven_code": "七碼僅 8 個代表葉（单0～单7）；单k＝大k＝双(7−k)＝小(7−k)，每個代表值同步寫入對應 4 葉。",
+    "known_gap": "Snotra-007：「两面」（twoWay）於 2026-09-14 自環境消失，本快照已不含該列；是否為預期調整待確認，不得據本檔宣稱完整性已核准。"
+  },
+  "_彩種名稱": {
+    "markSix": "香港六合彩",
+    "ukLucky7": "英国天天彩",
+    "bingo6": "宾果六合彩"
+  },
+  "games": {
+    "markSix": {
+      "rowCount": 100,
+      "columnCount": 115,
+      "rows": [
+        {
+          "playTypeId": "bonusNumberA",
+          "playTypeName": "特码A",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 1
+        },
+        {
+          "playTypeId": "bonusNumberB",
+          "playTypeName": "特码B",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 2
+        },
+        {
+          "playTypeId": "mainNumber",
+          "playTypeName": "正码",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 3
+        },
+        {
+          "playTypeId": "positionSingleA",
+          "playTypeName": "正特码A",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 5
+        },
+        {
+          "playTypeId": "positionSingleB",
+          "playTypeName": "正特码B",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 6
+        },
+        {
+          "playTypeId": "pickTwoAllHit",
+          "playTypeName": "二全中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 16
+        },
+        {
+          "playTypeId": "pickTwoHitBonus",
+          "playTypeName": "二中特",
+          "subOddsLabel": "中二",
+          "hasSub": true,
+          "displayOrder": 17
+        },
+        {
+          "playTypeId": "pickTwoBonusChain",
+          "playTypeName": "二特串",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 18
+        },
+        {
+          "playTypeId": "pickThreeAllHit",
+          "playTypeName": "三全中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 20
+        },
+        {
+          "playTypeId": "pickThreeHitTwo",
+          "playTypeName": "三中二",
+          "subOddsLabel": "中三",
+          "hasSub": true,
+          "displayOrder": 21
+        },
+        {
+          "playTypeId": "pickFourAllHit",
+          "playTypeName": "四全中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 23
+        },
+        {
+          "playTypeId": "zodiacHit",
+          "playTypeName": "生肖中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 26
+        },
+        {
+          "playTypeId": "zodiacMiss",
+          "playTypeName": "生肖不中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 27
+        },
+        {
+          "playTypeId": "tailNumberHit",
+          "playTypeName": "尾数中",
+          "subOddsLabel": "0尾",
+          "hasSub": true,
+          "displayOrder": 29
+        },
+        {
+          "playTypeId": "tailNumberMiss",
+          "playTypeName": "尾数不中",
+          "subOddsLabel": "0尾",
+          "hasSub": true,
+          "displayOrder": 30
+        },
+        {
+          "playTypeId": "halfColorRedBig",
+          "playTypeName": "红大",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 32
+        },
+        {
+          "playTypeId": "halfColorRedSmall",
+          "playTypeName": "红小",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 33
+        },
+        {
+          "playTypeId": "halfColorRedOdd",
+          "playTypeName": "红单",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 34
+        },
+        {
+          "playTypeId": "halfColorRedEven",
+          "playTypeName": "红双",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 35
+        },
+        {
+          "playTypeId": "halfColorBlueBig",
+          "playTypeName": "蓝大",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 36
+        },
+        {
+          "playTypeId": "halfColorBlueSmall",
+          "playTypeName": "蓝小",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 37
+        },
+        {
+          "playTypeId": "halfColorBlueOdd",
+          "playTypeName": "蓝单",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 38
+        },
+        {
+          "playTypeId": "halfColorBlueEven",
+          "playTypeName": "蓝双",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 39
+        },
+        {
+          "playTypeId": "halfColorGreenBig",
+          "playTypeName": "绿大",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 40
+        },
+        {
+          "playTypeId": "halfColorGreenSmall",
+          "playTypeName": "绿小",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 41
+        },
+        {
+          "playTypeId": "halfColorGreenOdd",
+          "playTypeName": "绿单",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 42
+        },
+        {
+          "playTypeId": "halfColorGreenEven",
+          "playTypeName": "绿双",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 43
+        },
+        {
+          "playTypeId": "sixZodiac",
+          "playTypeName": "六肖",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 44
+        },
+        {
+          "playTypeId": "colorRed",
+          "playTypeName": "红波",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 46
+        },
+        {
+          "playTypeId": "colorBlue",
+          "playTypeName": "蓝波",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 47
+        },
+        {
+          "playTypeId": "colorGreen",
+          "playTypeName": "绿波",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 48
+        },
+        {
+          "playTypeId": "bonusNumberZodiac",
+          "playTypeName": "特肖",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 49
+        },
+        {
+          "playTypeId": "chainZodiac2Hit",
+          "playTypeName": "二肖连中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 52
+        },
+        {
+          "playTypeId": "chainZodiac2Miss",
+          "playTypeName": "二肖连不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 53
+        },
+        {
+          "playTypeId": "chainZodiac3Hit",
+          "playTypeName": "三肖连中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 55
+        },
+        {
+          "playTypeId": "chainZodiac3Miss",
+          "playTypeName": "三肖连不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 56
+        },
+        {
+          "playTypeId": "chainZodiac4Hit",
+          "playTypeName": "四肖连中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 58
+        },
+        {
+          "playTypeId": "chainZodiac4Miss",
+          "playTypeName": "四肖连不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 59
+        },
+        {
+          "playTypeId": "chainZodiac5Hit",
+          "playTypeName": "五肖连中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 61
+        },
+        {
+          "playTypeId": "chainZodiac5Miss",
+          "playTypeName": "五肖连不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 62
+        },
+        {
+          "playTypeId": "chainTail2Hit",
+          "playTypeName": "二尾连中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 65
+        },
+        {
+          "playTypeId": "chainTail2Miss",
+          "playTypeName": "二尾连不中",
+          "subOddsLabel": "0",
+          "hasSub": true,
+          "displayOrder": 66
+        },
+        {
+          "playTypeId": "chainTail3Hit",
+          "playTypeName": "三尾连中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 68
+        },
+        {
+          "playTypeId": "chainTail3Miss",
+          "playTypeName": "三尾连不中",
+          "subOddsLabel": "0",
+          "hasSub": true,
+          "displayOrder": 69
+        },
+        {
+          "playTypeId": "chainTail4Hit",
+          "playTypeName": "四尾连中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 71
+        },
+        {
+          "playTypeId": "chainTail4Miss",
+          "playTypeName": "四尾连不中",
+          "subOddsLabel": "0",
+          "hasSub": true,
+          "displayOrder": 72
+        },
+        {
+          "playTypeId": "miss5",
+          "playTypeName": "五不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 74
+        },
+        {
+          "playTypeId": "miss6",
+          "playTypeName": "六不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 75
+        },
+        {
+          "playTypeId": "miss7",
+          "playTypeName": "七不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 76
+        },
+        {
+          "playTypeId": "miss8",
+          "playTypeName": "八不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 77
+        },
+        {
+          "playTypeId": "miss9",
+          "playTypeName": "九不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 78
+        },
+        {
+          "playTypeId": "miss10",
+          "playTypeName": "十不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 79
+        },
+        {
+          "playTypeId": "miss11",
+          "playTypeName": "十一不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 80
+        },
+        {
+          "playTypeId": "miss12",
+          "playTypeName": "十二不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 81
+        },
+        {
+          "playTypeId": "pickHitOne5",
+          "playTypeName": "五中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 83
+        },
+        {
+          "playTypeId": "pickHitOne6",
+          "playTypeName": "六中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 84
+        },
+        {
+          "playTypeId": "pickHitOne7",
+          "playTypeName": "七中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 85
+        },
+        {
+          "playTypeId": "pickHitOne8",
+          "playTypeName": "八中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 86
+        },
+        {
+          "playTypeId": "pickHitOne9",
+          "playTypeName": "九中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 87
+        },
+        {
+          "playTypeId": "pickHitOne10",
+          "playTypeName": "十中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 88
+        },
+        {
+          "playTypeId": "anyNumberHit1",
+          "playTypeName": "一粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 90
+        },
+        {
+          "playTypeId": "anyNumberHit2",
+          "playTypeName": "二粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 91
+        },
+        {
+          "playTypeId": "anyNumberHit3",
+          "playTypeName": "三粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 92
+        },
+        {
+          "playTypeId": "anyNumberHit4",
+          "playTypeName": "四粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 93
+        },
+        {
+          "playTypeId": "anyNumberHit5",
+          "playTypeName": "五粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 94
+        },
+        {
+          "playTypeId": "comboZodiac2Hit",
+          "playTypeName": "二合肖中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 97
+        },
+        {
+          "playTypeId": "comboZodiac2Miss",
+          "playTypeName": "二合肖不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 98
+        },
+        {
+          "playTypeId": "comboZodiac3Hit",
+          "playTypeName": "三合肖中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 100
+        },
+        {
+          "playTypeId": "comboZodiac3Miss",
+          "playTypeName": "三合肖不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 101
+        },
+        {
+          "playTypeId": "comboZodiac4Hit",
+          "playTypeName": "四合肖中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 103
+        },
+        {
+          "playTypeId": "comboZodiac4Miss",
+          "playTypeName": "四合肖不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 104
+        },
+        {
+          "playTypeId": "comboZodiac5Hit",
+          "playTypeName": "五合肖中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 106
+        },
+        {
+          "playTypeId": "comboZodiac5Miss",
+          "playTypeName": "五合肖不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 107
+        },
+        {
+          "playTypeId": "sevenNumberOdd0",
+          "playTypeName": "单0·大0·双7·小7",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 109
+        },
+        {
+          "playTypeId": "sevenNumberOdd1",
+          "playTypeName": "单1·大1·双6·小6",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 110
+        },
+        {
+          "playTypeId": "sevenNumberOdd2",
+          "playTypeName": "单2·大2·双5·小5",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 111
+        },
+        {
+          "playTypeId": "sevenNumberOdd3",
+          "playTypeName": "单3·大3·双4·小4",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 112
+        },
+        {
+          "playTypeId": "sevenNumberOdd4",
+          "playTypeName": "单4·大4·双3·小3",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 113
+        },
+        {
+          "playTypeId": "sevenNumberOdd5",
+          "playTypeName": "单5·大5·双2·小2",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 114
+        },
+        {
+          "playTypeId": "sevenNumberOdd6",
+          "playTypeName": "单6·大6·双1·小1",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 115
+        },
+        {
+          "playTypeId": "sevenNumberOdd7",
+          "playTypeName": "单7·大7·双0·小0",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 116
+        },
+        {
+          "playTypeId": "fiveElements",
+          "playTypeName": "五行",
+          "subOddsLabel": "土",
+          "hasSub": true,
+          "displayOrder": 141
+        },
+        {
+          "playTypeId": "zodiacCount2",
+          "playTypeName": "肖2",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 143
+        },
+        {
+          "playTypeId": "zodiacCount3",
+          "playTypeName": "肖3",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 144
+        },
+        {
+          "playTypeId": "zodiacCount4",
+          "playTypeName": "肖4",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 145
+        },
+        {
+          "playTypeId": "zodiacCount5",
+          "playTypeName": "肖5",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 146
+        },
+        {
+          "playTypeId": "zodiacCount6",
+          "playTypeName": "肖6",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 147
+        },
+        {
+          "playTypeId": "zodiacCount7",
+          "playTypeName": "肖7",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 148
+        },
+        {
+          "playTypeId": "tailCount2",
+          "playTypeName": "尾2",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 150
+        },
+        {
+          "playTypeId": "tailCount3",
+          "playTypeName": "尾3",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 151
+        },
+        {
+          "playTypeId": "tailCount4",
+          "playTypeName": "尾4",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 152
+        },
+        {
+          "playTypeId": "tailCount5",
+          "playTypeName": "尾5",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 153
+        },
+        {
+          "playTypeId": "tailCount6",
+          "playTypeName": "尾6",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 154
+        },
+        {
+          "playTypeId": "tailCount7",
+          "playTypeName": "尾7",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 155
+        },
+        {
+          "playTypeId": "compareBigSmall1v1",
+          "playTypeName": "一比一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 157
+        },
+        {
+          "playTypeId": "compareBigSmall1v2",
+          "playTypeName": "一比二",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 158
+        },
+        {
+          "playTypeId": "compareBigSmall1v3",
+          "playTypeName": "一比三",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 159
+        },
+        {
+          "playTypeId": "compareBigSmall1v4",
+          "playTypeName": "一比四",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 160
+        },
+        {
+          "playTypeId": "compareBigSmall1v5",
+          "playTypeName": "一比五",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 161
+        },
+        {
+          "playTypeId": "compareBigSmall1v6",
+          "playTypeName": "一比六",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 162
+        }
+      ]
+    },
+    "ukLucky7": {
+      "rowCount": 100,
+      "columnCount": 115,
+      "rows": [
+        {
+          "playTypeId": "bonusNumberA",
+          "playTypeName": "特码A",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 1
+        },
+        {
+          "playTypeId": "bonusNumberB",
+          "playTypeName": "特码B",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 2
+        },
+        {
+          "playTypeId": "mainNumber",
+          "playTypeName": "正码",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 3
+        },
+        {
+          "playTypeId": "positionSingleA",
+          "playTypeName": "正特码A",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 5
+        },
+        {
+          "playTypeId": "positionSingleB",
+          "playTypeName": "正特码B",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 6
+        },
+        {
+          "playTypeId": "pickTwoAllHit",
+          "playTypeName": "二全中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 16
+        },
+        {
+          "playTypeId": "pickTwoHitBonus",
+          "playTypeName": "二中特",
+          "subOddsLabel": "中二",
+          "hasSub": true,
+          "displayOrder": 17
+        },
+        {
+          "playTypeId": "pickTwoBonusChain",
+          "playTypeName": "二特串",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 18
+        },
+        {
+          "playTypeId": "pickThreeAllHit",
+          "playTypeName": "三全中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 20
+        },
+        {
+          "playTypeId": "pickThreeHitTwo",
+          "playTypeName": "三中二",
+          "subOddsLabel": "中三",
+          "hasSub": true,
+          "displayOrder": 21
+        },
+        {
+          "playTypeId": "pickFourAllHit",
+          "playTypeName": "四全中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 23
+        },
+        {
+          "playTypeId": "zodiacHit",
+          "playTypeName": "生肖中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 26
+        },
+        {
+          "playTypeId": "zodiacMiss",
+          "playTypeName": "生肖不中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 27
+        },
+        {
+          "playTypeId": "tailNumberHit",
+          "playTypeName": "尾数中",
+          "subOddsLabel": "0尾",
+          "hasSub": true,
+          "displayOrder": 29
+        },
+        {
+          "playTypeId": "tailNumberMiss",
+          "playTypeName": "尾数不中",
+          "subOddsLabel": "0尾",
+          "hasSub": true,
+          "displayOrder": 30
+        },
+        {
+          "playTypeId": "halfColorRedBig",
+          "playTypeName": "红大",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 32
+        },
+        {
+          "playTypeId": "halfColorRedSmall",
+          "playTypeName": "红小",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 33
+        },
+        {
+          "playTypeId": "halfColorRedOdd",
+          "playTypeName": "红单",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 34
+        },
+        {
+          "playTypeId": "halfColorRedEven",
+          "playTypeName": "红双",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 35
+        },
+        {
+          "playTypeId": "halfColorBlueBig",
+          "playTypeName": "蓝大",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 36
+        },
+        {
+          "playTypeId": "halfColorBlueSmall",
+          "playTypeName": "蓝小",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 37
+        },
+        {
+          "playTypeId": "halfColorBlueOdd",
+          "playTypeName": "蓝单",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 38
+        },
+        {
+          "playTypeId": "halfColorBlueEven",
+          "playTypeName": "蓝双",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 39
+        },
+        {
+          "playTypeId": "halfColorGreenBig",
+          "playTypeName": "绿大",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 40
+        },
+        {
+          "playTypeId": "halfColorGreenSmall",
+          "playTypeName": "绿小",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 41
+        },
+        {
+          "playTypeId": "halfColorGreenOdd",
+          "playTypeName": "绿单",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 42
+        },
+        {
+          "playTypeId": "halfColorGreenEven",
+          "playTypeName": "绿双",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 43
+        },
+        {
+          "playTypeId": "sixZodiac",
+          "playTypeName": "六肖",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 44
+        },
+        {
+          "playTypeId": "colorRed",
+          "playTypeName": "红波",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 46
+        },
+        {
+          "playTypeId": "colorBlue",
+          "playTypeName": "蓝波",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 47
+        },
+        {
+          "playTypeId": "colorGreen",
+          "playTypeName": "绿波",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 48
+        },
+        {
+          "playTypeId": "bonusNumberZodiac",
+          "playTypeName": "特肖",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 49
+        },
+        {
+          "playTypeId": "chainZodiac2Hit",
+          "playTypeName": "二肖连中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 52
+        },
+        {
+          "playTypeId": "chainZodiac2Miss",
+          "playTypeName": "二肖连不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 53
+        },
+        {
+          "playTypeId": "chainZodiac3Hit",
+          "playTypeName": "三肖连中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 55
+        },
+        {
+          "playTypeId": "chainZodiac3Miss",
+          "playTypeName": "三肖连不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 56
+        },
+        {
+          "playTypeId": "chainZodiac4Hit",
+          "playTypeName": "四肖连中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 58
+        },
+        {
+          "playTypeId": "chainZodiac4Miss",
+          "playTypeName": "四肖连不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 59
+        },
+        {
+          "playTypeId": "chainZodiac5Hit",
+          "playTypeName": "五肖连中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 61
+        },
+        {
+          "playTypeId": "chainZodiac5Miss",
+          "playTypeName": "五肖连不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 62
+        },
+        {
+          "playTypeId": "chainTail2Hit",
+          "playTypeName": "二尾连中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 65
+        },
+        {
+          "playTypeId": "chainTail2Miss",
+          "playTypeName": "二尾连不中",
+          "subOddsLabel": "0",
+          "hasSub": true,
+          "displayOrder": 66
+        },
+        {
+          "playTypeId": "chainTail3Hit",
+          "playTypeName": "三尾连中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 68
+        },
+        {
+          "playTypeId": "chainTail3Miss",
+          "playTypeName": "三尾连不中",
+          "subOddsLabel": "0",
+          "hasSub": true,
+          "displayOrder": 69
+        },
+        {
+          "playTypeId": "chainTail4Hit",
+          "playTypeName": "四尾连中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 71
+        },
+        {
+          "playTypeId": "chainTail4Miss",
+          "playTypeName": "四尾连不中",
+          "subOddsLabel": "0",
+          "hasSub": true,
+          "displayOrder": 72
+        },
+        {
+          "playTypeId": "miss5",
+          "playTypeName": "五不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 74
+        },
+        {
+          "playTypeId": "miss6",
+          "playTypeName": "六不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 75
+        },
+        {
+          "playTypeId": "miss7",
+          "playTypeName": "七不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 76
+        },
+        {
+          "playTypeId": "miss8",
+          "playTypeName": "八不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 77
+        },
+        {
+          "playTypeId": "miss9",
+          "playTypeName": "九不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 78
+        },
+        {
+          "playTypeId": "miss10",
+          "playTypeName": "十不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 79
+        },
+        {
+          "playTypeId": "miss11",
+          "playTypeName": "十一不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 80
+        },
+        {
+          "playTypeId": "miss12",
+          "playTypeName": "十二不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 81
+        },
+        {
+          "playTypeId": "pickHitOne5",
+          "playTypeName": "五中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 83
+        },
+        {
+          "playTypeId": "pickHitOne6",
+          "playTypeName": "六中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 84
+        },
+        {
+          "playTypeId": "pickHitOne7",
+          "playTypeName": "七中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 85
+        },
+        {
+          "playTypeId": "pickHitOne8",
+          "playTypeName": "八中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 86
+        },
+        {
+          "playTypeId": "pickHitOne9",
+          "playTypeName": "九中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 87
+        },
+        {
+          "playTypeId": "pickHitOne10",
+          "playTypeName": "十中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 88
+        },
+        {
+          "playTypeId": "anyNumberHit1",
+          "playTypeName": "一粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 90
+        },
+        {
+          "playTypeId": "anyNumberHit2",
+          "playTypeName": "二粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 91
+        },
+        {
+          "playTypeId": "anyNumberHit3",
+          "playTypeName": "三粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 92
+        },
+        {
+          "playTypeId": "anyNumberHit4",
+          "playTypeName": "四粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 93
+        },
+        {
+          "playTypeId": "anyNumberHit5",
+          "playTypeName": "五粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 94
+        },
+        {
+          "playTypeId": "comboZodiac2Hit",
+          "playTypeName": "二合肖中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 97
+        },
+        {
+          "playTypeId": "comboZodiac2Miss",
+          "playTypeName": "二合肖不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 98
+        },
+        {
+          "playTypeId": "comboZodiac3Hit",
+          "playTypeName": "三合肖中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 100
+        },
+        {
+          "playTypeId": "comboZodiac3Miss",
+          "playTypeName": "三合肖不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 101
+        },
+        {
+          "playTypeId": "comboZodiac4Hit",
+          "playTypeName": "四合肖中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 103
+        },
+        {
+          "playTypeId": "comboZodiac4Miss",
+          "playTypeName": "四合肖不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 104
+        },
+        {
+          "playTypeId": "comboZodiac5Hit",
+          "playTypeName": "五合肖中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 106
+        },
+        {
+          "playTypeId": "comboZodiac5Miss",
+          "playTypeName": "五合肖不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 107
+        },
+        {
+          "playTypeId": "sevenNumberOdd0",
+          "playTypeName": "单0·大0·双7·小7",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 109
+        },
+        {
+          "playTypeId": "sevenNumberOdd1",
+          "playTypeName": "单1·大1·双6·小6",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 110
+        },
+        {
+          "playTypeId": "sevenNumberOdd2",
+          "playTypeName": "单2·大2·双5·小5",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 111
+        },
+        {
+          "playTypeId": "sevenNumberOdd3",
+          "playTypeName": "单3·大3·双4·小4",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 112
+        },
+        {
+          "playTypeId": "sevenNumberOdd4",
+          "playTypeName": "单4·大4·双3·小3",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 113
+        },
+        {
+          "playTypeId": "sevenNumberOdd5",
+          "playTypeName": "单5·大5·双2·小2",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 114
+        },
+        {
+          "playTypeId": "sevenNumberOdd6",
+          "playTypeName": "单6·大6·双1·小1",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 115
+        },
+        {
+          "playTypeId": "sevenNumberOdd7",
+          "playTypeName": "单7·大7·双0·小0",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 116
+        },
+        {
+          "playTypeId": "fiveElements",
+          "playTypeName": "五行",
+          "subOddsLabel": "土",
+          "hasSub": true,
+          "displayOrder": 141
+        },
+        {
+          "playTypeId": "zodiacCount2",
+          "playTypeName": "肖2",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 143
+        },
+        {
+          "playTypeId": "zodiacCount3",
+          "playTypeName": "肖3",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 144
+        },
+        {
+          "playTypeId": "zodiacCount4",
+          "playTypeName": "肖4",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 145
+        },
+        {
+          "playTypeId": "zodiacCount5",
+          "playTypeName": "肖5",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 146
+        },
+        {
+          "playTypeId": "zodiacCount6",
+          "playTypeName": "肖6",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 147
+        },
+        {
+          "playTypeId": "zodiacCount7",
+          "playTypeName": "肖7",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 148
+        },
+        {
+          "playTypeId": "tailCount2",
+          "playTypeName": "尾2",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 150
+        },
+        {
+          "playTypeId": "tailCount3",
+          "playTypeName": "尾3",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 151
+        },
+        {
+          "playTypeId": "tailCount4",
+          "playTypeName": "尾4",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 152
+        },
+        {
+          "playTypeId": "tailCount5",
+          "playTypeName": "尾5",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 153
+        },
+        {
+          "playTypeId": "tailCount6",
+          "playTypeName": "尾6",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 154
+        },
+        {
+          "playTypeId": "tailCount7",
+          "playTypeName": "尾7",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 155
+        },
+        {
+          "playTypeId": "compareBigSmall1v1",
+          "playTypeName": "一比一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 157
+        },
+        {
+          "playTypeId": "compareBigSmall1v2",
+          "playTypeName": "一比二",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 158
+        },
+        {
+          "playTypeId": "compareBigSmall1v3",
+          "playTypeName": "一比三",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 159
+        },
+        {
+          "playTypeId": "compareBigSmall1v4",
+          "playTypeName": "一比四",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 160
+        },
+        {
+          "playTypeId": "compareBigSmall1v5",
+          "playTypeName": "一比五",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 161
+        },
+        {
+          "playTypeId": "compareBigSmall1v6",
+          "playTypeName": "一比六",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 162
+        }
+      ]
+    },
+    "bingo6": {
+      "rowCount": 100,
+      "columnCount": 115,
+      "rows": [
+        {
+          "playTypeId": "bonusNumberA",
+          "playTypeName": "特码A",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 1
+        },
+        {
+          "playTypeId": "bonusNumberB",
+          "playTypeName": "特码B",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 2
+        },
+        {
+          "playTypeId": "mainNumber",
+          "playTypeName": "正码",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 3
+        },
+        {
+          "playTypeId": "positionSingleA",
+          "playTypeName": "正特码A",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 5
+        },
+        {
+          "playTypeId": "positionSingleB",
+          "playTypeName": "正特码B",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 6
+        },
+        {
+          "playTypeId": "pickTwoAllHit",
+          "playTypeName": "二全中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 16
+        },
+        {
+          "playTypeId": "pickTwoHitBonus",
+          "playTypeName": "二中特",
+          "subOddsLabel": "中二",
+          "hasSub": true,
+          "displayOrder": 17
+        },
+        {
+          "playTypeId": "pickTwoBonusChain",
+          "playTypeName": "二特串",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 18
+        },
+        {
+          "playTypeId": "pickThreeAllHit",
+          "playTypeName": "三全中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 20
+        },
+        {
+          "playTypeId": "pickThreeHitTwo",
+          "playTypeName": "三中二",
+          "subOddsLabel": "中三",
+          "hasSub": true,
+          "displayOrder": 21
+        },
+        {
+          "playTypeId": "pickFourAllHit",
+          "playTypeName": "四全中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 23
+        },
+        {
+          "playTypeId": "zodiacHit",
+          "playTypeName": "生肖中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 26
+        },
+        {
+          "playTypeId": "zodiacMiss",
+          "playTypeName": "生肖不中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 27
+        },
+        {
+          "playTypeId": "tailNumberHit",
+          "playTypeName": "尾数中",
+          "subOddsLabel": "0尾",
+          "hasSub": true,
+          "displayOrder": 29
+        },
+        {
+          "playTypeId": "tailNumberMiss",
+          "playTypeName": "尾数不中",
+          "subOddsLabel": "0尾",
+          "hasSub": true,
+          "displayOrder": 30
+        },
+        {
+          "playTypeId": "halfColorRedBig",
+          "playTypeName": "红大",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 32
+        },
+        {
+          "playTypeId": "halfColorRedSmall",
+          "playTypeName": "红小",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 33
+        },
+        {
+          "playTypeId": "halfColorRedOdd",
+          "playTypeName": "红单",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 34
+        },
+        {
+          "playTypeId": "halfColorRedEven",
+          "playTypeName": "红双",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 35
+        },
+        {
+          "playTypeId": "halfColorBlueBig",
+          "playTypeName": "蓝大",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 36
+        },
+        {
+          "playTypeId": "halfColorBlueSmall",
+          "playTypeName": "蓝小",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 37
+        },
+        {
+          "playTypeId": "halfColorBlueOdd",
+          "playTypeName": "蓝单",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 38
+        },
+        {
+          "playTypeId": "halfColorBlueEven",
+          "playTypeName": "蓝双",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 39
+        },
+        {
+          "playTypeId": "halfColorGreenBig",
+          "playTypeName": "绿大",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 40
+        },
+        {
+          "playTypeId": "halfColorGreenSmall",
+          "playTypeName": "绿小",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 41
+        },
+        {
+          "playTypeId": "halfColorGreenOdd",
+          "playTypeName": "绿单",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 42
+        },
+        {
+          "playTypeId": "halfColorGreenEven",
+          "playTypeName": "绿双",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 43
+        },
+        {
+          "playTypeId": "sixZodiac",
+          "playTypeName": "六肖",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 44
+        },
+        {
+          "playTypeId": "colorRed",
+          "playTypeName": "红波",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 46
+        },
+        {
+          "playTypeId": "colorBlue",
+          "playTypeName": "蓝波",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 47
+        },
+        {
+          "playTypeId": "colorGreen",
+          "playTypeName": "绿波",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 48
+        },
+        {
+          "playTypeId": "bonusNumberZodiac",
+          "playTypeName": "特肖",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 49
+        },
+        {
+          "playTypeId": "chainZodiac2Hit",
+          "playTypeName": "二肖连中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 52
+        },
+        {
+          "playTypeId": "chainZodiac2Miss",
+          "playTypeName": "二肖连不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 53
+        },
+        {
+          "playTypeId": "chainZodiac3Hit",
+          "playTypeName": "三肖连中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 55
+        },
+        {
+          "playTypeId": "chainZodiac3Miss",
+          "playTypeName": "三肖连不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 56
+        },
+        {
+          "playTypeId": "chainZodiac4Hit",
+          "playTypeName": "四肖连中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 58
+        },
+        {
+          "playTypeId": "chainZodiac4Miss",
+          "playTypeName": "四肖连不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 59
+        },
+        {
+          "playTypeId": "chainZodiac5Hit",
+          "playTypeName": "五肖连中",
+          "subOddsLabel": "马",
+          "hasSub": true,
+          "displayOrder": 61
+        },
+        {
+          "playTypeId": "chainZodiac5Miss",
+          "playTypeName": "五肖连不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 62
+        },
+        {
+          "playTypeId": "chainTail2Hit",
+          "playTypeName": "二尾连中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 65
+        },
+        {
+          "playTypeId": "chainTail2Miss",
+          "playTypeName": "二尾连不中",
+          "subOddsLabel": "0",
+          "hasSub": true,
+          "displayOrder": 66
+        },
+        {
+          "playTypeId": "chainTail3Hit",
+          "playTypeName": "三尾连中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 68
+        },
+        {
+          "playTypeId": "chainTail3Miss",
+          "playTypeName": "三尾连不中",
+          "subOddsLabel": "0",
+          "hasSub": true,
+          "displayOrder": 69
+        },
+        {
+          "playTypeId": "chainTail4Hit",
+          "playTypeName": "四尾连中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 71
+        },
+        {
+          "playTypeId": "chainTail4Miss",
+          "playTypeName": "四尾连不中",
+          "subOddsLabel": "0",
+          "hasSub": true,
+          "displayOrder": 72
+        },
+        {
+          "playTypeId": "miss5",
+          "playTypeName": "五不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 74
+        },
+        {
+          "playTypeId": "miss6",
+          "playTypeName": "六不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 75
+        },
+        {
+          "playTypeId": "miss7",
+          "playTypeName": "七不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 76
+        },
+        {
+          "playTypeId": "miss8",
+          "playTypeName": "八不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 77
+        },
+        {
+          "playTypeId": "miss9",
+          "playTypeName": "九不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 78
+        },
+        {
+          "playTypeId": "miss10",
+          "playTypeName": "十不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 79
+        },
+        {
+          "playTypeId": "miss11",
+          "playTypeName": "十一不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 80
+        },
+        {
+          "playTypeId": "miss12",
+          "playTypeName": "十二不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 81
+        },
+        {
+          "playTypeId": "pickHitOne5",
+          "playTypeName": "五中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 83
+        },
+        {
+          "playTypeId": "pickHitOne6",
+          "playTypeName": "六中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 84
+        },
+        {
+          "playTypeId": "pickHitOne7",
+          "playTypeName": "七中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 85
+        },
+        {
+          "playTypeId": "pickHitOne8",
+          "playTypeName": "八中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 86
+        },
+        {
+          "playTypeId": "pickHitOne9",
+          "playTypeName": "九中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 87
+        },
+        {
+          "playTypeId": "pickHitOne10",
+          "playTypeName": "十中一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 88
+        },
+        {
+          "playTypeId": "anyNumberHit1",
+          "playTypeName": "一粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 90
+        },
+        {
+          "playTypeId": "anyNumberHit2",
+          "playTypeName": "二粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 91
+        },
+        {
+          "playTypeId": "anyNumberHit3",
+          "playTypeName": "三粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 92
+        },
+        {
+          "playTypeId": "anyNumberHit4",
+          "playTypeName": "四粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 93
+        },
+        {
+          "playTypeId": "anyNumberHit5",
+          "playTypeName": "五粒任中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 94
+        },
+        {
+          "playTypeId": "comboZodiac2Hit",
+          "playTypeName": "二合肖中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 97
+        },
+        {
+          "playTypeId": "comboZodiac2Miss",
+          "playTypeName": "二合肖不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 98
+        },
+        {
+          "playTypeId": "comboZodiac3Hit",
+          "playTypeName": "三合肖中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 100
+        },
+        {
+          "playTypeId": "comboZodiac3Miss",
+          "playTypeName": "三合肖不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 101
+        },
+        {
+          "playTypeId": "comboZodiac4Hit",
+          "playTypeName": "四合肖中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 103
+        },
+        {
+          "playTypeId": "comboZodiac4Miss",
+          "playTypeName": "四合肖不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 104
+        },
+        {
+          "playTypeId": "comboZodiac5Hit",
+          "playTypeName": "五合肖中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 106
+        },
+        {
+          "playTypeId": "comboZodiac5Miss",
+          "playTypeName": "五合肖不中",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 107
+        },
+        {
+          "playTypeId": "sevenNumberOdd0",
+          "playTypeName": "单0·大0·双7·小7",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 109
+        },
+        {
+          "playTypeId": "sevenNumberOdd1",
+          "playTypeName": "单1·大1·双6·小6",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 110
+        },
+        {
+          "playTypeId": "sevenNumberOdd2",
+          "playTypeName": "单2·大2·双5·小5",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 111
+        },
+        {
+          "playTypeId": "sevenNumberOdd3",
+          "playTypeName": "单3·大3·双4·小4",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 112
+        },
+        {
+          "playTypeId": "sevenNumberOdd4",
+          "playTypeName": "单4·大4·双3·小3",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 113
+        },
+        {
+          "playTypeId": "sevenNumberOdd5",
+          "playTypeName": "单5·大5·双2·小2",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 114
+        },
+        {
+          "playTypeId": "sevenNumberOdd6",
+          "playTypeName": "单6·大6·双1·小1",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 115
+        },
+        {
+          "playTypeId": "sevenNumberOdd7",
+          "playTypeName": "单7·大7·双0·小0",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 116
+        },
+        {
+          "playTypeId": "fiveElements",
+          "playTypeName": "五行",
+          "subOddsLabel": "土",
+          "hasSub": true,
+          "displayOrder": 141
+        },
+        {
+          "playTypeId": "zodiacCount2",
+          "playTypeName": "肖2",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 143
+        },
+        {
+          "playTypeId": "zodiacCount3",
+          "playTypeName": "肖3",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 144
+        },
+        {
+          "playTypeId": "zodiacCount4",
+          "playTypeName": "肖4",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 145
+        },
+        {
+          "playTypeId": "zodiacCount5",
+          "playTypeName": "肖5",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 146
+        },
+        {
+          "playTypeId": "zodiacCount6",
+          "playTypeName": "肖6",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 147
+        },
+        {
+          "playTypeId": "zodiacCount7",
+          "playTypeName": "肖7",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 148
+        },
+        {
+          "playTypeId": "tailCount2",
+          "playTypeName": "尾2",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 150
+        },
+        {
+          "playTypeId": "tailCount3",
+          "playTypeName": "尾3",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 151
+        },
+        {
+          "playTypeId": "tailCount4",
+          "playTypeName": "尾4",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 152
+        },
+        {
+          "playTypeId": "tailCount5",
+          "playTypeName": "尾5",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 153
+        },
+        {
+          "playTypeId": "tailCount6",
+          "playTypeName": "尾6",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 154
+        },
+        {
+          "playTypeId": "tailCount7",
+          "playTypeName": "尾7",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 155
+        },
+        {
+          "playTypeId": "compareBigSmall1v1",
+          "playTypeName": "一比一",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 157
+        },
+        {
+          "playTypeId": "compareBigSmall1v2",
+          "playTypeName": "一比二",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 158
+        },
+        {
+          "playTypeId": "compareBigSmall1v3",
+          "playTypeName": "一比三",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 159
+        },
+        {
+          "playTypeId": "compareBigSmall1v4",
+          "playTypeName": "一比四",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 160
+        },
+        {
+          "playTypeId": "compareBigSmall1v5",
+          "playTypeName": "一比五",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 161
+        },
+        {
+          "playTypeId": "compareBigSmall1v6",
+          "playTypeName": "一比六",
+          "subOddsLabel": null,
+          "hasSub": false,
+          "displayOrder": 162
+        }
+      ]
+    }
+  }
+}

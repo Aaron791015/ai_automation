@@ -1,0 +1,10 @@
+{
+  "batch_id": "example-ab-replace-before-use",
+  "kind": "ab",
+  "game": "bingo6",
+  "panel": "a",
+  "options": ["tail-main", "tail-sub"],
+  "amount": "1",
+  "max_bets": 4,
+  "max_total": "4"
+}

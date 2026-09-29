@@ -1,0 +1,10 @@
+{
+  "batch_id": "example-minimum-replace-before-use",
+  "kind": "minimum",
+  "game": "bingo6",
+  "panel": "a",
+  "options": ["tail-main"],
+  "amount": "1",
+  "max_bets": 2,
+  "max_total": "2"
+}

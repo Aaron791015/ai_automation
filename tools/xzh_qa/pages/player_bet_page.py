@@ -43,6 +43,33 @@ class PlayerBetPage:
         if login.is_otp_page():
             login.submit_otp("123456")
         self.page.wait_for_url(lambda value: "/bet" in value, timeout=10_000)
+        self.close_announcements(wait_ms=3_000)
+
+    def close_announcements(self, wait_ms: int = 0) -> int:
+        """關閉「最新公告」彈窗並回傳關閉次數。
+
+        2026-09-29 QAT 更新後，會員登入即自動跳出「最新公告」，蓋住彩種列，
+        `select_game` 會因點不到彩種逾時（B107 兩次卡在這一步）。`wait_ms` 給登入後等公告出現。
+        """
+        title = self.page.get_by_text("最新公告", exact=True)
+        if wait_ms:
+            try:
+                title.first.wait_for(state="visible", timeout=wait_ms)
+            except Exception:
+                return 0
+        closed = 0
+        for _ in range(5):
+            dialog = self.page.locator(".el-dialog:visible").filter(has=title)
+            if not dialog.count():
+                break
+            button = dialog.first.locator(".el-dialog__headerbtn")
+            if button.count():
+                button.first.click()
+            else:
+                self.page.keyboard.press("Escape")
+            self.page.wait_for_timeout(400)
+            closed += 1
+        return closed
 
     _FRONTEND_CATEGORY = {"连肖": "生肖连", "连尾": "尾数连"}
     _ZODIACS = ("鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪")
@@ -52,6 +79,7 @@ class PlayerBetPage:
     }
 
     def select_game(self, game_name: str) -> None:
+        self.close_announcements()
         self.page.get_by_text(game_name, exact=True).first.click()
         self.page.wait_for_timeout(500)
 
@@ -341,8 +369,15 @@ class PlayerBetPage:
         self.page.get_by_text("1", exact=True).first.locator("xpath=..").wait_for()
 
     def current_issue(self) -> str:
+        """讀頂部彩種列的**當期**期號。
+
+        ⚠️ 2026-09-21：彩種名稱與期號之間會夾一段封盤／開獎倒數（「宾果六合彩 00:06
+        115053510」），舊正則要求兩者緊接，倒數一出現就整批下注失敗。倒數是常態顯示、
+        不是異常狀態，所以這裡容許中間夾 `mm:ss` 或 `hh:mm:ss`。
+        ⛔ 不可改抓「第 115053509 期」那段——那是**上一期**的開獎結果標題。
+        """
         text = self.page.locator("body").inner_text()
-        match = re.search(r"宾果六合彩\s+(\d{9})\b", text)
+        match = re.search(r"宾果六合彩\s+(?:\d{2}:\d{2}(?::\d{2})?\s+)?(\d{9})\b", text)
         if not match:
             raise AssertionError(f"讀不到賓果六合彩期號：{text!r}")
         return match.group(1)
