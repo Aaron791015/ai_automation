@@ -241,7 +241,7 @@ def test_two_way_leaves_cannot_count_as_standard(audit, play):
 def test_linked_sub_branch_uses_sub_chain(audit):
     """連肖／連尾贏家為马／0尾時標 linked-sub，須核對副鏈凍結。
 
-    贏家依 2026-09-29 Aaron 澄清判定：各成員先套用差分與下限，取會員最終價最低者；
+    贏家依 2026-09-29 Aaron 指定 `odds-gap (1).md` 判定：各成員先套差分與下限，取會員最終價最低者（同價取主層）；
     取代 2026-09-18「命中副標籤即走副鏈」裁定（Snotra-015 歷史）。本測試只驗標籤對應的凍結欄，不判定贏家。
     """
     record=audit[0]['records'][0]

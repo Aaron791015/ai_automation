@@ -34,6 +34,7 @@
         "tests/tooling/test_xzh_gap_row_alignment.py",
         "tests/tooling/test_xzh_odds_gap_audit.py",
         "tests/tooling/test_xzh_odds_gap_chain_winner.py",
+        "tests/tooling/test_xzh_odds_gap_oplog.py",
         "tests/tooling/test_xzh_odds_gap_oracle.py",
         "tests/tooling/test_xzh_odds_gap_safety.py",
         "tests/tooling/test_xzh_platform_gap_cap.py",

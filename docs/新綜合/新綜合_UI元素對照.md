@@ -275,14 +275,22 @@ Aaron 於 2026-09-09 口述設定路徑時提到下列名稱，**全部是繁體
 
 原始佐證：`scratchpad/gap-b101-20260918-batch3/leafmap.json`、`branch-probe.json`。
 
-### 2.1 賠率差分變更日誌入口（2026-09-29 Aaron提供，尚未實測）
+### 2.1 賠率差分變更日誌入口（2026-09-29 MCP 實測：公司 aaron01、一級 aaa111）
 
-| 查閱方式 | 路徑 |
+| 查閱方式 | 實際路徑與名稱 |
 | --- | --- |
-| 帳號日誌 | 公司後台或各層級中間商後台 → 用戶管理 → 目標帳號aaa111～aaa999／aaa010 →「日誌」 |
-| 操作日誌類型篩選 | 公司後台或各層級中間商後台 → 操作日誌 →「類型」→「賠率差分設定」 |
+| 帳號日誌 | 「用户管理」→ 目標層級分頁（如「二级代理」）→ 目標帳號列「日志」→ 導向 `/user/account/<id>/logs?level=<層>`；頁內有「操作日志／登录日志」切換，篩選「类型」「时间」（預設近 7 天） |
+| 操作日誌 | 選單「操作日志」（`/log`）→「类型」下拉選「赔率差分设定」 |
 
-名稱沿用Aaron本次提供的文字；實際簡體UI名稱、選單層級、selector與日誌欄位尚未核對。兩入口的變更記錄要求及權限邊界見[正式設定頁規格「操作日誌」](新綜合_賠率差分設定頁規格.md#操作日誌2026-09-29-aaron確認)，待驗狀態見[驗證交接](新綜合_驗證交接.md) T66。
+- 兩頁表格相同：展開欄／类型／操作动作／目标／变更项／变更前值／变更后值／操作者／IP 地址／时间。「类型」選項：操作日志頁 16 項、帳號日志頁 11 項，皆有「赔率差分设定」。
+- 一筆＝一個玩法：目标在操作日志頁為「帳號 / 彩種 / 玩法」，帳號日志頁為「彩種 / 玩法」；七碼記代表名「单0」（設定頁列名「单0·大0·双7·小7」）。变更项只列有變動的「差分」「副差分」，主副在同一列分行顯示；操作动作「修改」。
+- 一次保存改到多個玩法會併成同一批：只顯示一列，展開欄標「共 N 笔」，點展開箭頭後其餘紀錄以子列（`el-table__row--level-1`）接在下面。
+- ⚠️ 選「类型」後約 2.5 秒內表格仍可能是篩選前的舊資料；自動化要等 `/api/AuditLogs` 回應，不要等固定秒數。
+- 權限：上級代理看得到公司對其下級（含自己）所做的修改；公司看得到全部。
+- API 契約（讀取驗證用，與畫面同一支）：`GET /api/AuditLogs?topic=oddsGapSetting&startDate&endDate&pageIndex&pageSize`（操作日志頁），帳號日志頁另帶 `targetUserId`；列表每頁固定 25 筆。批次明細 `GET /api/AuditLogs?batchId=<id>[&targetUserId]`（畫面 pageSize＝batchCount）。紀錄欄位：`id／batchId／batchCount／topic／action／entityId／fields／beforeValues／afterValues／operatorAccount／operatorIpAddress／createdAt`（UTC）。
+- 頁物件 `tools/xzh_qa/pages/operation_log_page.py`（`select_type`／`expand_batch`／`batch_cells`），讀取與比對 `tools/xzh_qa/odds_gap_oplog.py`；案例 B108。
+
+兩入口的變更記錄要求及權限邊界見[正式設定頁規格「操作日誌」](新綜合_賠率差分設定頁規格.md#操作日誌2026-09-29-aaron確認)，驗證進度見[驗證交接](新綜合_驗證交接.md) T66。
 
 ## 3. 尚未收錄的頁面
 

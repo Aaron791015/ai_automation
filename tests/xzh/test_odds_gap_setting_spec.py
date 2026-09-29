@@ -15,11 +15,11 @@ from xzh_qa.odds_gap_spec import compare_spec
 
 
 @pytest.mark.smoke
-@allure.step('唯讀核對公司與直屬上級的十層三彩種，依正式101列124欄規格逐欄比對')
+@allure.step('唯讀核對公司與直屬上級的十層三彩種，依正式101列116欄規格逐欄比對')
 def test_odds_gap_approved_spec_all_levels(gap_context, odds_gap_run):
     """前置條件：QAT既有授權帳號鏈與已確認設定頁規格。
     操作步驟：公司及直屬上級各沿UI開啟一至九級與會員，讀取三彩種全部列及主副欄。
-    預期結果：各組符合101列124欄、核准名稱及副標籤，畫面值與GET一致。
+    預期結果：各組符合101列116欄（2026-09-24不中改單一輸入欄）、核准名稱及副標籤，畫面值與GET一致。
     佐證方式：逐組JSON、完整頁面截圖、逐欄判定；本案例不輸入、不保存、不切換授權。
     """
     spec = json.loads(Path('data/xzh/odds_gap_setting_spec.json').read_text(encoding='utf-8'))

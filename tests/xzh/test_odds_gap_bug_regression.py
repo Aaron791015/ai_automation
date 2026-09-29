@@ -93,7 +93,7 @@ def test_odds_gap_tabs_and_sub_labels(gap_context, odds_gap_run):
     佐證方式：
     - 逐組JSON、逐列期望與實際值、標注截圖及公司／一級授權前提；剩餘顯示精度不在本案例判準。
     已知問題：
-    - Snotra-006保存403及Snotra-010不中副欄另單追蹤，不以本案例判通過。
+    - Snotra-006保存403另單追蹤，不以本案例判通過。
     """
     spec = json.loads(Path('data/xzh/odds_gap_setting_spec.json').read_text(encoding='utf-8'))
     expected = [r for r in spec['rows'] if r['name'] in LABEL_PLAYS]
