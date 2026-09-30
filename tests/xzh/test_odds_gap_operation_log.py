@@ -9,6 +9,8 @@
     $env:XZH_GAP_LOG_LEVELS="1,2,...,10"      # 目標層級（1＝aaa111 … 10＝會員 aaa010），預設全部
     $env:XZH_GAP_GAMES="bingo6"               # 彩種，預設三彩種（沿用 scope_games）
     pytest tests/xzh/test_odds_gap_operation_log.py -m write_action
+    ⚠️ 完整實跑要分段（每段 ≤5 組，例：company 1～5／6～10、parent 2～6／7～10，逐彩種）：2026-09-30 T66
+       同一瀏覽器連跑到第 10 組時，公司頁兩度在點選單「用户管理」時失去回應（20 秒逾時），新開瀏覽器無法重現。
 前置條件：
 - 公司 aaron01 與 aaa111～aaa999 的測試密碼可用；本案例會登入公司與目標的全部上級代理，
   同帳號他處登入會互踢，執行期間不要讓其他 session 使用這些帳號。
@@ -239,6 +241,10 @@ def test_odds_gap_change_recorded_in_both_log_entries(gap_context, odds_gap_logi
     company_account = admin_credentials()[0]
     day = datetime.now(TAIPEI).date().isoformat()
     games, vias, levels = scope_games(), _scope_vias(), _scope_levels()
+    # 分段執行時各段是同一個 nodeid；帶上範圍參數，allure 才不會把不同段當成同一案例的重試而隱藏
+    allure.dynamic.parameter("彩種", "、".join(GAMES[g] for g in games))
+    allure.dynamic.parameter("操作路徑", "、".join(vias))
+    allure.dynamic.parameter("目標層級", ",".join(str(x) for x in sorted(levels)))
     allure.attach(f"操作路徑：{'、'.join(vias)}\n目標層級：{sorted(levels)}\n彩種：{'、'.join(GAMES[g] for g in games)}",
                   name="本次執行範圍", attachment_type=allure.attachment_type.TEXT)
     groups, failures = [], []
