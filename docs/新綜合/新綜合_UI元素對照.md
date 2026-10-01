@@ -265,6 +265,7 @@ Aaron 於 2026-09-09 口述設定路徑時提到下列名稱，**全部是繁體
 - **七碼映射**：`sevenNumberOdd{k}` → `Odd{k}`、`Big{k}`、`Even{7−k}`、`Small{7−k}`。
   事件等價：单k ≡ 双(7−k)、大k ≡ 小(7−k) ⇒ 同組四葉只有兩個獨立事件。
   已用 odds 通道實證 5 組（k＝0,2,3,5,7）：`Big0`→210、`Even7`→210、`Small0`→161、`Big7`→161、`Even2`→5.68，皆等於代表列 odds。
+  **（2026-10-01 賓果補）前台「七码」分類是 32 個 `.bet-row`**，順序為 大0～7、小0～7、单0～7、双0～7（列索引 0～31）；k＝4 的四葉＝大4（索引 4）、小3（11）、单4（20）、双3（27）。會員前台 `Odds/Snapshot` 一次回 32 個 `sevenNumber*` 葉，各帶 `baseOdds`／`minOdds`／`oddsGapTotal`——對 `sevenNumberOdd4` 十層寫入差分後，只有這四葉的 `oddsGapTotal` 非零（−0.19）、其餘 28 葉為 0，下注送出價與凍結價皆 3.08；設定 API 仍只回 8 個代表列。賓果七碼最低下注額 2 元。
 - **兩面的 5 個葉不在 101 列（差分設定）或 102 列（賠率設定）清單中**，odds 全等於 `twoWay` 的 1.974。
 
 > ⛔ **寫案例時不可假設「下注玩法 ID ＝ 設定玩法 ID」。** 實測 `positionOddEven`（位置单双）不在任一份清單裡，
@@ -289,6 +290,9 @@ Aaron 於 2026-09-09 口述設定路徑時提到下列名稱，**全部是繁體
 - 權限：上級代理看得到公司對其下級（含自己）所做的修改；公司看得到全部。
 - API 契約（讀取驗證用，與畫面同一支）：`GET /api/AuditLogs?topic=oddsGapSetting&startDate&endDate&pageIndex&pageSize`（操作日志頁），帳號日志頁另帶 `targetUserId`；列表每頁固定 25 筆。批次明細 `GET /api/AuditLogs?batchId=<id>[&targetUserId]`（畫面 pageSize＝batchCount）。紀錄欄位：`id／batchId／batchCount／topic／action／entityId／fields／beforeValues／afterValues／operatorAccount／operatorIpAddress／createdAt`（UTC）。
 - 頁物件 `tools/xzh_qa/pages/operation_log_page.py`（`select_type`／`expand_batch`／`batch_cells`），讀取與比對 `tools/xzh_qa/odds_gap_oplog.py`；案例 B108。
+- 「类型」選項 ↔ API `topic`（2026-09-30 公司操作日志頁實測，下拉逐項點選抓請求，共 17 項；上列 9/29 記的「16 項」為當時計數，差異原因未查）：账号 `account`、登录凭证 `credential`、信用额度 `credit`、现金钱包 `wallet`、盈利限制 `profitLimit`、周亏损限制 `weeklyLossLimit`、占成 `share`、飞单 `layOffSetting`、外调 `externalLayOff`、调控赔率 `oddsAdjust`、自动降赔 `autoShortening`、赔率差分设定 `oddsGapSetting`、货量折扣设定 `turnoverDiscountSetting`、操作员组 `operatorGroup`、期数开关盘 `issue`、玩法停押 `playTypeSuspension`、注单 `bet`。
+- ⚠️ **「赚取赔率差」授權開關不在「赔率差分设定」類型**：記在「账号」（`account`）、变更项「权限」，前後值是整串權限清單（如 `["倍数投注","飞单",…,"赚取赔率差"]`），要比對清單差集才看得出切換的是哪一項。被拒的保存（差分 403、授權撤銷 400）都不留紀錄；只查類型「赔率差分设定」會漏掉授權切換。
+- 日誌 API 可查 7 天以前的資料（畫面「时间」預設近 7 天，改 `startDate` 即可，9/15 資料仍在）。
 
 兩入口的變更記錄要求及權限邊界見[正式設定頁規格「操作日誌」](新綜合_賠率差分設定頁規格.md#操作日誌2026-09-29-aaron確認)，驗證進度見[驗證交接](新綜合_驗證交接.md) T66。
 
@@ -343,4 +347,7 @@ Aaron 於 2026-09-09 口述設定路徑時提到下列名稱，**全部是繁體
 - 賠率差分頁（用户管理→会员→编辑→赔率差分）：九級取消「赚取赔率差」後，會員各列仍顯示原值，API `isEffective` 變為 false，但畫面**沒有任何「未生效」字樣**；對照 B104。
 - 前台會員登入 `/bet` 後會自動跳出「**最新公告**」彈窗（2026-09-29 約 11:36 QAT 更新後出現），蓋住彩種列，直接點彩種會逾時；`PlayerBetPage.close_announcements()` 已在登入後與 `select_game` 前關閉（按彈窗右上角關閉鈕）。
 - 即时盘面「连肖」每列結構：`span.sel-name`（生肖）｜`.odds-cell` 內「−（`button.odds-btn.el-button--danger`）／賠率（`.odds-value`）／＋（`--primary`）」｜占成；上方步進值輸入框預設 0.005。按減號即對該選項加本期手動偏移（列在「手动偏移」→「本期手动偏移」清單：玩法／选项／盘口／赔率／偏移量／操作人／时间）。
-- 佐證：本 session scratchpad 的 `board-*`、`b104/` 探索輸出（未入 repo）。
+- **2026-09-30 實測：「赔率调整」的步進值改為固定選項下拉**（`.el-select.control-select`，唯讀不可輸入），只有 0.001／0.005／0.01／0.05／0.1／0.5／1；左側另一個下拉顯示「全部」。原本可直接輸入的數字框已不存在，要偏移 0.85 只能分次選步進值按減號（0.5×1＋0.1×3＋0.05×1），`odds_gap_chain_winner.split_offset()` 依此拆分。「手动偏移」抽屜只列本期偏移紀錄，不能在裡面輸入。
+- **2026-10-01 實測：「特码」分類的「A 盘／B 盘」頁籤就是 `特码A`／`特码B` 兩個玩法**，不是 A～I 盘口。切 B 盘時 `/api/LiveTrading` 帶 `oddsVariant=b`，回傳 `playTypeId=bonusNumberB` 的選項；另有「AB-A／AB-B」頁籤（未查）。公司、一級、二級代理的宾果盤面都有這組頁籤；香港本期未開盤時代理盤面沒顯示頁籤。前台「特码」卡片右上角也有「A盘／B盘」切換，B 盘下注的注單 `playTypeId=bonusNumberB`、確認視窗玩法顯示「特码 B 1」。驗特码差分時，要看差分設在哪一列，再切到對應頁籤。
+- ⚠️ **前台下注定位陷阱（2026-10-01）**：`page.get_by_text("1", exact=True).first` 在上期開獎號碼含「1」時會命中頂部開獎號碼球，不在投注格內，於是找不到 `.bet-cell`。`PlayerBetPage.select_bingo6_standard_special()`／`place_standard_bet()` 目前都這樣找，要改成 `page.locator(".bet-cell").filter(has=page.get_by_text("1", exact=True))`（交接 T77）。
+- 佐證：本 session scratchpad 的 `board-*`、`b104/` 探索輸出（未入 repo）；2026-10-01 的盤面與前台截圖在 `reports/odds_gap_regression/snotra019-verify-20261001/`。
