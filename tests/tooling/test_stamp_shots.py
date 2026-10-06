@@ -27,6 +27,10 @@ pytestmark = pytest.mark.skipif(
     not _REGISTERED,
     reason="這個工作區還沒接任何產品 —— 這幾條測的是「對某個產品」的腳本行為")
 _SAMPLE = _REGISTERED[0] if _REGISTERED else ""
+# ⚠️ 樣本產品的 docs 目錄名一併動態取 —— 不可寫死 "CRUX"：
+#    config/products.json 重置後可能只剩其他產品（如「新綜合」），
+#    寫死會讓 sandbox 建的目錄跟腳本實際查的目錄對不上（2026-09-16）。
+_DOCS_DIR = _bp.PRODUCT_DIRS[_SAMPLE] if _REGISTERED else ""
 
 
 
@@ -46,8 +50,8 @@ def _png(path):
 
 @pytest.fixture
 def sandbox(tmp_path, monkeypatch):
-    """把腳本的 ROOT 指到 tmp_path，建出 docs/CRUX/bugs/shots/ 與一張來源圖。"""
-    shots = tmp_path / "docs" / "CRUX" / "bugs" / "shots"
+    """把腳本的 ROOT 指到 tmp_path，建出 docs/<樣本產品>/bugs/shots/ 與一張來源圖。"""
+    shots = tmp_path / "docs" / _DOCS_DIR / "bugs" / "shots"
     shots.mkdir(parents=True)
     monkeypatch.setattr(stamp_shots, "ROOT", str(tmp_path))
     src = _png(str(tmp_path / "src" / "raw.png"))
@@ -68,7 +72,7 @@ def _run(*argv):
 
 def test_搬移後會蓋上標注標記(sandbox):
     _, shots, src = sandbox
-    rc = _run("--product", "CRUX", f"{src}=CRUX-060_01_說明.png")
+    rc = _run("--product", _SAMPLE, f"{src}=CRUX-060_01_說明.png")
     assert rc == 0
     dst = shots / "CRUX-060_01_說明.png"
     assert dst.exists(), "檔案沒被搬過去"
@@ -79,13 +83,13 @@ def test_搬移後會蓋上標注標記(sandbox):
 def test_來源檔不被搬走(sandbox):
     """用 copy 不用 move —— `.playwright-mcp/` 的原圖要留著供重截／比對。"""
     _, _, src = sandbox
-    _run("--product", "CRUX", f"{src}=CRUX-060_01_說明.png")
+    _run("--product", _SAMPLE, f"{src}=CRUX-060_01_說明.png")
     assert os.path.exists(src)
 
 
 def test_dry_run_不寫任何檔(sandbox):
     _, shots, src = sandbox
-    assert _run("--product", "CRUX", "--dry-run", f"{src}=CRUX-060_01_說明.png") == 0
+    assert _run("--product", _SAMPLE, "--dry-run", f"{src}=CRUX-060_01_說明.png") == 0
     assert not (shots / "CRUX-060_01_說明.png").exists()
 
 
@@ -97,7 +101,7 @@ def test_dry_run_不寫任何檔(sandbox):
 ])
 def test_合規檔名皆被接受(sandbox, name):
     _, shots, src = sandbox
-    assert _run("--product", "CRUX", f"{src}={name}") == 0, f"{name} 應被接受"
+    assert _run("--product", _SAMPLE, f"{src}={name}") == 0, f"{name} 應被接受"
     assert (shots / name).exists()
 
 
@@ -111,20 +115,20 @@ def test_合規檔名皆被接受(sandbox, name):
 ])
 def test_不合規檔名被擋下(sandbox, name):
     _, shots, src = sandbox
-    assert _run("--product", "CRUX", f"{src}={name}") == 1, f"{name} 應被拒絕"
+    assert _run("--product", _SAMPLE, f"{src}={name}") == 1, f"{name} 應被拒絕"
     assert not (shots / name).exists(), "被判不合規卻仍搬了檔"
 
 
 def test_覆蓋既有檔要加force(sandbox):
     _, shots, src = sandbox
     target = "CRUX-060_01_說明.png"
-    assert _run("--product", "CRUX", f"{src}={target}") == 0
+    assert _run("--product", _SAMPLE, f"{src}={target}") == 0
     (shots / target).write_bytes(b"\x89PNG\r\n\x1a\n" + b"placeholder")   # 假裝已被改過
 
-    assert _run("--product", "CRUX", f"{src}={target}") == 1, "沒有 --force 就不該覆蓋"
+    assert _run("--product", _SAMPLE, f"{src}={target}") == 1, "沒有 --force 就不該覆蓋"
     assert (shots / target).read_bytes().endswith(b"placeholder"), "被無聲覆蓋了"
 
-    assert _run("--product", "CRUX", "--force", f"{src}={target}") == 0
+    assert _run("--product", _SAMPLE, "--force", f"{src}={target}") == 0
     assert read_png_mark(str(shots / target)) == "marks=mcp"
 
 
@@ -132,7 +136,7 @@ def test_有任何一項不合規就整批不執行(sandbox):
     """避免「前三張搬了、第四張才報錯」的半套狀態。"""
     _, shots, src = sandbox
     src2 = _png(str(sandbox[0] / "src" / "raw2.png"))
-    rc = _run("--product", "CRUX", f"{src}=CRUX-060_01_好的.png", f"{src2}=壞的.png")
+    rc = _run("--product", _SAMPLE, f"{src}=CRUX-060_01_好的.png", f"{src2}=壞的.png")
     assert rc == 1
     assert not (shots / "CRUX-060_01_好的.png").exists(), \
         "有一項不合規時仍搬了另一項 —— 應該整批不執行"
@@ -140,21 +144,21 @@ def test_有任何一項不合規就整批不執行(sandbox):
 
 def test_來源不存在會回錯而非靜默略過(sandbox):
     _, shots, _ = sandbox
-    assert _run("--product", "CRUX", "no/such/file.png=CRUX-060_01_說明.png") == 1
+    assert _run("--product", _SAMPLE, "no/such/file.png=CRUX-060_01_說明.png") == 1
     assert not (shots / "CRUX-060_01_說明.png").exists()
 
 
 def test_glob_沒比對到檔案也算輸入有問題(sandbox):
     """回傳碼契約：0 成功／1 輸入有問題（整批未執行）／2 環境問題（找不到 shots 目錄）。"""
     tmp, shots, _ = sandbox
-    assert _run("--product", "CRUX", str(tmp / "src" / "nothing-*.png")) == 1
+    assert _run("--product", _SAMPLE, str(tmp / "src" / "nothing-*.png")) == 1
     assert not any(shots.iterdir())
 
 
 def test_找不到shots目錄回2(tmp_path, monkeypatch):
     monkeypatch.setattr(stamp_shots, "ROOT", str(tmp_path))     # 沒有 docs/CRUX/bugs/shots
     src = _png(str(tmp_path / "src" / "raw.png"))
-    assert _run("--product", "CRUX", f"{src}=CRUX-060_01_說明.png") == 2
+    assert _run("--product", _SAMPLE, f"{src}=CRUX-060_01_說明.png") == 2
 
 
 def test_搬成功會在來源旁留filed記號(sandbox):
@@ -164,7 +168,7 @@ def test_搬成功會在來源旁留filed記號(sandbox):
     （2026-08-25 補拍任務實跑撞到）。
     """
     _, _shots, src = sandbox
-    assert _run("--product", "CRUX", f"{src}=CRUX-060_01_說明.png") == 0
+    assert _run("--product", _SAMPLE, f"{src}=CRUX-060_01_說明.png") == 0
     mark = src + ".filed"
     assert os.path.exists(mark), "沒留記號 —— 待搬提醒會一直重複"
     with open(mark, encoding="utf-8") as f:
@@ -175,6 +179,6 @@ def test_可以指定來源標記(sandbox):
     """平台代搬用 `auto`，不可冒用 `mcp` —— 那是「session 自己搬」的來源值，
     日後查一張圖的來歷全靠它分辨。"""
     _, shots, src = sandbox
-    assert _run("--product", "CRUX", "--mark", "auto",
+    assert _run("--product", _SAMPLE, "--mark", "auto",
                 f"{src}=CRUX-060_02_說明.png") == 0
     assert read_png_mark(str(shots / "CRUX-060_02_說明.png")) == "marks=auto"

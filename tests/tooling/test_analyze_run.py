@@ -74,6 +74,38 @@ def test_待補的regression欄不可當成命中():
     assert ar.match_known(rec, BUGS) is None
 
 
+def _allure(full, name="案例"):
+    """allure 實際寫出的 fullName 是 `模組#函式`，不是 pytest nodeid。"""
+    return {"name": name, "full": full, "msg": "", "trace": ""}
+
+
+def test_regression欄的nodeid要命中allure的fullName():
+    """★ 回歸保障（2026-09-23）：regression 欄寫 `路徑.py::函式`，allure 是 `模組#函式`，
+    舊版只用 `::` 切，已知失敗全被當成新失敗。"""
+    hit = ar.match_known(_allure("tests.crux.backend.test_two_factor_log#test_2fa"), BUGS)
+    assert hit and hit[0] == "CRUX-042" and hit[2] == "regression 欄"
+
+
+def test_regression欄比對要完全相等不可前綴命中():
+    """`::test_2fa` 不可命中 `#test_2fa_backup`，否則新失敗會被誤歸為已知問題。"""
+    assert ar.match_known(_allure("tests.crux.backend.test_two_factor_log#test_2fa_backup"), BUGS) is None
+    assert ar.match_known(_allure("tests.crux.backend.test_two_factor_log_v2#test_2fa"), BUGS) is None
+
+
+def test_regression欄帶參數與類別也要命中():
+    bugs = [("XZH-001", "open", "tests/xzh/test_a.py::TestB::test_c[chromium]", "設定")]
+    hit = ar.match_known(_allure("tests.xzh.test_a.TestB#test_c"), bugs)
+    assert hit and hit[0] == "XZH-001"
+
+
+def test_regression欄只寫檔案時整檔守門():
+    """實際單上有「檔案；附註」的寫法：同模組的案例都算命中，其他模組不算。"""
+    bugs = [("XZH-007", "fixed", "tests/xzh/test_two_sides.py；2026-09-17 三十組皆存在", "賠率差")]
+    hit = ar.match_known(_allure("tests.xzh.test_two_sides#test_any"), bugs)
+    assert hit and hit[0] == "XZH-007"
+    assert ar.match_known(_allure("tests.xzh.test_two_sides_more#test_any"), bugs) is None
+
+
 # ── 整體流程 ────────────────────────────────────────────────
 def test_統計與離開碼(tmp_path, capsys):
     d = _res(tmp_path, [

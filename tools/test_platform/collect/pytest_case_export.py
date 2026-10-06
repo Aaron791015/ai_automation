@@ -28,6 +28,7 @@ import ast
 import json
 import os
 import re
+from functools import lru_cache
 
 # allure 的取值邏輯直接沿用官方 util，避免自己重寫版本相容問題：
 #   · allure.title  → item.obj.__allure_display_name__（★ 屬性，不是 marker）
@@ -82,9 +83,29 @@ def _parse_file(path: str) -> tuple[str, dict, dict]:
     return _AST_CACHE[path]
 
 
+@lru_cache(maxsize=16)
+def _source_lines(src: str) -> tuple[bytes, ...]:
+    """每份原始碼只切行一次；AST 欄位偏移採 UTF-8 位元組。"""
+    return tuple(line.encode("utf-8") for line in re.findall(r"[^\r\n]*(?:\r\n|\r|\n|$)", src))
+
+
+def _source_segment(src: str, node: ast.AST) -> str | None:
+    """等同未 padded 的 ast.get_source_segment，避免每個附件重掃整檔。"""
+    positions = [getattr(node, k, None) for k in
+                 ("lineno", "end_lineno", "col_offset", "end_col_offset")]
+    if any(p is None for p in positions):
+        return None
+    start, end, left, right = positions
+    lines = _source_lines(src)
+    if start == end:
+        return lines[start - 1][left:right].decode("utf-8")
+    return (lines[start - 1][left:] + b"".join(lines[start:end - 1])
+            + lines[end - 1][:right]).decode("utf-8")
+
+
 def _lit(src: str, node: ast.AST) -> str | None:
     """把一個 AST 節點還原成人看得懂的文字——純字面字串去引號，f-string／運算式原樣附上原始碼。"""
-    seg = ast.get_source_segment(src, node)
+    seg = _source_segment(src, node)
     if seg is None:
         return None
     s = seg.strip()
@@ -177,7 +198,7 @@ def _steps_and_criteria(fn: ast.AST, helpers: dict, src: str) -> tuple[list[str]
     """
     steps = _step_texts(fn, src)
     preconditions, scope, criteria, known_issues = _split_sections(_attach_titles(fn, src))
-    body_seg = ast.get_source_segment(src, fn) or ""
+    body_seg = _source_segment(src, fn) or ""
     has_assert = "assert " in body_seg
     for name in _helper_names(fn):
         h = helpers.get(name)
@@ -189,7 +210,7 @@ def _steps_and_criteria(fn: ast.AST, helpers: dict, src: str) -> tuple[list[str]
         scope += h_scope
         criteria += h_criteria
         known_issues += h_known_issues
-        has_assert = has_assert or "assert " in (ast.get_source_segment(src, h) or "")
+        has_assert = has_assert or "assert " in (_source_segment(src, h) or "")
     return preconditions, steps, scope, criteria, known_issues, has_assert
 
 
@@ -210,9 +231,9 @@ def _inferred_preconditions(fixtures: list[str], suite: str | None, markers: set
     """補上平台可直接閱讀的基本前置條件。
 
     案例原始碼以 fixture 宣告登入角色；平台不應要求 QA 反查 Python fixture 名稱。
-    這裡只對飛單選項明細設置輸出通用前置，其他產品維持既有資料形狀。
+    這裡只對飛單選項設置輸出通用前置，其他產品維持既有資料形狀。
     """
-    if suite != "飞单选项明细设置":
+    if suite != "飞单选项设置":
         return []
     if "level1_agent_page" in fixtures:
         account = "帳號：一級代理"
@@ -224,7 +245,7 @@ def _inferred_preconditions(fixtures: list[str], suite: str | None, markers: set
         account = "帳號：依案例指定的一至九級代理帳號"
     else:
         account = "帳號：依案例指定帳號"
-    page = "頁面：系統設置 → 飛單選項明細設置"
+    page = "頁面：系統設置 → 飛單選項設置"
     restore = (
         "原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認"
         if "write_action" in markers
@@ -240,7 +261,7 @@ def _inferred_evidence(
     criteria: list[str],
 ) -> list[str]:
     """提供一般 QA 看得懂的佐證方式提示；實際附件仍由案例執行時產生。"""
-    if suite != "飞单选项明细设置":
+    if suite != "飞单选项设置":
         return []
     evidence = [
         "截圖：保留關鍵欄位、按鈕、勾選狀態或提示文字",
@@ -325,6 +346,8 @@ def _collect_one(item, rootdir: str) -> dict:
         expected = documented["預期結果"]
         criteria = expected
         known_issues = documented.get("已知問題", [])
+        if documented.get("佐證方式"):
+            evidence = documented["佐證方式"]
 
     return {
         "nodeid": item.nodeid,  # 中文原樣（JSON 以 ensure_ascii=False 寫出）
@@ -332,6 +355,10 @@ def _collect_one(item, rootdir: str) -> dict:
         "lineno": (item.location[1] or 0) + 1,
         "func": getattr(item, "originalname", None) or item.name,
         "param_id": cs.id if cs else None,
+        # 僅匯出分類需要的非敏感層索引；不序列化其他參數或帳密。
+        "level_index": cs.params.get("index") if cs and type(cs.params.get("index")) is int else None,
+        "case_parameters": {k: cs.params[k] for k in ("via", "game")
+                            if cs and isinstance(cs.params.get(k), str)},
         "title": title,
         "title_source": title_src,
         "markers": markers,
@@ -369,11 +396,12 @@ def _documented_case(doc: str | None) -> dict[str, list[str]] | None:
     section = None
     for raw in doc.splitlines()[1:]:
         line = raw.strip()
-        if line == "實作備註：":
+        if line.startswith("實作備註："):
             break
-        if line in {s + "：" for s in ("前置條件", "測試範圍", "步驟", "預期結果", "已知問題")}:
-            section = line[:-1]
-            result[section] = []
+        heading, sep, content = line.partition("：")
+        if sep and heading in {"前置條件", "測試範圍", "步驟", "預期結果", "佐證方式", "已知問題"}:
+            section = heading
+            result[section] = [content.strip()] if content.strip() else []
         elif line and section:
             result[section].append(re.sub(r"^(?:[-*] |\d+\. )", "", line))
     if not all(result.get(k) for k in ("前置條件", "測試範圍", "步驟", "預期結果")):

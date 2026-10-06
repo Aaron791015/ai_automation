@@ -1,7 +1,21 @@
 """驗證明確案例文件的匯出優先序；不登入或執行產品測試。"""
 from types import SimpleNamespace
+import ast
 import pytest
 from tools.test_platform.collect import pytest_case_export as export
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_cached_source_segments_match_python_ast_with_unicode(newline):
+    source = newline.join([
+        'def case():',
+        '    note = """中文\f文字',
+        '下一行\u2028仍同一行"""',
+        '    attach(f"值：{note}",',
+        '           name="預期與實際")',
+    ])
+    for node in ast.walk(ast.parse(source)):
+        assert export._source_segment(source, node) == ast.get_source_segment(source, node)
 
 DOC = """平台案例：[功能驗證] X1：保存：值是否保留
 前置條件：
@@ -29,6 +43,14 @@ def test_structured_documentation_separates_sections():
 def test_legacy_documentation_keeps_existing_parser():
     assert export._documented_case("一般說明\n步驟：自由文字") is None
 
+
+def test_evidence_is_separate_from_expected_results():
+    doc = DOC.replace("已知問題：", "佐證方式：\n- 保留實際值與預期值截圖。\n已知問題：")
+    result = export._documented_case(doc)
+    assert result["預期結果"] == ["應顯示 100。"]
+    assert result["佐證方式"] == ["保留實際值與預期值截圖。"]
+    assert result["已知問題"] == ["待補其他彩種。"]
+
 @pytest.mark.parametrize("doc", [DOC.replace("預期結果：", "缺少結果："), DOC.replace("2. 重新整理並讀取。", "")])
 def test_incomplete_documentation_does_not_silently_export(doc):
     with pytest.raises(ValueError):
@@ -37,11 +59,13 @@ def test_incomplete_documentation_does_not_silently_export(doc):
 def test_explicit_conditions_override_inferred_restoration(monkeypatch, tmp_path):
     def case():
         pass
-    case.__doc__ = DOC.replace("帳號：二級代理", "資料：本案例保留設定，不自動還原")
+    case.__doc__ = DOC.replace("帳號：二級代理", "資料：本案例保留設定，不自動還原").replace(
+        "已知問題：", "佐證方式：\n- 保留本輪凍結資料與逐注計算。\n已知問題："
+    )
     item = SimpleNamespace(obj=case, path=tmp_path/'case.py', location=('case.py', 0, 'case'),
                            nodeid='case.py::case', originalname='case', name='case',
                            fixturenames=['page'], iter_markers=lambda: [])
-    monkeypatch.setattr(export, 'allure_labels', lambda item: [('suite', '飞单选项明细设置')])
+    monkeypatch.setattr(export, 'allure_labels', lambda item: [('suite', '飞单选项设置')])
     monkeypatch.setattr(export, '_title', lambda item: ('標題', 'allure_title'))
     monkeypatch.setattr(export, '_static_steps', lambda item: ([], ['f"{game}"'], [], ['原始附件'], [], True))
     result = export._collect_one(item, str(tmp_path))
@@ -49,3 +73,4 @@ def test_explicit_conditions_override_inferred_restoration(monkeypatch, tmp_path
     assert result['steps'] == ['輸入 100 並保存。', '重新整理並讀取。']
     assert result['expected'] == ['應顯示 100。']
     assert result['known_issues'] == ['待補其他彩種。']
+    assert result['evidence'] == ['保留本輪凍結資料與逐注計算。']

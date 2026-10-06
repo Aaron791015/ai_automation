@@ -314,9 +314,71 @@
       "tests/**/*.py",
       "tools/*_qa/**/*.py",
       "pyproject.toml",
+      "tools/test_platform/registry/ui_tests.tool.json",
+      "tools/test_platform/collect/*.py",
       "tools/test_platform/demo/generated_tests/**/*.py"
     ],
     "cache": "cache/cases/ui_tests.json",
+    "topics": [
+      {
+        "id": "odds-gap",
+        "product": "xzh",
+        "label": "賠率差",
+        "target_file": "tests/xzh/test_user_management.py",
+        "parameter_labels": {
+          "via": {"company": "公司操作", "parent": "直屬上級操作"},
+          "game": {"markSix": "香港六合彩", "ukLucky7": "英國天天彩", "bingo6": "賓果六合彩"}
+        },
+        "titles": {
+          "test_odds_gap_smoke_parent": "[抽驗] 三彩種代表欄保存與精度檢查（直屬上級操作）",
+          "test_odds_gap_smoke_company_lower": "[抽驗] 公司操作二級代理：香港六合彩特碼A保存與還原",
+          "test_odds_gap_remaining_readonly": "[唯讀核對] 逐層比對剩餘差分與公式",
+          "test_odds_gap_approved_spec_all_levels": "[畫面驗證] 各層三彩種設定列與主副欄符合核准規格",
+          "test_odds_gap_two_sides_all_levels": "[邏輯驗證] 各層兩面玩法差分與剩餘值核對",
+          "test_odds_gap_authorization_reject_enabled_descendants": "[異常] TC-002：下級仍開啟時，取消本層授權應拒絕保存",
+          "test_save_and_remaining_by_scope": "[分批驗收] B90＋B92：單彩種逐欄保存、剩餘公式與還原",
+          "test_boundary_by_scope": "[分批驗收] B91：單彩種依指定欄位驗輸入邊界與還原",
+          "test_authorization_by_pair": "[授權驗證] B88：本層與直屬下級授權切換、設定保留與投注效果"
+        },
+        "level_labels": ["一级代理", "二级代理", "三级代理", "四级代理", "五级代理", "六级代理", "七级代理", "八级代理", "九级代理", "会员"],
+        "fixed_levels": {
+          "test_odds_gap_smoke_company_lower": 1,
+          "test_odds_gap_authorization_leaf_can_disable": 8,
+          "test_odds_gap_sub_label_screenshots": 1
+        },
+        "sections": [
+          {"id": "settings", "label": "01 設定頁與各層操作（B89～B91）", "category": "01 主要案例（三彩種）", "match": [
+            {"file": "tests/xzh/test_user_management.py", "allure": {"sub_suite": "赔率差分"}},
+            {"file": "tests/xzh/test_odds_gap_setting_spec.py"}
+          ]},
+          {"id": "cross-level", "label": "02 跨層授權與差分公式（B88／B92／B101）", "match": [
+            {"file": "tests/xzh/test_user_management.py", "allure": {"suite": "賠率差分跨層驗證"}}
+          ]},
+          {"id": "authorization", "label": "03 授權撤銷與攔截", "category": "02 授權檢查", "match": [
+            {"file": "tests/xzh/test_odds_gap_authorization_guard.py"},
+            {"file": "tests/xzh/test_odds_gap_acceptance.py", "func": "test_authorization_by_pair"}
+          ]},
+          {"id": "smoke", "label": "04 代表欄抽驗", "category": "04 快速抽驗（部分覆蓋）", "match": [
+            {"file": "tests/xzh/test_odds_gap_smoke.py"}
+          ]},
+          {"id": "acceptance", "label": "05 分批驗收", "category": "03 分批驗收（可單獨續跑）", "match": [
+            {"file": "tests/xzh/test_odds_gap_acceptance.py"}
+          ]},
+          {"id": "remaining", "label": "06 剩餘差分唯讀核對", "match": [
+            {"file": "tests/xzh/test_odds_gap_remaining_readonly.py"}
+          ]},
+          {"id": "two-sides", "label": "07 兩面玩法", "match": [
+            {"file": "tests/xzh/test_odds_gap_two_sides.py"}
+          ]},
+          {"id": "reports", "label": "08 賠率差金額報表", "match": [
+            {"file": "tests/xzh/test_reports.py", "allure": {"suite": "赔率差金额"}}
+          ]},
+          {"id": "regression", "label": "09 已知缺陷回歸", "category": "05 已知缺陷回歸", "match": [
+            {"file": "tests/xzh/test_odds_gap_bug_regression.py"}
+          ]}
+        ]
+      }
+    ],
     "collect_timeout_sec": 90,
     "title_priority": [
       "allure_title",

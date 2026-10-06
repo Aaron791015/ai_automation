@@ -45,7 +45,11 @@ from bug_paths import PRODUCT_DIRS, ROOT, SHOTS_DIR  # noqa: E402
 #   改善建議：ID 走 `-S01` 序列（CRUX-S01），不佔 bug 流水號 → 數字前可有 `S`
 #   純他人單（無本地 ID）：JIRA-<KEY>_… ，避免與本地 ID 撞命名空間
 # ⚠️ `S` 那一段是實測補的：初版寫成 `-\d+` 會擋掉既有的 CRUX-S01／CRUX-S02 截圖。
-NAME_RE = re.compile(r"^(JIRA-)?[A-Z]+-S?\d+(_fixed)?_\d{2}_.+\.png$")
+# ⚠️ 前綴寫成 `[A-Z][A-Za-z]*`（首字母大寫、其後可小寫），不是 `[A-Z]+`：
+#    新綜合的前綴是混合大小寫的 `Snotra`，只吃全大寫會整批擋掉
+#    （2026-09-18 實測 Snotra-013 截圖被擋，只能手動蓋章而繞過本檢查）。
+#    首字母仍要求大寫，才擋得住 `crux-060` 這種全小寫的筆誤。
+NAME_RE = re.compile(r"^(JIRA-)?[A-Z][A-Za-z]*-S?\d+(_fixed)?_\d{2}_.+\.png$")
 
 
 def _resolve(spec: str) -> tuple[str, str]:

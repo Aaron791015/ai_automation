@@ -12,7 +12,7 @@ description: 多 session 共用 working tree 的 commit 紀律 — 兩段式流�
 > （「見 §8.3 配套⑥」「比照 §8.4」…），重新編號會讓它們全部失效。
 > 外部引用請寫「`commit` skill §8.3」。
 
-## 0. 先看這三條（CLAUDE.md 留的硬紀律）
+## 0. 先看這幾條（CLAUDE.md 留的硬紀律）
 
 1. **commit 前一律先向使用者確認**；未取得確認不得自行 commit。
 2. ⛔ **取得許可前不得 `git add`／`git stash`** —— 索引是整個 working tree 共用的，不是你這個 session 的。
@@ -20,6 +20,7 @@ description: 多 session 共用 working tree 的 commit 紀律 — 兩段式流�
 4. ⭐ **（只在原版工作區）提交後跑一次 `export_template.py --out <鏡像> --sync`** ——
    對外發送的是鏡像，原版改了而鏡像沒跟上時**沒有任何機制會發現**（見 §8.2 的 C 段）。
    ⚠️ **你手上這份如果是匯出的範本，這一條不適用** —— 判準見 C 段。
+5. **每次 `git push` 前都要列出將推送的檔案與差異，取得該次 push 的使用者確認**；原版與鏡像是不同 repository，授權不可互相推定。
 
 以下是完整流程。
 
@@ -42,7 +43,7 @@ description: 多 session 共用 working tree 的 commit 紀律 — 兩段式流�
 **A. 許可前：唯讀預檢（完全不碰索引）**
 
 ```bash
-git log --oneline HEAD..main                        # A1 單一主幹下應永遠為空；有輸出＝分支落後 → 先併 main 再談 commit
+git log --oneline HEAD..main                        # A1 唯讀列出分支落後；有輸出只代表需回報／依使用者指示處理，不在預檢中自行 merge
 git status --short                                  # A2 全貌，含 `??` 新檔。這份就是要給使用者看的清單
 git diff --stat --ignore-cr-at-eol -- <自己的路徑>   # A3 異動量；--ignore-cr-at-eol 取代 renormalize 的去噪作用
 git diff --ignore-cr-at-eol -- <共用檔>              # A4 共用檔讀整段 diff（§8.4；判準見下）
@@ -86,13 +87,15 @@ python scripts\export_template.py --out <你的鏡像目錄> --sync
 **commit 完就跑一次，讓工具自己回答**：沒差異它會說「鏡像已經是最新的」（幾秒鐘的事），
 有差異它會**列出是哪幾個檔**，那就是本來就該同步的東西。
 
-有差異時接著把鏡像也提交、推上去：
+有差異時，先把鏡像的變更範圍交給使用者審閱。**原版 commit 的授權不包含鏡像 repository 的 commit 或 push**；鏡像同步只更新其工作樹，不自行取得這兩項授權。
 
 ```powershell
-cd <你的鏡像目錄>
-git status --short        # 檢查差異
-git add -A ; git commit ; git push
+git -C <你的鏡像目錄> status --short
+git -C <你的鏡像目錄> diff --stat --ignore-cr-at-eol
+git -C <你的鏡像目錄> diff -- <export_template.py 列出的同步路徑>
 ```
+
+鏡像 working tree 若已有未相關的 dirty changes，保留它們並只阻塞鏡像 commit；不得 reset、clean、stash 或代改其內容。取得**鏡像 commit**的明確許可後，才可依同步工具列出的**精確路徑**暫存並提交；commit 後仍須再次列出檔案與差異，取得**鏡像 push**的明確許可後才執行 `git -C <你的鏡像目錄> push`。
 
 > **為什麼要有這一條**：對外發送的是**鏡像**，不是這個工作區
 > （原版有產品資料，推不上去）。原版改了而鏡像沒跟上時，**沒有任何機制會發現** ——
@@ -117,8 +120,8 @@ git add -A ; git commit ; git push
 > 就是這樣差點漏掉 —— A2 有看到它的 `??`，但 B1 加的是上層目錄，
 > 是 B2b 才把它撿回來的。）
 
-> ⚠️ **B0 若有輸出，代表另一個 session 正在作業** —— **停下來回報，不要 commit**
-> （commit 會把他們的東西送出去），也**⛔ 不要 `git reset`**（那會清掉他們的暫存）。
+> ⚠️ **B0 若有輸出，代表索引已有其他待提交內容** —— **只阻塞本次 commit**；先以唯讀 diff／status 查明範圍，回報後不要把它們帶入本次 commit。
+> 不要因為索引被占用而終止其他不涉及索引的獨立工作，也**⛔ 不要 `git reset`**（那會清掉他們的暫存）。
 > `git reset` 只在「**你自己**暫存錯了」時才用，且它只動索引、不動檔案；
 > **切勿 `git reset --hard`**，那會清掉其他 session 未提交的工作。
 
@@ -177,8 +180,7 @@ git add -A ; git commit ; git push
 （`.venv\Scripts\python.exe -m pytest tests/tooling`）；**改共用元件的介面前先 grep 呼叫端**，
 別的產品可能正在用。
 
-- **禁止無條件 `git add -A`**，僅在已依 §8.2 確認「工作區只剩自己的異動」時才可使用
-  （⚠️ **唯一例外是交接活文件**，見下方 ★ 條；該檔含他人的列時仍可 add／commit）。
+- **禁止無條件 `git add -A`**；許可後也只暫存 §8.2 已核對的精確路徑。交接活文件或文件型共用檔的 co-commit 例外只放寬內容歸屬，不放寬許可前不得 add／stash 的規則。
 - 他人 session 開發中的檔案不代為 commit（各自負責），看到時也不主動建議代勞
   （同上，交接活文件除外）。
 - ★ **例外：交接活文件與文件型共用檔允許整份 co-commit**（2026-08-14 使用者裁示，
@@ -201,7 +203,7 @@ git add -A ; git commit ; git push
 
   > ### 📖 真的要 co-commit 時 → 讀 [`references/co-commit例外.md`](references/co-commit例外.md)
   > 那裡有**六條配套**（commit 訊息要列項目編號／不得順手改他人的列＋三種正常運作的例外／
-  > 內容矛盾要停下來問／編號當下取／半成品不送／不代改檔頭日期）、
+  > 內容矛盾先查證、無法可靠解決才問／編號當下取／半成品不送／不代改檔頭日期）、
   > 「被別人的 commit 帶走不算問題」的裁示範圍，以及三則實際事故。
   >
   > **本段只夠你判斷「適不適用」；真的要送之前，那六條一條都不能少。**

@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import glob
+import fnmatch
 import os
 import subprocess
 import sys
@@ -137,6 +138,14 @@ def _stage_of(file: str, stages: list[dict]) -> dict | None:
     return next((s for s in stages if file == s["path"]), None)
 
 
+def _matches_section(c: dict, section: dict) -> bool:
+    return any(fnmatch.fnmatchcase(c["file"], rule["file"])
+               and ("func" not in rule or c.get("func") == rule["func"])
+               and all((c.get("allure") or {}).get(k) == v
+                       for k, v in rule.get("allure", {}).items())
+               for rule in section["match"])
+
+
 def annotate(raw_cases: list[dict], spec) -> list[dict]:
     cases_cfg = spec.cases or {}
     pmap = cases_cfg.get("product_map", [])
@@ -163,6 +172,22 @@ def annotate(raw_cases: list[dict], spec) -> list[dict]:
                 break
         c["requires_stage"] = req
         c["needs_prereq"] = bool(req) and c["stage"] != req
+        for topic in cases_cfg.get("topics", []):
+            if c["product"] != topic["product"] or not any(
+                    _matches_section(c, s) for s in topic["sections"]):
+                continue
+            title = topic.get("titles", {}).get(c.get("func"), c["title"])
+            title = title.removeprefix("平台案例：")
+            c["scenario_title"] = title
+            parts = []
+            index = c.get("level_index")
+            levels = topic.get("level_labels", [])
+            if type(index) is int and 0 <= index < len(levels):
+                parts.append(levels[index])
+            for key, value in c.get("case_parameters", {}).items():
+                parts.append(topic.get("parameter_labels", {}).get(key, {}).get(value, value))
+            c["title"] = title + ("｜" + "／".join(parts) if parts else "")
+            break
         out.append(c)
     return out
 
@@ -178,7 +203,7 @@ def _counts(cs: list[dict]) -> dict:
 
 
 def to_tree(cases: list[dict], spec) -> list[dict]:
-    """產品 → 檔案 → （檔案內若貼了 allure suite 標籤才分組）→ 案例。
+    """產品 → 宣告的主題分類或原有檔案 → suite → 案例。
 
     ⚠️ 2026-08-28 由「產品 → suite → 檔案 → 案例」改成「產品 → 檔案 → suite → 案例」：
     原本 suite 分岔在檔案**之上**，同一檔案有多個子頁面（如 `test_system_setting.py`
@@ -188,6 +213,7 @@ def to_tree(cases: list[dict], spec) -> list[dict]:
     """
     cases_cfg = spec.cases or {}
     pmap = {m["product"]: m for m in cases_cfg.get("product_map", [])}
+    display_files, display_labels = {}, {}
     by_product: dict[str, list[dict]] = defaultdict(list)
     for c in cases:
         if "error" in c:
@@ -213,7 +239,28 @@ def to_tree(cases: list[dict], spec) -> list[dict]:
     def build_case_groups(fcases: list[dict], id_prefix: str) -> list[dict]:
         """檔案節點底下的案例；有 allure suite／sub_suite 標籤才分組，否則直接列案例。"""
         def lvl(c, k):
-            return (c.get("allure") or {}).get(k)
+            return display_labels.get(c["nodeid"], c.get("allure") or {}).get(k)
+
+        def build_scenarios(items, prefix):
+            nodes = []
+            for key, variants in group(items, lambda c: (c["file"], c.get("func") or c["nodeid"]), "scenario", prefix):
+                if len(variants) == 1:
+                    nodes.append(leaf(variants[0]))
+                else:
+                    nodes.append({"type": "suite", "id": f"{prefix}/{key[0]}::{key[1]}",
+                                  "label": variants[0].get("scenario_title", variants[0]["title"]),
+                                  "counts": _counts(variants), "children": [leaf(c) for c in variants]})
+            return nodes
+
+        def build_categories(items, prefix):
+            if not any(lvl(c, "category") for c in items):
+                return [leaf(c) for c in items]
+            nodes = []
+            for category, members in sorted(group(items, lambda c: lvl(c, "category") or "其他", "category", prefix)):
+                cid = f"{prefix}/{category}"
+                nodes.append({"type": "suite", "id": cid, "label": category,
+                              "counts": _counts(members), "children": build_scenarios(members, cid)})
+            return nodes
         if all(lvl(c, "suite") is None for c in fcases):
             return [leaf(c) for c in fcases]
         nodes = []
@@ -226,14 +273,14 @@ def to_tree(cases: list[dict], spec) -> list[dict]:
                 for sub, subcases in group(scases, lambda c: lvl(c, "sub_suite"), "sub_suite", sid):
                     ssid = f"{sid}/{sub or '_'}"
                     children.append({"type": "sub_suite", "id": ssid, "label": sub or "（未分類）",
-                                     "counts": _counts(subcases), "children": [leaf(c) for c in subcases]})
+                                     "counts": _counts(subcases), "children": build_categories(subcases, ssid)})
             nodes.append({"type": "suite", "id": sid, "label": suite or "（未分類）",
                           "counts": _counts(scases), "children": children})
         return nodes
 
     def build_files(items: list[dict], id_prefix: str) -> list[dict]:
         nodes = []
-        for fpath, fcases in group(items, lambda c: c["file"], "file", id_prefix):
+        for fpath, fcases in group(items, lambda c: display_files.get(c["nodeid"], c["file"]), "file", id_prefix):
             stage = fcases[0].get("stage_label")
             fid = f"{id_prefix}/{fpath}"
             nodes.append({
@@ -243,6 +290,50 @@ def to_tree(cases: list[dict], spec) -> list[dict]:
                 "children": build_case_groups(fcases, fid),
             })
         return nodes
+
+    def build_topics(items: list[dict], pid: str) -> list[dict]:
+        # 主題只改瀏覽位置，不複製案例、不改 nodeid 或來源檔；第一個符合的分類優先。
+        remaining = list(items)
+        nodes = []
+        for topic in cases_cfg.get("topics", []):
+            if topic["product"] != pid:
+                continue
+            tid = f"{pid}/topic/{topic['id']}"
+            children, members = [], []
+            for section in topic["sections"]:
+                selected = [c for c in remaining if _matches_section(c, section)]
+                if not selected:
+                    continue
+                ids = {c["nodeid"] for c in selected}
+                remaining = [c for c in remaining if c["nodeid"] not in ids]
+                if topic.get("target_file"):
+                    levels = topic.get("level_labels", [])
+                    for c in selected:
+                        display_files[c["nodeid"]] = topic["target_file"]
+                        suite = (c.get("allure") or {}).get("suite")
+                        index = c.get("level_index")
+                        if index is None:
+                            index = topic.get("fixed_levels", {}).get(c.get("func"))
+                        if suite not in levels:
+                            suite = levels[index] if type(index) is int and 0 <= index < len(levels) else None
+                        display_labels[c["nodeid"]] = {
+                            "suite": suite or "賠率差跨層與共用",
+                            "sub_suite": "赔率差分" if suite else section["label"],
+                            "category": section.get("category") if suite else None,
+                        }
+                    members.extend(selected)
+                    continue
+                sid = f"{tid}/{section['id']}"
+                children.append({"type": "suite", "id": sid, "label": section["label"],
+                                 "counts": _counts(selected),
+                                 "children": build_case_groups(selected, sid)})
+                members.extend(selected)
+            if members and not topic.get("target_file"):
+                nodes.append({"type": "suite", "id": tid, "label": topic["label"],
+                              "counts": _counts(members), "children": children})
+        # 指定檔案的案例與原有管理案例合併，層級順序沿用管理頁的 suite。
+        relocated = [c for c in items if c["nodeid"] in display_files]
+        return nodes + build_files(remaining + relocated, pid)
 
     # ⭐ `product_map` 只有少數幾條寫了 `label`（生成骨架那三條、tests/tooling），
     #    其餘沒寫的先前直接退回 slug —— 於是樹上出現 `crux`／`wbot`，
@@ -263,7 +354,7 @@ def to_tree(cases: list[dict], spec) -> list[dict]:
             "type": "product", "id": pid,
             "label": m.get("label") or labels.get(pid) or pid, "product": pid,
             "collapsed": bool(m.get("collapsed")), "counts": _counts(pcases),
-            "children": build_files(pcases, pid),
+            "children": build_topics(pcases, pid),
         })
     # 產品順序：crux, wbot, qixing, common（common 收合在最後）
     order = {"crux": 0, "wbot": 1, "qixing": 2, "common": 9}

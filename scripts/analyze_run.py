@@ -113,21 +113,51 @@ def known_bugs(product):
     return items
 
 
+def _allure_full(token):
+    """把 pytest nodeid 轉成 allure `fullName` 的寫法，兩邊才比得起來。
+
+    `tests/crux/test_a.py::TestB::test_c[chromium]` → `tests.crux.test_a.TestB#test_c`；
+    只寫檔案（`tests/crux/test_a.py`）→ 模組 `tests.crux.test_a`；已是 allure 寫法或只有函式名則原樣。
+    """
+    tok = re.sub(r"\[[^\]]*\]$", "", (token or "").strip())
+    path, _, rest = tok.partition("::")
+    if not path.endswith(".py"):
+        return tok
+    module = path[:-3].replace("\\", "/").strip("/").replace("/", ".")
+    if not rest:
+        return module
+    parts = rest.split("::")
+    return ".".join([module] + parts[:-1]) + "#" + parts[-1]
+
+
 def match_known(rec, bugs):
     """三種比對（與 test_platform 的 bug_draft 同一套）：
-    ① Bug 單的 `regression` 欄命中這條 nodeid ② 案例名含單號 ③ 模組名相符。
+    ① Bug 單的 `regression` 欄命中這條案例 ② 案例名含單號 ③ 模組名相符。
     回傳 (bug_id, status, 依據) 或 None。
     """
     # ⚠️ 兩個欄位都要看：allure 的 `fullName` 是模組路徑（tests.crux.backend#test_x），
     #    單號通常寫在 `name`（＝ @allure.title 的中文標題）裡。
     #    只看其中一個會漏掉全部比對（2026-08-22 實測踩到：9 條明明有單號卻全歸「新失敗」）。
     node = "%s %s" % (rec.get("full") or "", rec.get("name") or "")
-    short = (rec.get("full") or "").split("::")[-1]
+    # ⚠️ regression 欄照規範寫 pytest nodeid（`路徑.py::函式`），allure 卻是 `模組#函式`，
+    #    兩邊要先轉成同一種寫法再「完全相等」比對；子字串比對會讓 `::test_a` 命中 `#test_abc`
+    #    （2026-09-23 實測：Snotra-010 的 regression 欄從未命中，已知失敗一律被當新失敗）。
+    full = _allure_full(rec.get("full") or "")
+    module_of, _, func = full.partition("#")
     for bug_id, status, regr, module in bugs:
         if regr and regr not in ("—", "-"):
-            for token in re.split(r"[\s,；;]+", regr):
-                t = token.strip().strip("`")
-                if t and ("待補" not in t) and (t in node or (t.split("::")[-1] and t.split("::")[-1] == short)):
+            for token in re.split(r"[\s,、；;]+", regr):
+                t = token.strip().strip("`（）()「」")
+                if not t or "待補" in t:
+                    continue
+                want = _allure_full(t)
+                if "#" in want:
+                    hit = want == full                      # 指定到案例
+                elif t.endswith(".py"):
+                    hit = want == module_of                 # 只寫檔案＝整檔守門
+                else:
+                    hit = bool(func) and t == func          # 只寫函式名
+                if hit:
                     return bug_id, status, "regression 欄"
         if bug_id.lower() in node.lower():
             return bug_id, status, "案例名含單號"

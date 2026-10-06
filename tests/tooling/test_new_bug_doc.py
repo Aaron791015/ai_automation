@@ -59,7 +59,7 @@ def _touch(path, text="x"):
 # ── 配號邏輯 ────────────────────────────────────────────────────
 
 def test_無同名檔時給原始檔名(sandbox, capsys):
-    code, path = _run(capsys, "--product", "CRUX", "--kind", "report", "--date", "2026-08-14")
+    code, path = _run(capsys, "--product", _SAMPLE, "--kind", "report", "--date", "2026-08-14")
     assert code == 0
     assert path.endswith("_reports/JIRA_Bug驗證報告_2026-08-14.md")
 
@@ -67,7 +67,7 @@ def test_無同名檔時給原始檔名(sandbox, capsys):
 def test_已有原始檔時遞增為第2批(sandbox, capsys):
     _, bugs = sandbox
     _touch(str(bugs / "_reports" / "JIRA_Bug驗證報告_2026-08-14.md"))
-    code, path = _run(capsys, "--product", "CRUX", "--kind", "report", "--date", "2026-08-14")
+    code, path = _run(capsys, "--product", _SAMPLE, "--kind", "report", "--date", "2026-08-14")
     assert code == 0
     assert path.endswith("JIRA_Bug驗證報告_2026-08-14_第2批.md")
 
@@ -76,7 +76,7 @@ def test_已有第2批時遞增為第3批(sandbox, capsys):
     _, bugs = sandbox
     _touch(str(bugs / "_reports" / "JIRA_Bug驗證報告_2026-08-14.md"))
     _touch(str(bugs / "_reports" / "JIRA_Bug驗證報告_2026-08-14_第2批.md"))
-    code, path = _run(capsys, "--product", "CRUX", "--kind", "report", "--date", "2026-08-14")
+    code, path = _run(capsys, "--product", _SAMPLE, "--kind", "report", "--date", "2026-08-14")
     assert path.endswith("_第3批.md")
 
 
@@ -84,21 +84,21 @@ def test_只有第2批存在時仍會補回原始檔名(sandbox, capsys):
     """序號有洞就填洞 —— 否則刪過檔的目錄會一路往上跳號。"""
     _, bugs = sandbox
     _touch(str(bugs / "_reports" / "JIRA_Bug驗證報告_2026-08-14_第2批.md"))
-    code, path = _run(capsys, "--product", "CRUX", "--kind", "report", "--date", "2026-08-14")
+    code, path = _run(capsys, "--product", _SAMPLE, "--kind", "report", "--date", "2026-08-14")
     assert path.endswith("JIRA_Bug驗證報告_2026-08-14.md")
 
 
 def test_不同日期互不影響(sandbox, capsys):
     _, bugs = sandbox
     _touch(str(bugs / "_reports" / "JIRA_Bug驗證報告_2026-08-14.md"))
-    code, path = _run(capsys, "--product", "CRUX", "--kind", "report", "--date", "2026-08-15")
+    code, path = _run(capsys, "--product", _SAMPLE, "--kind", "report", "--date", "2026-08-15")
     assert path.endswith("JIRA_Bug驗證報告_2026-08-15.md")
 
 
 def test_交接檔走另一個目錄與樣板(sandbox, capsys):
     _, bugs = sandbox
     _touch(str(bugs / "_handover" / "交接_SideEffect待驗_2026-08-14.md"))
-    code, path = _run(capsys, "--product", "CRUX", "--kind", "handover", "--date", "2026-08-14")
+    code, path = _run(capsys, "--product", _SAMPLE, "--kind", "handover", "--date", "2026-08-14")
     assert path.endswith("_handover/交接_SideEffect待驗_2026-08-14_第2批.md")
 
 
@@ -106,12 +106,12 @@ def test_報告與交接檔的序號互不干擾(sandbox, capsys):
     """兩者在不同目錄；報告已到第2批，不該讓交接檔也跳號。"""
     _, bugs = sandbox
     _touch(str(bugs / "_reports" / "JIRA_Bug驗證報告_2026-08-14.md"))
-    _, path = _run(capsys, "--product", "CRUX", "--kind", "handover", "--date", "2026-08-14")
+    _, path = _run(capsys, "--product", _SAMPLE, "--kind", "handover", "--date", "2026-08-14")
     assert path.endswith("交接_SideEffect待驗_2026-08-14.md")
 
 
 def test_需求報告帶主題(sandbox, capsys):
-    code, path = _run(capsys, "--product", "CRUX", "--kind", "requirement",
+    code, path = _run(capsys, "--product", _SAMPLE, "--kind", "requirement",
                       "--topic", "CRUX-883綜合報表", "--date", "2026-08-14")
     assert code == 0
     assert path.endswith("需求驗證報告_CRUX-883綜合報表_2026-08-14.md")
@@ -120,20 +120,20 @@ def test_需求報告帶主題(sandbox, capsys):
 def test_不同主題不互相佔號(sandbox, capsys):
     _, bugs = sandbox
     _touch(str(bugs / "_reports" / "效能測試報告_A-7_2026-08-14.md"))
-    _, path = _run(capsys, "--product", "CRUX", "--kind", "perf",
+    _, path = _run(capsys, "--product", _SAMPLE, "--kind", "perf",
                    "--topic", "A-8", "--date", "2026-08-14")
     assert path.endswith("效能測試報告_A-8_2026-08-14.md")
 
 
 def test_requirement缺topic時報錯(sandbox, capsys):
     with pytest.raises(SystemExit) as e:
-        _run(capsys, "--product", "CRUX", "--kind", "requirement", "--date", "2026-08-14")
+        _run(capsys, "--product", _SAMPLE, "--kind", "requirement", "--date", "2026-08-14")
     assert e.value.code == 2          # argparse 的 error() 用 2
 
 
 def test_日期格式錯誤時報錯(sandbox, capsys):
     with pytest.raises(SystemExit) as e:
-        _run(capsys, "--product", "CRUX", "--kind", "report", "--date", "2026/08/14")
+        _run(capsys, "--product", _SAMPLE, "--kind", "report", "--date", "2026/08/14")
     assert e.value.code == 2
 
 
@@ -143,7 +143,7 @@ def test_reserve會真的建檔而且不覆蓋既有檔(sandbox, capsys):
     _, bugs = sandbox
     victim = bugs / "_reports" / "JIRA_Bug驗證報告_2026-08-14.md"
     _touch(str(victim), "別人的報告內容")
-    code, path = _run(capsys, "--product", "CRUX", "--kind", "report",
+    code, path = _run(capsys, "--product", _SAMPLE, "--kind", "report",
                       "--date", "2026-08-14", "--reserve")
     assert code == 0
     assert path.endswith("_第2批.md")
@@ -154,9 +154,9 @@ def test_reserve會真的建檔而且不覆蓋既有檔(sandbox, capsys):
 
 def test_連續reserve會拿到不同檔名(sandbox, capsys):
     """模擬兩個 session 先後佔位 —— 不可拿到同一個名字。"""
-    _, first = _run(capsys, "--product", "CRUX", "--kind", "report",
+    _, first = _run(capsys, "--product", _SAMPLE, "--kind", "report",
                     "--date", "2026-08-14", "--reserve")
-    _, second = _run(capsys, "--product", "CRUX", "--kind", "report",
+    _, second = _run(capsys, "--product", _SAMPLE, "--kind", "report",
                      "--date", "2026-08-14", "--reserve")
     assert first != second
     assert second.endswith("_第2批.md")
@@ -165,7 +165,7 @@ def test_連續reserve會拿到不同檔名(sandbox, capsys):
 def test_reserve會自動建目錄(sandbox, capsys):
     _, bugs = sandbox
     os.rmdir(str(bugs / "_handover"))
-    code, path = _run(capsys, "--product", "CRUX", "--kind", "handover",
+    code, path = _run(capsys, "--product", _SAMPLE, "--kind", "handover",
                       "--date", "2026-08-14", "--reserve")
     assert code == 0
     assert os.path.isdir(str(bugs / "_handover"))
