@@ -1,5 +1,6 @@
 """賠率差 UI 寫入的異常收尾；唯讀重查、衝突停手、只還原本次欄位。"""
 from contextlib import contextmanager
+from datetime import datetime
 from uuid import uuid4
 import os
 import json
@@ -8,6 +9,12 @@ from pathlib import Path
 from xzh_qa.odds_gap_client import gap_values, ReadOnlyApiError
 from xzh_qa.odds_gap_oracle import dec
 from xzh_qa.odds_gap_run_state import RestoreConflict
+
+# 副欄「NULL→0」登記檔（2026-10-06 Aaron 同意方案 B）：UI 保存一列會把該列從未設過的副欄（NULL）
+# 一併送成 0，且 UI 寫不回 NULL；規格「副差分未設＝0」，兩者計算等價。只有登記在這裡的格，
+# 還原核對與全表基準比對才視 NULL→0 為相符；其他任何差異（含未登記的 NULL→0、0→NULL）照舊報。
+NULL_TO_ZERO_REGISTRY = (Path(__file__).resolve().parents[2]
+                         / "reports" / "odds_gap_regression" / "_baselines" / "null-to-zero-registry.json")
 
 
 def ensure_writes_clear(ctx):
@@ -30,6 +37,59 @@ def strict_gap_values(rows):
     """還原核對保留 NULL 與零的差別；計算端的零正規化不能掩蓋資料變更。"""
     return {(r["playTypeId"], field): None if r[field] is None else dec(r[field])
             for r in rows for field in ("oddsGap", "subOddsGap")}
+
+
+def is_null_to_zero(field, before, after):
+    """副欄由 NULL 變成 0（UI 保存副作用的唯一形態）；主欄、0→NULL、NULL→非 0 都不算。"""
+    return field == "subOddsGap" and before is None and after is not None and dec(after) == 0
+
+
+def registered_null_to_zero(path=None) -> set:
+    """已登記的 (account, game, play, field)。"""
+    registry = Path(path or NULL_TO_ZERO_REGISTRY)
+    if not registry.exists():
+        return set()
+    cells = json.loads(registry.read_text(encoding="utf-8"))["cells"]
+    return {(c["account"], c["game"], c["play"], c["field"]) for c in cells}
+
+
+def register_null_to_zero(account, game_id, keys, source, path=None):
+    """登記本批保存造成的 NULL→0；已登記的不重寫。keys 為 strict_gap_values 的 (play, field)。"""
+    registry = Path(path or NULL_TO_ZERO_REGISTRY)
+    data = json.loads(registry.read_text(encoding="utf-8")) if registry.exists() else {"cells": []}
+    known = {(c["account"], c["game"], c["play"], c["field"]) for c in data["cells"]}
+    at = datetime.now().astimezone().isoformat(timespec="seconds")
+    added = [{"account": account, "game": game_id, "play": play, "field": field, "at": at, "source": source}
+             for play, field in sorted(keys) if (account, game_id, play, field) not in known]
+    if added:
+        data["cells"].extend(added)
+        registry.parent.mkdir(parents=True, exist_ok=True)
+        registry.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    return added
+
+
+def gap_differences(strict_before, strict_after, allow_null_to_zero=lambda play: False):
+    """逐格比對兩份 strict_gap_values；回傳（差異清單, 容許的 NULL→0 格）。
+    只有 allow_null_to_zero(play) 為真的列，其副欄 NULL→0 才容許。"""
+    differences, tolerated = [], []
+    for k in sorted(set(strict_before) | set(strict_after)):
+        if k in strict_before and k in strict_after:
+            before, after = strict_before[k], strict_after[k]
+            if before == after:
+                continue
+            if is_null_to_zero(k[1], before, after) and allow_null_to_zero(k[0]):
+                tolerated.append(k)
+                continue
+        differences.append({"play": k[0], "field": k[1], "before": strict_before.get(k), "after": strict_after.get(k)})
+    return differences, tolerated
+
+
+def restore_equal(account, game_id, before_rows, after_rows, path=None):
+    """還原後與快照是否相同；只容許已登記的副欄 NULL→0。"""
+    allowed = registered_null_to_zero(path)
+    differences, _ = gap_differences(strict_gap_values(before_rows), strict_gap_values(after_rows),
+                                     lambda play: (account, game_id, play, "subOddsGap") in allowed)
+    return not differences
 
 
 @contextmanager
@@ -70,15 +130,19 @@ def guarded_gaps(ctx, game_id, before_rows):
                         raise RestoreConflict("還原輸入期間資料已變更，停止保存")
                     response = ctx.setting.save()
                     assert response["status"] in (200, 204), f"還原保存失敗：{response['status']}"
-                final = strict_gap_values(ctx.api_rows(game_id))
-                if final != strict_before:
-                    differences = [{"play": k[0], "field": k[1], "before": strict_before.get(k),
-                                    "after": final.get(k)} for k in set(strict_before) | set(final)
-                                   if k not in final or k not in strict_before or final[k] != strict_before[k]]
+                # 只容許本批保存過的列（UI 整列送出）或已登記格的副欄 NULL→0；其他列的 NULL→0 代表有人動過
+                saved = {play for play, _ in state["expected"]}
+                allowed = registered_null_to_zero()
+                differences, tolerated = gap_differences(
+                    strict_before, strict_gap_values(ctx.api_rows(game_id)),
+                    lambda play: play in saved or (ctx.account, game_id, play, "subOddsGap") in allowed)
+                if differences:
                     ctx.run.dump(f"restore-diff-{key}.json", differences)
                     raise RestoreConflict("最終全欄與本輪快照不一致；保留差異，不覆蓋其他欄位")
+                register_null_to_zero(ctx.account, game_id, tolerated, str(ctx.run.dir))
                 state["restored"] = True
-                ctx.run.log({"phase": "restored", "key": key, "equal": True})
+                ctx.run.log({"phase": "restored", "key": key, "equal": True,
+                             "null_to_zero": [list(k) for k in tolerated]})
             except BaseException as exc:
                 block_following_writes(ctx, key, exc)
                 ctx.run.dump(f"restore-pending-{key}.json", {

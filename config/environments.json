@@ -11,6 +11,38 @@
         "username": "aaron01",
         "password": "Aa111111"
       },
+      "player": {
+        "username": "aaa010",
+        "password": "Aa111111"
+      },
+      "agent_accounts": {
+        "_comment": "一至九級代理測試帳號（2026-09-04 使用者提供，供 B82 權限驗證使用；aaa111 為 aaa111 下線鏈頂點，既有 fallback 邏輯仍相容）。",
+        "aaa111": { "password": "Aa111111" },
+        "aaa222": { "password": "Aa111111" },
+        "aaa333": { "password": "Aa111111" },
+        "aaa444": { "password": "Aa111111" },
+        "aaa555": { "password": "Aa111111" },
+        "aaa666": { "password": "Aa111111" },
+        "aaa777": { "password": "Aa111111" },
+        "aaa888": { "password": "Aa111111" },
+        "aaa999": { "password": "Aa111111" }
+      },
+      "chain_b": {
+        "_comment": "第二組獨立測試帳號（2026-10-02 使用者建立並提供，供與 aaa 鏈併行測試；公司操作員 aaron02、一至九級代理 bbb111～bbb999、會員 bbb010）。既有程式預設仍用 admin／player／agent_accounts（aaa 鏈）。",
+        "admin": { "username": "aaron02", "password": "Aa111111" },
+        "player": { "username": "bbb010", "password": "Aa111111" },
+        "agent_accounts": {
+          "bbb111": { "password": "Aa111111" },
+          "bbb222": { "password": "Aa111111" },
+          "bbb333": { "password": "Aa111111" },
+          "bbb444": { "password": "Aa111111" },
+          "bbb555": { "password": "Aa111111" },
+          "bbb666": { "password": "Aa111111" },
+          "bbb777": { "password": "Aa111111" },
+          "bbb888": { "password": "Aa111111" },
+          "bbb999": { "password": "Aa111111" }
+        }
+      },
       "note": "登入後台（平台／公司皆同帳密）會要求二次驗證(2FA)；QAT 環境目前任意輸入 6 位數字即可通過。若日後改動請更新本檔。"
     }
   }

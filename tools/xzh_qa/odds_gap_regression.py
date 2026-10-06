@@ -17,7 +17,7 @@ import allure
 from xzh_qa.config_loader import qat, player_credentials
 from xzh_qa.odds_gap_client import ReadOnlyApiError
 from xzh_qa.odds_gap_oracle import dec, player_odds
-from xzh_qa.odds_gap_safety import guarded_gaps, guarded_authorization, strict_gap_values
+from xzh_qa.odds_gap_safety import guarded_gaps, guarded_authorization, restore_equal, strict_gap_values
 from xzh_qa.pages.player_bet_page import PlayerBetPage
 
 GAME = 'bingo6'
@@ -431,7 +431,7 @@ def run_batch(browser, gap_context, run, ledger):
                     client.headers = dict(member.observed['headers'])
                     final = [client.gap_setting(c.target_user_id, GAME) for c in contexts]
                     bets = read_bets(client, member.target_user_id, data['day'])
-                data.update(final=final, restored=all(strict_gap_values(a) == strict_gap_values(b) for a, b in zip(final, originals)),
+                data.update(final=final, restored=all(restore_equal(c.account, GAME, b, a) for c, a, b in zip(contexts, final, originals)),
                             final_frozen=frozen_checks(data['attempts'], bets), finished=datetime.now().astimezone().isoformat())
             except BaseException as exc:
                 data['final_error'] = str(exc)

@@ -364,9 +364,24 @@ class PlayerBetPage:
         """選擇賓果六合彩的標準型「特码」玩法。"""
         self.select_game("宾果六合彩")
         self.select_combo_target("特码")
-        # 標準型號碼是可點擊的 `.lotto-ball` span，不是 button；外層
-        # `.bet-cell` 內的第一個「1」是實際投注格，第二個是快捷投注圖。
-        self.page.get_by_text("1", exact=True).first.locator("xpath=..").wait_for()
+        # 標準型號碼是可點擊的 `.lotto-ball` span，不是 button，且位於 `.bet-cell` 內。
+        # 等的是「號碼 1 的投注格」，不是頁面上任一個「1」——頂部上期開獎號碼球也是
+        # 「1」，會在投注格還沒渲染時提早放行（T77，見 `_standard_bet_cell`）。
+        self._standard_bet_cell(1).wait_for()
+
+    def _standard_bet_cell(self, option: str | int):
+        """標準型玩法中號碼 `option` 的投注格（`.bet-cell`）。
+
+        ⚠️ 2026-10-01（T77）：不可用 `page.get_by_text("1", exact=True).first` 直接找號碼。
+        頁面頂部「上期開獎號碼」的球也是同文字的 `.lotto-ball`，上期開獎含該號碼時
+        `.first` 會命中它——它不在任何 `.bet-cell` 內，後續找不到金額欄而逾時
+        （`reports/odds_gap_regression/snotra019-verify-20261001/runB-*` 的 `front-B-error.png`）。
+        一律先限定在 `.bet-cell` 內再比對完整文字（`exact=True` 讓「1」不會命中「11」）；
+        `:visible` 排除可能殘留在 DOM 的隱藏頁籤（A盘／B盘）重複格。
+        """
+        return self.page.locator(".bet-cell:visible").filter(
+            has=self.page.get_by_text(str(int(option)), exact=True)
+        ).first
 
     def current_issue(self) -> str:
         """讀頂部彩種列的**當期**期號。
@@ -401,6 +416,9 @@ class PlayerBetPage:
                 return False
         return True
 
+    # 連碼確認視窗標題現名（2026-10-02 起；舊名「连码下注确认」，Aaron 當日確認是 RD 刻意改動）。
+    PICK_TWO_CONFIRM_TITLE = "连码投注确认"
+
     def place_pick_two_bet(self, numbers: tuple[str, ...], amount_per_combination: str) -> str:
         for number in numbers:
             self.page.get_by_role(
@@ -409,7 +427,10 @@ class PlayerBetPage:
         self.page.get_by_role("spinbutton").fill(amount_per_combination)
         self.page.get_by_text(f"{len(numbers) * (len(numbers) - 1) // 2} 注", exact=True).wait_for()
         self.page.get_by_role("button", name="投注").last.click()
-        dialog = self.page.get_by_text("连码下注确认", exact=True)
+        # 2026-10-02 確認視窗標題由「连码下注确认」改為「连码投注确认」（前台用語統一為「投注」）。
+        # Aaron 2026-10-02 17:25 確認這是 RD 刻意改動（交接檔 T94，不開單），所以只認現名；
+        # 舊名「连码下注确认」不再接受——若又出現舊名，代表前端被改回去或環境版本不同，應當成變動回報而不是默默放行。
+        dialog = self.page.get_by_text(self.PICK_TWO_CONFIRM_TITLE, exact=True)
         dialog.wait_for()
         self.page.get_by_text("01,02", exact=True).wait_for()
         self.page.get_by_text("01,03", exact=True).wait_for()
@@ -419,9 +440,10 @@ class PlayerBetPage:
 
     def place_standard_bet(self, option: str, amount: str) -> str:
         """對目前標準型玩法的單一選項下注並完成確認。"""
-        number = self.page.get_by_text(str(int(option)), exact=True).first
+        # ⚠️ 號碼必須在 `.bet-cell` 內找，見 `_standard_bet_cell`（頂部開獎號碼球同文字，T77）。
+        bet_cell = self._standard_bet_cell(option)
+        number = bet_cell.get_by_text(str(int(option)), exact=True).first
         number.locator("xpath=..").click()
-        bet_cell = number.locator("xpath=ancestor::*[contains(@class, 'bet-cell')][1]")
         bet_cell.get_by_role("spinbutton").fill(amount)
         self.page.get_by_role("button", name="投注").last.click()
         dialog = self.page.get_by_role("dialog").last
@@ -458,7 +480,7 @@ class PlayerBetPage:
     # `python`：`fetch('/api/LayOffSettingDetail?gameId=ukLucky7&playTypeId=color')`
     # 讀到的 21 筆 `selection` 依 `"1-blue","1-green","1-red","2-blue",...,"7-red"`
     # 排序（position 1~6＝正1～6特、7＝特码；顏色依英文字母序 blue/green/red）——
-    # 這是**儲存用的原始順序**，跟後台「飛單選項明細設置」畫面實際顯示的「选项」欄
+    # 這是**儲存用的原始順序**，跟後台「飛單選項設置」畫面實際顯示的「选项」欄
     # **不是同一個順序**：畫面第 1～21 列依序是
     #   正1特紅/蓝/绿波、正2特紅/蓝/绿波、…、正6特紅/蓝/绿波、特码紅/蓝/绿波
     # （即：每個位置內部畫面用「紅→藍→綠」，API 儲存用「blue→green→red」字母序；

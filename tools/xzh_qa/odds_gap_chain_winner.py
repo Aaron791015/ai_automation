@@ -36,7 +36,7 @@ import allure
 from xzh_qa.config_loader import player_credentials, qat
 from xzh_qa.odds_gap_oracle import dec
 from xzh_qa.odds_gap_regression import read_bets, remaining_seconds
-from xzh_qa.odds_gap_safety import guarded_gaps, strict_gap_values
+from xzh_qa.odds_gap_safety import guarded_gaps, restore_equal, strict_gap_values
 from xzh_qa.pages.player_bet_page import PlayerBetPage
 
 GAME, GAME_NAME = "bingo6", "宾果六合彩"
@@ -176,13 +176,67 @@ def _set_step(page, value: str):
     assert dec(box.first.inner_text().strip()) == dec(value), f"步進值未設為 {value}"
 
 
-def _click_member(page, direction: str):
-    group = page.locator(".group").filter(has=page.locator(".group-label", has_text=PLAY_LABEL)).filter(
-        has_not=page.locator(".group-label", has_text="不中"))
-    row = group.first.locator("tbody tr").filter(has=page.locator("span.sel-name", has_text=OFFSET_MEMBER))
-    assert row.count() == 1, f"{PLAY_LABEL} 找不到唯一的「{OFFSET_MEMBER}」列"
-    kind = "el-button--danger" if direction == "minus" else "el-button--primary"
-    row.first.locator(f"button.odds-btn.{kind}").click()
+#: 即时盘面偏移鈕的 svg 圖形（2026-10-05 唯讀 DOM 實測，宾果 连肖／连尾／特码等各分類皆同）：
+#: 減號＝橫線；加號＝橫線疊直線的十字。
+OFFSET_ICON_PATH = {"minus": "M5 12h14", "plus": "M5 12h14m-7-7v14"}
+#: 舊版前端（2026-10-05 改版前）的按鈕類別：減號 danger、加號 primary；改版後兩顆都只剩 `el-button--small odds-btn`。
+LEGACY_OFFSET_CLASS = {"minus": "el-button--danger", "plus": "el-button--primary"}
+
+
+def pick_offset_button(classes, paths, direction: str, where: str = "") -> int:
+    """依兩顆按鈕的（DOM 順序）類別與 svg 圖形，回傳要點的那一顆的序號（0＝減、1＝加）；不符就丟 AssertionError。
+
+    classes／paths：該列兩顆 `button.odds-btn` 依 DOM 順序的 class 字串與 svg `path` 的 `d`（沒有 svg 為 None）。
+    判定（不憑位置猜）：
+    - 新版（沒有 danger／primary 類別）：兩顆圖形必須依序是［減號橫線、加號十字］，方向與位置才算相符。
+    - 舊版（有 danger／primary 類別）：第 1 顆須帶 danger、第 2 顆須帶 primary，且互不混用。
+    - 兩種都對不上（類別與圖形皆不符、缺圖形、順序顛倒）→ 報錯，不點任何一顆。
+    """
+    assert direction in OFFSET_ICON_PATH, f"{where} 方向只能是 minus／plus，收到 {direction!r}"
+    assert len(classes) == 2 and len(paths) == 2, f"{where} 偏移鈕數量 {len(classes)}，預期 2（減、加）"
+    index = 0 if direction == "minus" else 1
+    legacy_marks = [(LEGACY_OFFSET_CLASS["minus"] in c, LEGACY_OFFSET_CLASS["plus"] in c) for c in classes]
+    if any(danger or primary for danger, primary in legacy_marks):
+        assert legacy_marks == [(True, False), (False, True)], \
+            f"{where} 舊版按鈕類別與 DOM 順序不符（預期［danger、primary］）：{list(classes)}"
+        return index
+    assert list(paths) == [OFFSET_ICON_PATH["minus"], OFFSET_ICON_PATH["plus"]], \
+        f"{where} 按鈕圖形與預期的［減號橫線、加號十字］不符，不點擊：{list(paths)}"
+    return index
+
+
+def _offset_button(row, direction: str, where: str):
+    """回傳某列偏移鈕（減／加）的 locator。
+
+    每列只有一個 `.odds-cell`＝［減鈕］［.odds-value］［加鈕］；列內賠率格不是 1 個（例如日後多出副賠率格）
+    或鈕數不是 2 顆時直接報錯，不猜要按哪一組。沒有 `.odds-cell` 包裝的舊版畫面則直接在列內找 `button.odds-btn`。
+    """
+    cells = row.locator(".odds-cell")
+    assert cells.count() <= 1, f"{where} 一列有 {cells.count()} 個賠率格，無法判定要按哪一組偏移鈕"
+    buttons = (cells.first if cells.count() else row).locator("button.odds-btn")
+    count = buttons.count()
+    assert count == 2, f"{where} 偏移鈕 {count} 顆，預期 2（減、加）"
+    classes = [buttons.nth(i).get_attribute("class") or "" for i in range(2)]
+    paths = [buttons.nth(i).locator("path").first.get_attribute("d") if buttons.nth(i).locator("path").count() else None
+             for i in range(2)]
+    return buttons.nth(pick_offset_button(classes, paths, direction, where))
+
+
+def _click_member(page, direction: str, play_label: str = PLAY_LABEL, member: str = OFFSET_MEMBER):
+    """按某玩法某成員的減／加號。預設二肖连中蛇（B106／B112～B115）；其他玩法傳 `play_label`／`member`
+    （例：「二尾连不中」「1尾」）。玩法名本身不含「不中」時才排除「不中」群組，连不中玩法能點到自己的群組。
+
+    2026-10-05 前端改版（交接 T97）：兩顆鈕不再有 `el-button--danger／primary` 類別，只剩 `button.odds-btn`。
+    現依「DOM 順序（減在賠率左、加在右）＋核對 svg 圖形（橫線＝減、十字＝加）」定位，
+    仍相容舊類別；找不到列、列不唯一、鈕數不對或圖形不符一律報錯、不點擊（見 `pick_offset_button`）。
+    點擊後若跳出確認框，明確按「确定／确认」。"""
+    group = page.locator(".group").filter(has=page.locator(".group-label", has_text=play_label))
+    if "不中" not in play_label:
+        group = group.filter(has_not=page.locator(".group-label", has_text="不中"))
+    assert group.count() >= 1, f"{play_label} 找不到玩法群組"
+    row = group.first.locator("tbody tr").filter(has=page.locator("span.sel-name", has_text=member))
+    assert row.count() == 1, f"{play_label} 找不到唯一的「{member}」列"
+    _offset_button(row.first, direction, f"{play_label}／{member}／{direction}").click()
     page.wait_for_timeout(800)
     box = page.locator(".el-message-box:visible")
     if box.count():
@@ -191,9 +245,10 @@ def _click_member(page, direction: str):
     page.wait_for_timeout(1200)
 
 
-def _board_member(client, issue_number):
-    body = client._get("/api/LiveTrading", {"gameId": GAME, "issueNumber": issue_number, "category": "ChainZodiac"})
-    rows = [s for s in body.get("selections", []) if s["playTypeId"] == PLAY]
+def _board_member(client, issue_number, play: str = PLAY, category: str = "ChainZodiac"):
+    """公司即时盘面某連肖／連尾玩法的成員列（以 selectionKey 為鍵）；預設二肖连中，连尾用 category＝ChainTail。"""
+    body = client._get("/api/LiveTrading", {"gameId": GAME, "issueNumber": issue_number, "category": category})
+    rows = [s for s in body.get("selections", []) if s["playTypeId"] == play]
     return {s["selectionKey"]: s for s in rows}
 
 
@@ -361,7 +416,7 @@ def run_chain_winner(browser, gap_context, run, ledger_path, offset=OFFSET, bets
                     data["offset_removed"] = True  # 本批不偏移，沒有要移除的偏移
                     ledger.save()
     final = [c.api_rows(GAME) for c in contexts]
-    data["restored"] = all(strict_gap_values(a) == strict_gap_values(b) for a, b in zip(final, originals))
+    data["restored"] = all(restore_equal(c.account, GAME, b, a) for c, a, b in zip(contexts, final, originals))
     ledger.save()
     run.dump("chain-winner.json", data)
     allure.attach(json.dumps(data, ensure_ascii=False, default=str), f"{case} 計畫／實際／還原", allure.attachment_type.JSON)

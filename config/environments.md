@@ -24,6 +24,7 @@
 | --- | --- | --- | --- |
 | QAT | 後台（平台層） | `http://platform.snotra.qat/auth/sign-in` | `(aaron01, Aa111111, 登入後需輸入 6 位數字 2FA，QAT 任意皆可通過)` |
 | QAT | 後台（公司層） | `http://b1.c1.snotra.qat/auth/sign-in` | `(aaron01, Aa111111, 同上 2FA)` |
+| QAT | 後台（公司層）第二組 | 同上 | `(aaron02, Aa111111)`——2026-10-02 使用者建立；搭配第二條代理鏈 `bbb111`～`bbb999`（一至九級）與會員 `bbb010`，密碼皆 `Aa111111`，供與 `aaron01`＋`aaa` 鏈併行測試（程式讀 `environments.json` 的 `xzh.qat.chain_b`） |
 | QAT | 前台 | `http://d1.c1.snotra.qat/auth/sign-in` | `TBD`（2026-08-28 使用者提供網址；會員測試帳號待建立，見 `新綜合_驗證交接.md` T4） |
 | STG | ⛔ 需授權 | `TBD` | `TBD` |
 

@@ -70,6 +70,26 @@ class LoginPage:
         if submit.is_visible():
             submit.click()
 
+    def is_two_factor_setup_page(self) -> bool:
+        """首次登入的帳號會落在「设置双重验证」頁（`/auth/two-factor-setup`，有「跳过」「绑定」兩鈕）。
+
+        2026-10-02：第二組帳號（bbb111～bbb999、bbb010）首次登入遇到；aaron02（公司操作員）與
+        aaa 鏈不會。該頁不是 2FA 驗證頁（`is_otp_page()` 為否），不處理就停在這裡。
+        """
+        return "two-factor-setup" in self.page.url
+
+    def skip_two_factor_setup(self) -> None:
+        """點「跳过」並在確認框（「跳过双重验证会增加账号被盗的风险，确定要跳过吗？」）再按「跳过」。
+
+        ⛔ 只跳過，**不點「绑定」**（綁定會把帳號鎖上驗證器，之後每次登入都要輸入驗證碼）。
+        跳過後伺服器端 `twoFactorAuthStatus` 變 `skipped`，同帳號之後登入不再出現此頁。
+        """
+        self.page.get_by_role("button", name="跳过", exact=True).first.click()
+        box = self.page.locator(".el-message-box, .el-overlay-message-box, [role=dialog]").filter(
+            has_text="确定要跳过吗")
+        box.get_by_role("button", name="跳过", exact=True).click()
+        self.page.wait_for_url(lambda url: "two-factor-setup" not in url, timeout=8000)
+
     def is_on_sign_in_page(self) -> bool:
         """登入失敗時應仍停在登入頁（見案例清單 A3，僅驗證「沒登入成功」，
         不斷言確切錯誤訊息文字——目前尚未實測確認訊息內容）。"""

@@ -179,9 +179,25 @@ def attempt():
 
 
 def test_unconfirmed_rounding_does_not_turn_into_pass():
-    r = expected_settlement(attempt(), record())
+    r = expected_settlement(attempt(), record(), rounding=None)
     assert r['payout_ok'] is None
     assert r['expected_revenue'][-1] == '0.009'
+
+
+def test_default_rounding_judges_payout_half_up_2():
+    """2026-10-06 Aaron 裁定派彩四捨五入到 2 位：預設就判派彩，1×1.7719 應派 1.77。"""
+    r = expected_settlement(attempt(), record())
+    assert r['payout_ok'] is True and r['expected_payout'] == '1.77'
+
+
+def test_payout_mismatch_fails_with_serial_and_values():
+    class Client:
+        def _get(self, path, params):
+            assert path.endswith('/Bets')
+            return {'totalCount': 1, 'pageCount': 1, 'items': [dict(record(), payout='1.78')]}
+    e = {'attempts': [attempt()], 'day': '2030-01-01', 'accounts': [{'id': i} for i in range(1, 11)]}
+    with pytest.raises(AssertionError, match='派彩與已確認規格不符：注單 1.*實際 1.78，應為 1.77'):
+        check_settlement(Client(), e)
 
 
 def test_losing_bet_has_zero_revenue_and_payout():
@@ -226,7 +242,7 @@ def test_settlement_compares_nine_levels_and_detects_unrelated_bets(extra_count)
     result = check_settlement(Client(), e)
     assert len(result['revenues']) == 9
     assert all(r['ok'] is (extra_count == 0) for r in result['revenues'])
-    assert result['rounding_pending'] is True
+    assert result['rounding_pending'] is False
 
 
 def test_frozen_record_change_detected_after_restore():

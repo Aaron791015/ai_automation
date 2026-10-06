@@ -1,5 +1,17 @@
 # -*- coding: utf-8 -*-
-"""公司層「系統設置→飛單選項明細設置」Page Object（`/setting/lay-off-setting-detail`）。
+"""公司層「系統設置→飛單選項設置」Page Object（`/setting/lay-off-setting-detail`）。
+
+⚠️ 2026-10-02 改名：選單與頁面原名「飛單選項明細設置」，現名「飛單選項設置」（網址不變）。
+   Aaron 2026-10-02 確認是 RD 刻意改名，不是缺陷（交接檔 T89）。
+⚠️ 同日另有三處變動，Aaron 2026-10-02 14:28 裁示「對 刻意改的。『保存后立即触发本次选项自动飞单』功能
+   不要了」（交接檔 T90；人為的變更聲明，不是缺陷、不開單）：
+   ①頁面總開關標籤原「启用飞单选项明细」→ 現「开关选项设置」；確認框標題原「启用飞单选项明细」→ 現
+     「开启选项设置」，內文改為「是否开启选项设置功能？原系统设置－飞单设置中，飞单设置的金额将会失效，
+     并且自动出货将变更为手动模式，请确认！」；鎖定提示原「编辑已锁定，启用飞单选项明细后才能编辑」→ 現
+     「编辑已锁定，开启选项设置后才能编辑」（2026-10-02 QAT 實測，aaa222；前端 i18n 與之一致）；
+   ②保存區勾選框「保存后立即触发本次选项自动飞单」**功能已移除**——`trigger_now_*` 已改為明確報錯，
+     不要再呼叫；現行觸發方式見《遊戲機制》§5.4；
+   ③飛單設置頁（K4）表頭「开启飞单选项明细设定」→ 現「开关选项设置」（K4 方法依欄位順序定位，不受影響）。
 
 用途：B37～B50 案例（矩陣 K7；2026-08-31 飛單案例從零重新設計後編號已改，
 對照舊編號見 `docs/新綜合/新綜合_案例清單.md` §0.1）。
@@ -7,7 +19,7 @@
 
 ⚠️ 這頁跟同層級的「飛單設置」（`SystemSettingPage`，矩陣 K4）結構完全不同，
    不是「同一張大表格多幾欄」——是「玩法分類（25 個按鈕）→ 每分類自己一張
-   1~49 選項表」，且多了一顆「啟用飛單選項明細」總開關，另立一個類別。
+   1~49 選項表」，且多了一顆「开关选项设置」總開關（2026-10-02 前名為「啟用飛單選項明細」），另立一個類別。
 
 ⚠️⚠️ 2026-08-28 實測發現「比大小」分類的 UI **跟其餘 24 個分類完全不同**——
    不是「選項 1~N 逐列自動飛單」的標準表格，是先選 6 個子項按鈕之一（一比一～一比六，
@@ -19,14 +31,16 @@
    「一比五/一比六」則是玩法內的子項，不能直接假設兩者是同一件事的兩種呈現，
    需要規格文件或 RD 確認才能定義兩者關聯的 oracle（見案例 B14、交接檔 T17）。
 
-⚠️⚠️ 2026-08-28 MCP 實測發現「啟用飛單選項明細」總開關是**關鍵的父子層級連動點**，
+⚠️⚠️ 2026-08-28 MCP 實測發現「开关选项设置」（2026-10-02 前名為「啟用飛單選項明細」）總開關是**關鍵的父子層級連動點**，
    直接回答了矩陣 K7／K4 是否連動的疑問（見交接檔 T17、案例清單 B14）：
    - **關閉**：不跳確認框，立即生效（送出 API，reload 後仍是關閉——即時持久化，
      不需要按頁面下方「保存」）。關閉後底下所有選項列的「自動飛單」switch 變成
      disabled（但保留原本 checked 值，不會被清空）、「每選項自留上限」從可編輯
      button 變回純文字、分類工具列「全部設置／一鍵自動／一鍵手動」全部變 disabled。
-   - **開啟**：會跳一個 `el-message-box` 確認框，文字明確寫著：
-     「是否启用飞单选项明细功能？**原系统设定－飞单设定中，飞单设定的金额将会失效，
+   - **開啟**：會跳一個 `el-message-box` 確認框（標題「开启选项设置」），文字明確寫著
+     （2026-10-02 起的現況；舊文字為「是否启用飞单选项明细功能？原系统设定－飞单设定中，飞单设定的金额将会失效，
+     并且自动出货将变更为手动模式，请确认！」，標題「启用飞单选项明细」）：
+     「是否开启选项设置功能？**原系统设置－飞单设置中，飞单设置的金额将会失效，
      并且自动出货将变更为手动模式**，请确认！」
      ——這就是 A 級 oracle：系統自己承認 K7 總開關開啟時 **K4（飛單設置）的金額設定
      會失效、自動出貨改手動**，兩層不是各自獨立，是互斥切換的父子關係。
@@ -46,12 +60,34 @@
 """
 from __future__ import annotations
 
+import re
+
 from playwright.sync_api import Page, expect
 
 
 class LayOffDetailSettingPage:
+    # 2026-10-02 RD 刻意改名（Aaron 當日 14:28 確認）；舊名「启用飞单选项明细」。
+    MASTER_SWITCH_LABEL = "开关选项设置"
+    # 開啟總開關時的確認框標題（el-message-box 的 dialog 名稱）；舊名「启用飞单选项明细」。
+    MASTER_CONFIRM_TITLE = "开启选项设置"
+    # 總開關關閉時的鎖定提示；舊文字「编辑已锁定，启用飞单选项明细后才能编辑」。
+    LOCKED_NOTICE = "编辑已锁定，开启选项设置后才能编辑"
+    # 組合型分類的「選擇」checkbox。⚠️ 2026-10-02 QAT 實測：組合型頁面工具列（`.edit-toggle-bar`，
+    # 「开关选项设置」開關旁）新增一顆「全选」checkbox，且在 DOM 順序上排在所有組合列之前，
+    # `get_by_role("checkbox")` 會把它算成第 0 個——組合列索引整體差 1、列數多算 1。
+    # Aaron 2026-10-02 17:25 確認這是 RD 刻意改動（交接檔 T94，不開單）；本 POM 刻意**排除**工具列內的
+    # checkbox（也排除 role=switch 的開關），因為組合列索引要與「列」一一對應。排除後各分類數量與舊文件相同
+    # （连码 49、六肖 24、过关 28、连肖 12、连尾 10、合肖 12、比大小 7）。
+    # 行為觀察（2026-10-02 唯讀，aaa222，宾果六合彩→连码→二中特，並以 route 阻擋所有寫入請求）：
+    # 「全选」位於「开关选项设置」開關右側、預設未勾；勾選後該頁 49 列「選擇」checkbox 全部變為勾選，
+    # 再點一次全部取消；全程沒有任何寫入請求，重新整理（未保存）後恢復為後端值（皆未勾）。
+    # 目前沒有案例驗「全选」本身（POM 不提供點它的方法）。
+    _COMBO_BOX_SELECTOR = "input[type=checkbox]:not([role=switch]):not(.edit-toggle-bar *)"
+
     def __init__(self, page: Page):
         self.page = page
+        # 最近一次 `combo_share_detail()` 讀到的視窗表頭與分頁文字（供佐證附件用）。
+        self.last_share_detail_meta: dict[str, object] = {}
 
     def goto(self) -> None:
         system_item = self.page.get_by_role("menuitem", name="系统设置", exact=True)
@@ -63,7 +99,9 @@ class LayOffDetailSettingPage:
             overflow.click()
             expect(system_item.last).to_be_visible()
         system_item.last.click()
-        self.page.get_by_role("menuitem", name="飞单选项明细设置", exact=True).click()
+        # 2026-10-02 起選單名稱為「飞单选项设置」（舊名「飞单选项明细设置」，網址不變）；
+        # Aaron 2026-10-02 確認是 RD 刻意改名，非缺陷。
+        self.page.get_by_role("menuitem", name="飞单选项设置", exact=True).click()
         self.page.wait_for_timeout(1200)
 
     def switch_game(self, game_name: str) -> None:
@@ -93,11 +131,11 @@ class LayOffDetailSettingPage:
 
     # ---- 總開關（B11）----
     def is_master_switch_enabled(self) -> bool:
-        switch = self.page.get_by_text("启用飞单选项明细", exact=True).locator("..").get_by_role("switch")
+        switch = self.page.get_by_text(self.MASTER_SWITCH_LABEL, exact=True).locator("..").get_by_role("switch")
         return switch.get_attribute("aria-checked") == "true"
 
     def set_master_switch(self, enable: bool) -> None:
-        """把「啟用飛單選項明細」總開關切到 `enable`。
+        """把「开关选项设置」總開關（2026-10-02 前名為「啟用飛單選項明細」）切到 `enable`。
 
         ⚠️ 開啟時會跳確認框（見檔頭說明），本方法已處理：偵測到 dialog 出現就點「確定」。
         關閉時不會跳確認框，直接生效。兩個方向都**立即送出 API、無需另外按保存**——
@@ -115,9 +153,9 @@ class LayOffDetailSettingPage:
         """
         if self.is_master_switch_enabled() == enable:
             return
-        self.page.get_by_text("启用飞单选项明细", exact=True).locator("..").locator(".el-switch").click()
+        self.page.get_by_text(self.MASTER_SWITCH_LABEL, exact=True).locator("..").locator(".el-switch").click()
         if enable:
-            dialog = self.page.get_by_role("dialog", name="启用飞单选项明细")
+            dialog = self.page.get_by_role("dialog", name=self.MASTER_CONFIRM_TITLE)
             dialog.get_by_role("button", name="确定").click()
         self.page.wait_for_timeout(800)
 
@@ -130,8 +168,8 @@ class LayOffDetailSettingPage:
         點「取消」後預期總開關維持關閉，不應真的送出任何持久化（2026-08-31 已 MCP
         唯讀＋寫入實測確認：取消後 `is_master_switch_enabled()` 仍讀到 False）。
         """
-        self.page.get_by_text("启用飞单选项明细", exact=True).locator("..").locator(".el-switch").click()
-        dialog = self.page.get_by_role("dialog", name="启用飞单选项明细")
+        self.page.get_by_text(self.MASTER_SWITCH_LABEL, exact=True).locator("..").locator(".el-switch").click()
+        dialog = self.page.get_by_role("dialog", name=self.MASTER_CONFIRM_TITLE)
         dialog.get_by_role("button", name="取消").click()
         self.page.wait_for_timeout(500)
 
@@ -230,39 +268,70 @@ class LayOffDetailSettingPage:
             cell = self.option_row(1).get_by_role("cell").nth(self._cap_cell_index())
             expect(cell.get_by_role("button")).to_have_count(1, timeout=timeout_ms)
 
+    # ---- 已移除功能：保存區「保存后立即触发本次选项自动飞单」勾選框 ----
+    #
+    # ⛔ Aaron 2026-10-02 14:28 裁示（交接檔 T90）：「『保存后立即触发本次选项自动飞单』功能 不要了」。
+    # 2026-10-02 QAT 實測（aaa222）頁面上已無此勾選框；前端 `PUT /api/LayOffSettingDetail` 的 payload
+    # 現在只有 `gameId`／`playTypeId`／`items`，不再帶 `triggerImmediateAutoLayOff`。
+    # 以下方法保留名稱只為了讓漏改的呼叫端**明確報錯**，不要再呼叫。
     _TRIGGER_NOW_LABEL = "保存后立即触发本次选项自动飞单"
+    _TRIGGER_NOW_REMOVED = (
+        "『保存后立即触发本次选项自动飞单』勾選框功能已移除（Aaron 2026-10-02 14:28 確認，交接檔 T90）；"
+        "現行觸發方式見《新綜合_遊戲機制》§5.4"
+    )
 
     def trigger_now_visible(self) -> bool:
-        """確認保存區的「保存後立即觸發」勾選元件是否可見。
-
-        不使用 ``get_by_text(..., exact=True)``，因 QAT 的 Element Plus checkbox
-        文字含有額外巢狀節點時，精確文字 locator 會誤判不存在；後續讀取／點擊皆
-        應共用 checkbox 元件根節點的定位方式。
-        """
+        """保存區是否還看得到已移除的勾選框；現況預期為 False（可當「功能已移除」的反向確認）。"""
         return self.page.locator(
             ".el-checkbox", has_text=self._TRIGGER_NOW_LABEL
         ).last.is_visible()
 
     def trigger_now_checkbox(self):
-        """取得保存區「保存後立即觸發本次選項自動飛單」的原生 checkbox。
-
-        Element Plus 會把原生 input 隱藏在 `.el-checkbox` 內，且文字節點不一定
-        直接以父子關係包住 input；用元件根節點的文字篩選比 `get_by_text(...).locator("..")`
-        穩定，也能避免和表格內其他 checkbox 混在一起。
-        """
-        wrapper = self.page.locator(".el-checkbox").filter(has_text=self._TRIGGER_NOW_LABEL).last
-        checkbox = wrapper.locator("input[type='checkbox']")
-        expect(checkbox).to_have_count(1)
-        return checkbox
+        raise NotImplementedError(self._TRIGGER_NOW_REMOVED)
 
     def trigger_now_enabled(self) -> bool:
-        return self.trigger_now_checkbox().is_checked()
+        raise NotImplementedError(self._TRIGGER_NOW_REMOVED)
 
     def set_trigger_now(self, enable: bool) -> None:
-        checkbox = self.trigger_now_checkbox()
-        if checkbox.is_checked() != enable:
-            # 原生 input 為視覺隱藏，點擊 Element Plus 外層元件。
-            checkbox.locator("xpath=ancestor::*[contains(@class, 'el-checkbox')][1]").click()
+        raise NotImplementedError(self._TRIGGER_NOW_REMOVED)
+
+    # ---- 現行觸發方式（2026-10-02 QAT 實測，aaa222；證據 scratchpad/t90-20261002/probe_c.json）----
+    # ①保存本身就會執行自動飛單：前端 `PUT /api/LayOffSettingDetail` 只送 gameId／playTypeId／items，
+    #   後端回 `{"executedCount": N}`；代理層（非公司層）畫面提示「更新成功，本次已飞出 N 笔自动飞单」
+    #   或「更新成功，本次无自动飞单飞出」。
+    # ②選項的「自動飛單」開著時，新注單進來也會自動處理（實測：下注後約 4 秒占成由 10 降到自留上限 1，
+    #   期間沒有任何保存）。
+    # ⚠️ `set_option_cap()` 按 Enter 會立刻送出 PUT（只帶已變更的列），所以設定順序會影響何時觸發：
+    #   先開自動飛單再填上限，上限那次 Enter 就會觸發。
+    _AUTO_LAY_OFF_NOTICE_RE = re.compile(r"更新成功，本次(?:已飞出\s*(\d+)\s*笔自动飞单|无自动飞单飞出)")
+
+    def save_and_read_notice(self, wait_ms: int = 3000) -> str:
+        """按「保存」並讀取畫面提示全文；公司層沒有這兩句提示，讀不到回空字串。"""
+        self.save()
+        waited = 0
+        while waited < wait_ms:
+            self.page.wait_for_timeout(250)
+            waited += 250
+            texts = self.page.evaluate(
+                "() => [...document.querySelectorAll('.el-notification, .el-message, [role=alert]')]"
+                ".map(e => (e.innerText || '').trim()).filter(Boolean)"
+            )
+            hits = [t for t in texts if "更新成功" in t]
+            if hits:
+                return " ".join(dict.fromkeys(hits))
+        return ""
+
+    @classmethod
+    def executed_count_from_notice(cls, notice: str) -> int | None:
+        """從 `save_and_read_notice()` 的文字取出「本次已飛出 N 筆」的 N；無自動飛單飛出回 0；讀不懂回 None。"""
+        match = cls._AUTO_LAY_OFF_NOTICE_RE.search(notice or "")
+        if not match:
+            return None
+        return int(match.group(1)) if match.group(1) else 0
+
+    def _combo_boxes(self):
+        """組合列的「選擇」checkbox（不含工具列的「全选」與所有開關），索引 0 起算。"""
+        return self.page.locator(self._COMBO_BOX_SELECTOR)
 
     def combo_item_count(self) -> int:
         """讀取目前選定（組合型）分類的組合列數，用「選擇」checkbox 的數量計算。
@@ -273,16 +342,15 @@ class LayOffDetailSettingPage:
         差異見 B47（`table=0`）／B48（`table=10`）。
 
         ⚠️⚠️ 2026-09-02 修正 off-by-one：頁面下方保存區的「保存后立即触发本次选项
-        自动飞单」也是一顆 `checkbox`，且它跟分類內容共用同一個 `get_by_role("checkbox")`
+        自动飞单」（2026-10-02 起該勾選框已移除，下面的扣除量現為 0，邏輯保留無害）
+        也是一顆 `checkbox`，且它跟分類內容共用同一個 `get_by_role("checkbox")`
         查詢空間——原本直接回傳 `count()` 會把它也算進組合列數（六肖量到 25，實際只有
         24；连码量到 50，實際只有 49），2026-09-02 六肖探索時發現。這裡明確扣掉這顆，
         改用「排除保存區勾選框」的方式計數，不能只靠「永遠是最後一個」的假設硬減 1。
         """
-        total = self.page.get_by_role("checkbox").count()
-        trigger_now = self.page.get_by_role(
-            "checkbox", name=self._TRIGGER_NOW_LABEL, exact=True
-        ).count()
-        return total - trigger_now
+        # 2026-10-02：保存區勾選框已移除、工具列新增「全选」checkbox；改用 `_combo_boxes()`
+        # 直接數組合列，不再靠「總數減去特定幾顆」。
+        return self._combo_boxes().count()
 
     def option_row(self, option_number: int):
         """依 DOM 順序取第 `option_number` 個選項列（1-based，表頭不算）。"""
@@ -331,7 +399,7 @@ class LayOffDetailSettingPage:
         """讀取「每選項自留上限」欄位目前是否為可編輯 button。
 
         ⚠️⚠️ 2026-08-31 探索發現（B43，先前沒有任何文件記載，卻是能不能編輯這欄的關鍵前提）：
-        這欄只有在頁面總開關「啟用飛單選項明細」**開啟**時才會是可編輯 button；總開關關閉時
+        這欄只有在頁面總開關「开关选项设置」（舊名「啟用飛單選項明細」）**開啟**時才會是可編輯 button；總開關關閉時
         呈唯讀 `is-static`（`option_cap_editable()` 回 False）。呼叫 `set_option_cap()` 前
         若總開關是關的，要先 `set_master_switch(True)`，測完記得關回原狀（見 B43 案例）。
 
@@ -545,59 +613,85 @@ class LayOffDetailSettingPage:
         return int(float(raw or "0"))
 
     def _combo_amount_row(self, index: int):
-        checkbox = self.page.get_by_role("checkbox").nth(index)
+        checkbox = self._combo_boxes().nth(index)
+        # ⚠️ 2026-10-02：選擇 checkbox 外層 span 的 class 現為 `cell-checkbox`（舊寫法 `contains(@class,'cell')`
+        # 會先命中它，找不到金額按鈕）。改成以 class 完整字詞比對：`number-row`／`option-row`／`cell`。
         row = checkbox.locator(
-            "xpath=ancestor::*[contains(@class, 'number-row') or "
-            "contains(@class, 'option-row') or contains(@class, 'cell')][1]"
+            "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' number-row ') or "
+            "contains(concat(' ', normalize-space(@class), ' '), ' option-row ') or "
+            "contains(concat(' ', normalize-space(@class), ' '), ' cell ')][1]"
         )
         expect(row).to_have_count(1)
         expect(row.locator("button.share-amount-cell").first).to_have_count(1)
         return row
 
+    # 占成明细視窗現行欄位（2026-10-02，Aaron 當日 17:25 確認是 RD 刻意改動，交接檔 T94）。
+    # 舊樣貌為「投注选项／占成金额／补货」；現為「序号／投注选项／占成金额／可飞额」，另有分頁「共 N 条」。
+    SHARE_DETAIL_HEADERS = ("序号", "投注选项", "占成金额", "可飞额")
+
     def combo_share_detail(self, index: int) -> list[dict[str, object]]:
-        """開啟組合占成金額明細，讀取每筆投注選項／占成金額／補貨後關閉。
+        """開啟組合占成金額明細，讀取每筆序號／投注選項／占成金額／可飛額（目前所在這一頁）後關閉。
 
         這個視窗是 B85 的核心行為證據；欄位名稱與資料皆從實際 dialog/table 語意定位，
         不以整頁第 N 個 table 或猜測 CSS 結構取值。
+
+        ⚠️ 2026-10-02 起視窗欄位為「序号／投注选项／占成金额／可飞额」（舊為「投注选项／占成金额／补货」；
+        Aaron 當日 17:25 確認是 RD 刻意改動，交接檔 T94）。四個欄位都必須存在，缺任一個即丟 AssertionError。
+        回傳的每筆含 `seq`（序號）、`bet_option`（以「,」分隔的組合）、`share_amount`（占成金額）、
+        `layoffable`（可飛額）。「可飞额」的計算規則沒有規格，呼叫端只附在佐證裡、不斷言。
+        另把視窗表頭與分頁文字留在 `self.last_share_detail_meta`（供佐證附件用）。
         """
         row = self._combo_amount_row(index)
         row.locator("button.share-amount-cell").first.click()
         dialog = self.page.get_by_role("dialog").last
         expect(dialog).to_be_visible()
-        headers = [text.strip() for text in dialog.get_by_role("columnheader").all_inner_texts()]
-        expected_headers = ("投注选项", "占成金额", "补货")
-        missing = [header for header in expected_headers if header not in headers]
-        if missing:
-            raise AssertionError(
-                f"占成明细缺少欄位{missing}；實際欄位={headers}；視窗文字={dialog.inner_text()!r}"
-            )
-        column_indices = {header: headers.index(header) for header in expected_headers}
         details: list[dict[str, object]] = []
-        for detail_row in dialog.get_by_role("row").all()[1:]:
-            cells = [text.strip() for text in detail_row.get_by_role("cell").all_inner_texts()]
-            if not cells:
-                continue
-            details.append({
-                "bet_option": cells[column_indices["投注选项"]].replace("、", ","),
-                "share_amount": int(float(cells[column_indices["占成金额"]].replace(",", "") or "0")),
-                "replenishment": int(float(cells[column_indices["补货"]].replace(",", "") or "0")),
-            })
-        close = dialog.get_by_role("button", name="关闭", exact=True)
-        if close.count():
-            close.click()
-        else:
-            dialog.locator(".el-dialog__headerbtn").click()
-        expect(dialog).to_be_hidden()
+        try:
+            headers = [text.strip() for text in dialog.get_by_role("columnheader").all_inner_texts()]
+            dialog_text = dialog.inner_text()
+            pager = re.search(r"共\s*\d+\s*条", dialog_text)
+            self.last_share_detail_meta = {
+                "headers": headers,
+                "pager_text": pager.group(0) if pager else None,
+            }
+            missing = [header for header in self.SHARE_DETAIL_HEADERS if header not in headers]
+            if missing:
+                raise AssertionError(
+                    f"占成明细缺少欄位{missing}；實際欄位={headers}；視窗文字={dialog_text!r}"
+                )
+            column_indices = {header: headers.index(header) for header in headers}
+
+            def _amount(cells, header):
+                return int(float(cells[column_indices[header]].replace(",", "") or "0"))
+
+            for detail_row in dialog.get_by_role("row").all()[1:]:
+                cells = [text.strip() for text in detail_row.get_by_role("cell").all_inner_texts()]
+                if not cells:
+                    continue
+                details.append({
+                    "seq": _amount(cells, "序号"),
+                    "bet_option": cells[column_indices["投注选项"]].replace("、", ","),
+                    "share_amount": _amount(cells, "占成金额"),
+                    "layoffable": _amount(cells, "可飞额"),
+                })
+        finally:
+            # 即使欄位檢查失敗也要關掉視窗，否則殘留的遮罩會擋住呼叫端 finally 裡的還原導覽。
+            close = dialog.get_by_role("button", name="关闭", exact=True)
+            if close.count():
+                close.click()
+            else:
+                dialog.locator(".el-dialog__headerbtn").click()
+            expect(dialog).to_be_hidden()
         return details
 
     def combo_item_marked(self, index: int) -> bool:
         """讀取第 `index` 個組合列（正1特～正6特＋特码，0-based）的「選擇」checkbox 是否勾選。"""
-        return self.page.get_by_role("checkbox").nth(index).evaluate("el => el.checked")
+        return self._combo_boxes().nth(index).evaluate("el => el.checked")
 
     def combo_marked_indices(self) -> list[int]:
         """一次讀取目前組合型玩法所有已勾選列，避免逐列跨瀏覽器查詢。"""
         count = self.combo_item_count()
-        return self.page.get_by_role("checkbox").evaluate_all(
+        return self._combo_boxes().evaluate_all(
             "(boxes, count) => boxes.slice(0, count).flatMap((box, index) => box.checked ? [index] : [])",
             count,
         )
@@ -626,7 +720,7 @@ class LayOffDetailSettingPage:
         invalid = [index for index in expected if index < 0 or index >= count]
         if invalid:
             raise IndexError(f"組合列索引超出範圍（共{count}列）：{invalid}")
-        self.page.get_by_role("checkbox").evaluate_all(
+        self._combo_boxes().evaluate_all(
             """(boxes, args) => {
                 const [count, expected] = args;
                 const selected = new Set(expected);
@@ -668,6 +762,6 @@ class LayOffDetailSettingPage:
         """
         if self.combo_item_marked(index) == marked:
             return
-        box = self.page.get_by_role("checkbox").nth(index)
+        box = self._combo_boxes().nth(index)
         box.locator("xpath=..").click()
         self.page.wait_for_timeout(300)

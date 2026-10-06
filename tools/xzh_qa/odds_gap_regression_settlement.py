@@ -7,8 +7,12 @@ from decimal import ROUND_DOWN, ROUND_HALF_UP
 from xzh_qa.odds_gap_oracle import dec, player_odds, level_diffs, gap_money
 from xzh_qa.odds_gap_regression import read_bets, select_unique, reports, frozen_checks
 
+# 派彩＝本金×凍結賠率，四捨五入到 2 位（2026-10-06 Aaron 裁定，見《新綜合_賠率差公式》「結算公式」取位條）。
+# 明確傳 rounding=None 才回到「取位未定、派彩不判」的舊行為。
+PAYOUT_ROUNDING = 'half_up_2'
 
-def expected_settlement(attempt, record, rounding=None):
+
+def expected_settlement(attempt, record, rounding=PAYOUT_ROUNDING):
     source = attempt['source']
     override = next((r for r in source.get('selectionOverrides', []) if r['selection'] == attempt['selection']), None)
     base = override['odds'] if override else source['baseOdds']
@@ -40,7 +44,7 @@ def expected_settlement(attempt, record, rounding=None):
             'payout_ok': payout_ok, 'expected_revenue': list(map(str, money))}
 
 
-def check_settlement(client, evidence, rounding=None):
+def check_settlement(client, evidence, rounding=PAYOUT_ROUNDING):
     attempts = [a for a in evidence['attempts'] if 'serialNumber' in a]
     assert attempts, '帳本沒有已確認成功的注單，先處理送出狀態'
     day, accounts = evidence['day'], evidence['accounts']
@@ -54,7 +58,9 @@ def check_settlement(client, evidence, rounding=None):
     for a in attempts:
         record = select_unique(settled, a['serialNumber'])
         check = expected_settlement(a, record, rounding)
-        assert check['payout_ok'] is not False, '派彩與已確認規格不符'
+        assert check['payout_ok'] is not False, (
+            f"派彩與已確認規格不符：注單 {check['serialNumber']}（{check['outcome']}）"
+            f"實際 {check['actual_payout']}，應為 {check['expected_payout']}（{rounding}）")
         checks.append(check)
         for n, money in enumerate(check['expected_revenue'], 1):
             group = groups.setdefault((n, a['play'], a['selection']), {'count': 0, 'amount': dec(0), 'money': dec(0)})

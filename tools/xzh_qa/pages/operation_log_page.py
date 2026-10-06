@@ -60,6 +60,21 @@ class OperationLogPage:
             row.locator(".el-table__expand-icon").click()
         self.page.wait_for_timeout(800)
 
+    def open_fresh(self) -> None:
+        """重新進入「操作日志」頁並清掉上次的篩選（2026-09-30 B109～B111 加入）。
+
+        已停在 `/log` 時點選單不會重新掛載元件，「类型」仍是上次選的值，
+        再選同一項不會發查詢、`select_type` 會等到逾時——所以先整頁重新整理。
+        """
+        if self.page.url.split("?")[0].rstrip("/").endswith("/log"):
+            self.page.reload(wait_until="domcontentloaded")
+        self.goto()
+
+    def rows_for(self, target_prefix: str) -> list[list[str]]:
+        """第 1 頁中目标以 `target_prefix` 開頭的一般列／批次代表列（新到舊），各欄文字。"""
+        return [r["cells"] for r in self.table_rows()
+                if r["level"] == 0 and len(r["cells"]) >= 10 and r["cells"][3].startswith(target_prefix)]
+
     def batch_cells(self, target_text: str, time_text: str) -> list[list[str]] | None:
         """代表列＋其後連續子列的各欄文字；找不到代表列回 None。"""
         rows = self.table_rows()

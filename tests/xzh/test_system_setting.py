@@ -5,7 +5,7 @@
 
 「系统设置」底下有 8 個子選單，本檔現在全部覆蓋：游戏设置／投注限额／退水设置／
 降赔设置／飞单设置（K4，B26～B36 系列，含寫入 roundtrip）／赔率设置／
-飞单选项明细设置（K7，B37～B50 系列；B45 已併入 B72，B47 已併入 B49，B75 已併入 B37）／公告管理。
+飞单选项设置（K7，B37～B50 系列；B45 已併入 B72，B47 已併入 B49，B75 已併入 B37）／公告管理。
 
 ✅ 2026-08-26 T9 實測確認：大表格（賠率設置／降賠設置／退水設置／投注限額）的
 「點格→出現輸入框→填值→Enter」互動方式（`SystemSettingPage.set_table_cell`）是正確的。
@@ -16,9 +16,19 @@
 按 Enter 就即時送出 API，不需要按頁面下方的「保存」按鈕，見 B30（舊編號 B9）與
 `SystemSettingPage.set_min_lay_off_amount` 的檔頭說明，不要誤用 `save()`。
 
-⚠️ 2026-08-28「飛單選項明細設置」總開關（K7）與「飛單設置」（K4）父子連動已證實
+⚠️ 2026-08-28「飛單選項設置」總開關（K7）與「飛單設置」（K4）父子連動已證實
 （B37，舊編號 B11）：開啟 K7 總開關會跳確認框，明講「原系統設定－飛單設定中，飛單設定的金額將會
 失效，並且自動出貨將變更為手動模式」——見 `LayOffDetailSettingPage` 檔頭說明。
+2026-10-02 RD 刻意改名（Aaron 當日確認）：總開關「啟用飛單選項明細」→「開關選項設置」、確認框標題改為
+「開啟選項設置」、文字改為「原系統設置－飛單設置中，飛單設置的金額將會失效…」；保存區勾選框
+「保存后立即触发本次选项自动飞单」功能已移除（B78 停用，保存即觸發自動飛單，見 B85～B87）。
+
+2026-10-02 另有四處畫面變動，Aaron 當日 17:25 確認皆是 RD 刻意改動、不開單（交接檔 T94）：
+①公司層「飞单设置」頁不顯示「自动飞单」欄（公司層 5 欄、代理層 6 欄；`SystemSettingPage` 改依表頭名稱定位，
+  B26 期望已改寫，B33 在公司層會 skip，B36-1／B36-2／B28 子集／B56 在公司層略過「自動飛單」那一項）；
+②飛單選項設置組合型頁面工具列新增「全选」checkbox（POM 排除它）；
+③占成明细視窗欄位由「投注选项／占成金额／补货」改為「序号／投注选项／占成金额／可飞额」（B85 等以現行四欄為準）；
+④前台連碼確認視窗標題由「连码下注确认」改為「连码投注确认」（`PlayerBetPage` 只認現名）。
 """
 from __future__ import annotations
 
@@ -79,7 +89,7 @@ def _set_option_cap_with_retry(
 def _reload_and_navigate_with_retry(
     sp: "LayOffDetailSettingPage", page, game: str, category: str, attempts: int = 5
 ) -> None:
-    """`page.reload()` 後導覽回「飛單選項明細設置」頁、切彩種、選分類——遇到畫面重繪
+    """`page.reload()` 後導覽回「飛單選項設置」頁、切彩種、選分類——遇到畫面重繪
     時序造成的零星 timeout（例如選單項目在點擊當下被畫面重新渲染而 detached）就重試。
 
     ⚠️ 三彩種全玩法覆蓋（2026-09-01）實測發現：`reload()` 後立刻互動偶爾會撞到這種
@@ -106,7 +116,7 @@ def _reload_and_navigate_with_retry(
 
 
 def _ensure_category_switch_enabled(sp: "LayOffDetailSettingPage") -> bool:
-    """確保目前分類的「啟用飛單選項明細」總開關為開啟狀態，回傳呼叫前的原始值供還原用。
+    """確保目前分類的「開關選項設置」總開關為開啟狀態，回傳呼叫前的原始值供還原用。
 
     ⚠️ 2026-09-01 §7.3 發現：總開關的畫面顯示狀態是跟著**目前選中的分類**連動，不是整個
     彩種共用一份——切到新分類都要各自確認、各自開（B43 已驗證此修法有效，B44/B72 套用
@@ -133,6 +143,21 @@ def _restore_category_switch(sp: "LayOffDetailSettingPage", original: bool) -> N
     """把總開關還原成 `_ensure_category_switch_enabled()` 呼叫前的原始值。"""
     if sp.is_master_switch_enabled() != original:
         sp.set_master_switch(original)
+
+
+def _auto_toggleable_or_none(sp: "SystemSettingPage", row: str):
+    """「自動飛單」可互動與否；這一層沒有「自动飞单」欄時回 None。
+
+    2026-10-02 起公司層的「飞单设置」頁不顯示「自动飞单」欄（Aaron 當日 17:25 確認是 RD 刻意改動，
+    交接檔 T94）；代理層仍有。呼叫端遇到 None 時只略過「自動飛單」那一項，其餘欄位照常檢查。
+    """
+    return sp.is_auto_lay_off_toggleable(row) if sp.has_auto_lay_off_column() else None
+
+
+def _row_unlocked(sp: "SystemSettingPage", row: str) -> bool:
+    """該列目前是否為解鎖狀態：有「自动飞单」欄時看它是否可互動，沒有（公司層）時改看「每选项自留上限」是否可編輯。"""
+    toggleable = _auto_toggleable_or_none(sp, row)
+    return sp.is_cap_editable(row) if toggleable is None else toggleable
 
 
 @allure.suite("游戏设置")
@@ -348,11 +373,11 @@ def test_lay_off_toggle(company_page):
     （2026-08-31 案例重編號：本案例併入互斥狀態機案例，舊編號 B5，見案例清單 §0.1）
 
     ⚠️ 2026-08-26 更正先前的誤判：「自動飛單」在 QAT 現況下對全部 68 個玩法列皆為
-    disabled，**不是環境整個鎖死，是與同列「開啟飛單選項明細設定」的互斥關係**——
+    disabled，**不是環境整個鎖死，是與同列「開關選項設置」的互斥關係**——
     明細設定開著時鎖住自動飛單，關掉明細設定後自動飛單立刻可互動（已用 MCP 現場驗證可逆）。
     ✅ 使用者 2026-08-26 裁定：這是刻意設計，非缺陷（矩陣 K4／交接檔 T11 已關閉）。
 
-    ⚠️⚠️ 「開啟飛單選項明細設定」的切換**單獨點擊時**不送 API（純前端狀態），但一旦按下
+    ⚠️⚠️ 「開關選項設置」的切換**單獨點擊時**不送 API（純前端狀態），但一旦按下
     「保存」，會跟該列其他欄位一起被送進 `PUT /api/LayOffSetting` 的
     `isSelectionDetailEnabled` 欄位——**只要為了解鎖而關過它、之後又按過保存，就已經
     把它寫進後端了**，不是切一切不點保存就沒事。已用網路攔截實測確認：關閉後保存，
@@ -363,6 +388,14 @@ def test_lay_off_toggle(company_page):
     page = company_page
     sp = SystemSettingPage(page)
     row = "特码"
+    sp.goto("飞单设置")
+    if not sp.has_auto_lay_off_column():
+        # 2026-10-02 起公司層「飞单设置」頁不顯示「自动飞单」欄（Aaron 當日 17:25 確認是 RD 刻意改動，交接檔 T94）。
+        # 本案例的被測對象就是這個欄位的開關，公司層已無從操作；沒有動任何設定。
+        pytest.skip(
+            "BLOCKED：公司層「飞单设置」頁已不顯示「自动飞单」欄（Aaron 2026-10-02 17:25 確認是 RD 刻意改動，"
+            "交接檔 T94）；本案例被測的開關在公司層已不存在，未改動任何設定。待 Aaron 決定改在代理層執行或停用。"
+        )
     with allure.step("導覽到「飞单设置」頁，若「特码」列被鎖住則先關閉明細設定解鎖"):
         sp.goto("飞单设置")
         detail_mode_original = sp.is_lay_off_detail_mode_enabled(row)
@@ -375,7 +408,7 @@ def test_lay_off_toggle(company_page):
         attachment_type=allure.attachment_type.TEXT,
     )
     assert toggleable, (
-        "關掉「開啟飛單選項明細設定」後，「自動飛單」仍是 disabled——"
+        "關掉「開關選項設置」後，「自動飛單」仍是 disabled——"
         "代表互斥假設不成立，或環境現況又變了，需要重新確認。"
     )
 
@@ -394,7 +427,7 @@ def test_lay_off_toggle(company_page):
     assert after_toggle == (not original)
 
     # 還原（CLAUDE.md §5：測試資料用完即還原）
-    # ⚠️ 上面那次保存已經把「開啟飛單選項明細設定」一併存成 False（見上方 docstring）——
+    # ⚠️ 上面那次保存已經把「開關選項設置」一併存成 False（見上方 docstring）——
     # reload 後它仍是 False（不是自己跳回原值），所以這裡不必再另外關一次就能點「自動飛單」。
     with allure.step("把「特码」自動飛單還原成進入案例前讀到的原值並保存，reload 後重讀"):
         sp.toggle_auto_lay_off(row, original)
@@ -403,8 +436,8 @@ def test_lay_off_toggle(company_page):
         sp.goto("飞单设置")
         assert sp.is_auto_lay_off_enabled(row) == original
 
-    # 最後才把「開啟飛單選項明細設定」真正救回原值，且必須按保存才會真的寫回後端。
-    with allure.step("把「特码」列的「開啟飛單選項明細設定」還原成進入案例前讀到的原值並保存，reload 後重讀"):
+    # 最後才把「開關選項設置」真正救回原值，且必須按保存才會真的寫回後端。
+    with allure.step("把「特码」列的「開關選項設置」還原成進入案例前讀到的原值並保存，reload 後重讀"):
         sp.set_lay_off_detail_mode(row, detail_mode_original)
         sp.save()
         page.reload()
@@ -412,47 +445,118 @@ def test_lay_off_toggle(company_page):
         assert sp.is_lay_off_detail_mode_enabled(row) == detail_mode_original
 
 
-@allure.title("[畫面驗證] B26：飛單設置表格結構：欄位／8 個分組／列數應與規格一致")
+@allure.title("[畫面驗證] B26：飛單設置表格結構：公司層與一級代理的表頭欄位、8 個分組與列數是否符合各層級規格")
 @allure.suite("飞单设置")
 @pytest.mark.smoke
-def test_lay_off_setting_table_structure(company_page):
-    """B26｜畫面驗證：飛單設置表格結構性掃描——欄位齊全、8 個可收合分組都在、70 列都讀得到。
-    （2026-08-31 案例重編號：舊編號 B16，見案例清單 §0.1）
+def test_lay_off_setting_table_structure(company_page, browser, xzh_qat):
+    """平台案例：[畫面驗證] B26：飛單設置表格結構：公司層與一級代理的表頭欄位、8 個分組與列數是否符合各層級規格
+
+    前置條件：
+    - 帳號：公司操作員 aaron01、一級代理 aaa111（只讀取畫面，不點開關、不保存、不改任何設定）。
+    - 畫面：系統設置→飛單設置，預設彩種（香港六合彩）。
+
+    測試範圍：
+    - 彩種：香港六合彩（預設彩種）
+    - 頁面：系統設置→飛單設置
+    - 層級：公司層、一級代理
 
     步驟：
-    1. 導覽到「系统设置→飞单设置」子頁面
-    2. 讀取表頭欄位、8 個分組收合按鈕、資料列總數
+    1. 以公司層帳號進入「系统设置→飞单设置」子頁面，讀取表頭欄位、8 個分組收合按鈕、資料列總數與每列欄位格數。
+    2. 以一級代理帳號 aaa111 登入後進入同一個子頁面，讀取表頭欄位、資料列總數與每列欄位格數。
+    3. 比對兩層：公司層不顯示「自动飞单」欄，一級代理顯示。
 
     預期結果：
-    - 表頭 6 欄：玩法／自留口徑／每選項自留上限／自動飛單／最小飛單額／開啟飛單選項明細設定
-    - 8 個分組（連碼／連肖／連尾／不中／多選中一／特平中／合肖／比大小）皆存在
-    - 資料列數＝**70**（⚠️ 2026-08-28 本案例執行時用「cell 數＝6」的結構特徵精確計數才發現：
-      先前文件與 B5 案例檔頭記錄的「68 個玩法列」是誤算，已一併更正相關文件，見交接檔 T17）
+    - 公司層表頭 5 欄：玩法／自留口径／每选项自留上限／最小飞单额／开关选项设置，不顯示「自动飞单」；每個玩法列 5 格。
+    - 一級代理表頭 6 欄：玩法／自留口径／每选项自留上限／自动飞单／最小飞单额／开关选项设置；每個玩法列 6 格。
+    - 兩層都有 8 個分組（连码／连肖／连尾／不中／多选中一／特平中／合肖／比大小），玩法列數皆為 70。
 
-    oracle 來源：B 級（regression baseline，2026-08-28 結構性複掃時清點）。
-    本案例只驗結構完整，不驗每列數值與狀態——那些見 B8～B10。
+    已知問題：
+    - 覆蓋限制：只比對公司層與一級代理；二級以下代理（2026-10-02 唯讀觀察 aaa222 同為 6 欄）與其餘彩種未納入本案例（三彩種列數見 B27）。
+
+    實作備註：
+    B26（2026-08-31 案例重編號：舊編號 B16，見案例清單 §0.1）。
+    2026-10-02 期望改寫（依據：Aaron 2026-10-02 17:25 確認「公司層『飞单设置』頁不顯示『自动飞单』欄」是 RD 刻意改動，
+    交接檔 T94，不開單）。舊樣貌：表頭 6 欄含「自动飞单」、每列 6 格（2026-09-01 15:22 實測）；現況：公司層 5 欄、
+    一級代理仍 6 欄。實測（2026-10-02，aaron01／aaa111／aaa222，三彩種）：公司層每列 5 格、代理層每列 6 格；
+    兩層皆是 70 列玩法資料列＋8 列分組收合列。
+    玩法列數＝70 是 2026-08-28 用「cell 數＝表頭欄數」的結構特徵精確計數才發現（先前記錄的「68 個玩法列」是誤算，見交接檔 T17）。
+    oracle 來源：B 級（regression baseline）；本案例只驗結構完整，不驗每列數值與狀態——那些見 B8～B10。
     """
-    page = company_page
-    sp = SystemSettingPage(page)
-    with allure.step("導覽到「系统设置→飞单设置」子頁面"):
-        sp.goto("飞单设置")
-    headers = ("玩法", "自留口径", "每选项自留上限", "自动飞单", "最小飞单额", "开启飞单选项明细设定")
-    with allure.step("讀取表頭 6 欄位（玩法／自留口径／每选项自留上限／自动飞单／最小飞单额／开启飞单选项明细设定）、8 個分組收合按鈕（连码／连肖／连尾／不中／多选中一／特平中／合肖／比大小）、資料列總數"):
-        header_visible = {h: page.get_by_role("columnheader", name=h, exact=True).is_visible() for h in headers}
-        groups = sp.group_toggle_labels()
-        row_count = sp.row_count()
-    allure.attach(
-        f"表頭實際：{header_visible}（期望：全部 True）\n"
-        f"分組實際：{groups}\n"
-        f"列數實際：{row_count}（期望：70）",
-        name="飛單設置表格結構",
-        attachment_type=allure.attachment_type.TEXT,
+    expected_company = ["玩法", "自留口径", "每选项自留上限", "最小飞单额", "开关选项设置"]
+    expected_agent = ["玩法", "自留口径", "每选项自留上限", "自动飞单", "最小飞单额", "开关选项设置"]
+    group_names = ("连码", "连肖", "连尾", "不中", "多选中一", "特平中", "合肖", "比大小")
+
+    def scan(layer_page):
+        """讀取目前「飞单设置」頁的表頭、分組、玩法列數與每列格數分布（不點任何開關、不保存）。"""
+        layer_sp = SystemSettingPage(layer_page)
+        layer_sp.goto("飞单设置")
+        layer_page.get_by_role("columnheader", name="玩法", exact=True).wait_for()
+        headers = layer_sp.column_headers()
+        cell_distribution: dict[int, int] = {}
+        rows = layer_page.get_by_role("row")
+        for i in range(rows.count()):
+            n = rows.nth(i).get_by_role("cell").count()
+            cell_distribution[n] = cell_distribution.get(n, 0) + 1
+        return {
+            "headers": headers,
+            "header_visible": {h: layer_page.get_by_role("columnheader", name=h, exact=True).is_visible()
+                               for h in expected_agent},
+            "auto_header_count": layer_page.get_by_role("columnheader", name="自动飞单", exact=True).count(),
+            "groups": layer_sp.group_toggle_labels(),
+            "row_count": layer_sp.row_count(),
+            "cell_distribution": dict(sorted(cell_distribution.items())),
+        }
+
+    with allure.step("以公司層帳號進入「系统设置→飞单设置」子頁面，讀取表頭欄位、8 個分組收合按鈕、資料列總數與每列欄位格數"):
+        company = scan(company_page)
+    agent_context = browser.new_context(viewport={"width": 1920, "height": 1080})
+    try:
+        with allure.step("以一級代理帳號 aaa111 登入後進入同一個子頁面，讀取表頭欄位、資料列總數與每列欄位格數"):
+            agent_page = agent_context.new_page()
+            agent_page.set_default_timeout(20000)
+            agent_login = LoginPage(agent_page)
+            agent_login.goto(xzh_qat["backend_company_url"])
+            agent_login.login("aaa111", agent_password("aaa111"))
+            if agent_login.is_otp_page():
+                agent_login.submit_otp("123456")
+            agent = scan(agent_page)
+    finally:
+        agent_context.close()
+    with allure.step("比對兩層：公司層不顯示「自动飞单」欄，一級代理顯示"):
+        allure.attach(
+            "公司層（aaron01）：\n"
+            f"  表頭實際：{company['headers']}\n  表頭期望：{expected_company}（不含「自动飞单」）\n"
+            f"  「自动飞单」表頭數量：{company['auto_header_count']}（期望：0）\n"
+            f"  各格數的列數分布（格數: 列數）：{company['cell_distribution']}（期望：5 格 70 列）\n"
+            f"  分組實際：{company['groups']}\n  玩法列數實際：{company['row_count']}（期望：70）\n"
+            "一級代理（aaa111）：\n"
+            f"  表頭實際：{agent['headers']}\n  表頭期望：{expected_agent}\n"
+            f"  「自动飞单」表頭數量：{agent['auto_header_count']}（期望：1）\n"
+            f"  各格數的列數分布（格數: 列數）：{agent['cell_distribution']}（期望：6 格 70 列）\n"
+            f"  分組實際：{agent['groups']}\n  玩法列數實際：{agent['row_count']}（期望：70）",
+            name="飛單設置表格結構：公司層 vs 一級代理（實際值 vs 期望值）",
+            attachment_type=allure.attachment_type.TEXT,
+        )
+    assert company["headers"] == expected_company, (
+        f"公司層表頭應為 {expected_company}（不含「自动飞单」），實際 {company['headers']}"
     )
-    for header, visible in header_visible.items():
-        assert visible, f"表頭「{header}」未找到"
-    for name in ("连码", "连肖", "连尾", "不中", "多选中一", "特平中", "合肖", "比大小"):
-        assert any(name in g for g in groups), f"分組「{name}」未找到，實際：{groups}"
-    assert row_count == 70, f"預期 70 列玩法，實際 {row_count} 列"
+    assert company["auto_header_count"] == 0, "公司層不應顯示「自动飞单」欄（Aaron 2026-10-02 確認為 RD 刻意改動）"
+    assert company["cell_distribution"].get(5) == 70, (
+        f"公司層每個玩法列應為 5 格、共 70 列，實際格數分布 {company['cell_distribution']}"
+    )
+    assert agent["headers"] == expected_agent, f"一級代理表頭應為 {expected_agent}，實際 {agent['headers']}"
+    assert agent["auto_header_count"] == 1, "一級代理應顯示「自动飞单」欄"
+    assert agent["cell_distribution"].get(6) == 70, (
+        f"一級代理每個玩法列應為 6 格、共 70 列，實際格數分布 {agent['cell_distribution']}"
+    )
+    for layer, data in (("公司層", company), ("一級代理", agent)):
+        for header, visible in data["header_visible"].items():
+            if layer == "公司層" and header == "自动飞单":
+                continue
+            assert visible, f"{layer}表頭「{header}」未找到"
+        for name in group_names:
+            assert any(name in g for g in data["groups"]), f"{layer}分組「{name}」未找到，實際：{data['groups']}"
+        assert data["row_count"] == 70, f"{layer}預期 70 列玩法，實際 {data['row_count']} 列"
 
 
 @allure.title("[邏輯驗證] B36-1：飛單設置逐列解鎖獨立性：只應影響操作列，其餘列不受連動影響")
@@ -465,7 +569,7 @@ def test_lay_off_row_unlock_is_isolated(company_page):
     步驟：
     1. 導覽到「系统设置→飞单设置」子頁面
     2. 記錄「特码」列（未操作對象）目前的鎖定狀態
-    3. 關閉「两面」列的「開啟飛單選項明細設定」→ 讀取「两面」列的自動飛單／自留上限是否解鎖
+    3. 關閉「两面」列的「開關選項設置」→ 讀取「两面」列的自動飛單／自留上限是否解鎖
     4. 重新讀取「特码」列狀態，確認未被連動改變
     5. 還原「两面」列
 
@@ -480,29 +584,32 @@ def test_lay_off_row_unlock_is_isolated(company_page):
     sp = SystemSettingPage(page)
     with allure.step("導覽到「系统设置→飞单设置」子頁面，記錄「特码」列（未操作對象）目前的鎖定狀態"):
         sp.goto("飞单设置")
-        control_before = sp.is_auto_lay_off_toggleable("特码")
+        # 2026-10-02 起公司層沒有「自动飞单」欄（交接檔 T94）：解鎖與否改看「每选项自留上限」是否可編輯。
+        control_before = _row_unlocked(sp, "特码")
     assert control_before is False, "前置假設：「特码」列應處於鎖定狀態，若已解鎖代表環境現況已變"
 
-    with allure.step("關閉「两面」列的「開啟飛單選項明細設定」→ 讀取自動飛單／自留上限是否解鎖"):
+    with allure.step("關閉「两面」列的「開關選項設置」→ 讀取自動飛單／自留上限是否解鎖"):
         sp.set_lay_off_detail_mode("两面", False)
-        toggleable = sp.is_auto_lay_off_toggleable("两面")
+        toggleable = _auto_toggleable_or_none(sp, "两面")
         cap_editable = sp.is_cap_editable("两面")
     with allure.step("重新讀取「特码」列狀態，確認未被連動改變"):
-        control_after = sp.is_auto_lay_off_toggleable("特码")
+        control_after = _row_unlocked(sp, "特码")
     allure.attach(
-        f"「两面」解鎖後：自動飛單可互動={toggleable}、自留上限可編輯={cap_editable}（期望：皆 True）\n"
+        f"「两面」解鎖後：自動飛單可互動={toggleable if toggleable is not None else '（這一層沒有「自动飞单」欄，略過）'}、"
+        f"自留上限可編輯={cap_editable}（期望：有「自动飞单」欄時皆 True；沒有時只看自留上限）\n"
         f"「特码」操作前={control_before}、操作後={control_after}（期望：不變）",
         name="逐列解鎖獨立性",
         attachment_type=allure.attachment_type.TEXT,
     )
-    assert toggleable is True
+    if toggleable is not None:
+        assert toggleable is True
     assert cap_editable is True
     assert control_after == control_before, "「特码」列不該被「两面」列的操作連動影響"
 
     # 還原（CLAUDE.md §5：測試資料用完即還原；本切換純前端，不需要 save()）
     with allure.step("還原「两面」列"):
         sp.set_lay_off_detail_mode("两面", True)
-        assert sp.is_auto_lay_off_toggleable("两面") is False
+        assert _row_unlocked(sp, "两面") is False
 
 
 @allure.title("[功能驗證] B30：飛單設置「最小飛單額」欄位邊界值：負數應拒絕、超大值應接受並即時持久化")
@@ -590,7 +697,7 @@ def test_lay_off_anomaly_rows_can_relock(company_page):
     步驟：
     1. 導覽到「系统设置→飞单设置」子頁面
     2. 讀取 `一比五`／`一比六` 兩列目前的鎖定狀態
-    3. 若目前是解鎖狀態，將其「開啟飛單選項明細設定」重新開啟
+    3. 若目前是解鎖狀態，將其「開關選項設置」重新開啟
     4. 讀取兩列是否恢復成與其餘 66 列一致的鎖定狀態
 
     預期結果：
@@ -608,18 +715,21 @@ def test_lay_off_anomaly_rows_can_relock(company_page):
 
     for row in ("一比五", "一比六"):
         with allure.step(f"讀取「{row}」目前鎖定狀態，若解鎖則重新開啟明細設定"):
-            was_unlocked = sp.is_auto_lay_off_toggleable(row)
+            # 2026-10-02 起公司層沒有「自动飞单」欄（交接檔 T94）：解鎖與否改看「每选项自留上限」是否可編輯。
+            was_unlocked = _row_unlocked(sp, row)
             if was_unlocked:
                 sp.set_lay_off_detail_mode(row, True)
-            toggleable = sp.is_auto_lay_off_toggleable(row)
+            toggleable = _auto_toggleable_or_none(sp, row)
             cap_editable = sp.is_cap_editable(row)
         allure.attach(
-            f"「{row}」操作前解鎖={was_unlocked}；操作後：自動飛單可互動={toggleable}、"
-            f"自留上限可編輯={cap_editable}（期望：兩者皆 False）",
+            f"「{row}」操作前解鎖={was_unlocked}；操作後：自動飛單可互動="
+            f"{toggleable if toggleable is not None else '（這一層沒有「自动飞单」欄，略過）'}、"
+            f"自留上限可編輯={cap_editable}（期望：有「自动飞单」欄時兩者皆 False；沒有時只看自留上限）",
             name=f"{row} 是否可重新鎖回",
             attachment_type=allure.attachment_type.TEXT,
         )
-        assert toggleable is False, f"「{row}」列鎖不回去——非可逆殘留，需更新交接檔 T17"
+        if toggleable is not None:
+            assert toggleable is False, f"「{row}」列鎖不回去——非可逆殘留，需更新交接檔 T17"
         assert cap_editable is False, f"「{row}」列自留上限鎖不回去——非可逆殘留，需更新交接檔 T17"
 
 
@@ -632,7 +742,7 @@ def test_lay_off_group_members_lock_unlock_consistency(company_page):
     鎖定/解鎖機制是否跟頂層列（B8 已驗的「两面」）一致。
 
     ⚠️ K4 表格的 70 列裡，有一大塊（連碼展開後的二全中/二中特…等）先前只在 K7
-    （飛單選項明細設置）驗過對應玩法的組合型 UI，**在 K4 這張表自己的鎖定/解鎖機制
+    （飛單選項設置）驗過對應玩法的組合型 UI，**在 K4 這張表自己的鎖定/解鎖機制
     是否一致從未逐一確認**——「比大小」的 `一比五`／`一比六` 已在 B10 驗過，
     本案例補其餘 7 個分組各挑一個代表成員（分層抽樣，§6）。
 
@@ -663,21 +773,25 @@ def test_lay_off_group_members_lock_unlock_consistency(company_page):
         with allure.step(f"分組「{group}」代表成員「{member}」：解鎖 → 確認可編輯 → 鎖回 → 確認不可編輯"):
             detail_original = sp.is_lay_off_detail_mode_enabled(member)
             sp.set_lay_off_detail_mode(member, False)
-            unlocked_toggleable = sp.is_auto_lay_off_toggleable(member)
+            # 2026-10-02 起公司層沒有「自动飞单」欄（交接檔 T94）：toggleable 為 None 時只略過自動飛單那一項。
+            unlocked_toggleable = _auto_toggleable_or_none(sp, member)
             unlocked_cap_editable = sp.is_cap_editable(member)
             sp.set_lay_off_detail_mode(member, detail_original)
-            relocked_toggleable = sp.is_auto_lay_off_toggleable(member)
+            relocked_toggleable = _auto_toggleable_or_none(sp, member)
             relocked_cap_editable = sp.is_cap_editable(member)
         allure.attach(
             f"分組「{group}」成員「{member}」：解鎖後 toggleable={unlocked_toggleable}、"
             f"cap_editable={unlocked_cap_editable}；鎖回後 toggleable={relocked_toggleable}、"
-            f"cap_editable={relocked_cap_editable}（期望：解鎖皆 True、鎖回皆 False）",
+            f"cap_editable={relocked_cap_editable}（期望：解鎖皆 True、鎖回皆 False；"
+            "toggleable=None 表示這一層沒有「自动飞单」欄，略過該項）",
             name=f"{group}/{member} 解鎖-鎖回一致性",
             attachment_type=allure.attachment_type.TEXT,
         )
-        assert unlocked_toggleable is True, f"「{member}」解鎖後自動飛單仍不可互動"
+        if unlocked_toggleable is not None:
+            assert unlocked_toggleable is True, f"「{member}」解鎖後自動飛單仍不可互動"
         assert unlocked_cap_editable is True, f"「{member}」解鎖後自留上限仍不可編輯"
-        assert relocked_toggleable is False, f"「{member}」鎖不回去——分組成員與頂層列行為不一致"
+        if relocked_toggleable is not None:
+            assert relocked_toggleable is False, f"「{member}」鎖不回去——分組成員與頂層列行為不一致"
         assert relocked_cap_editable is False, f"「{member}」自留上限鎖不回去——分組成員與頂層列行為不一致"
 
 
@@ -690,7 +804,7 @@ def test_lay_off_cap_value_boundary(company_page):
     兩個新案例，本函式的內容同時涵蓋兩者，見案例清單 §0.1）
 
     ⚠️⚠️ 2026-08-29 實測發現的重要陷阱（見 `SystemSettingPage.set_cap_value` 檔頭）：
-    這欄要先解鎖（關閉「開啟飛單選項明細設定」）才能編輯，而**編輯後 Enter 送出的 API
+    這欄要先解鎖（關閉「開關選項設置」）才能編輯，而**編輯後 Enter 送出的 API
     是整列資料**，會把當下「明細設定＝解鎖」的狀態也一併持久化——光把開關切回「鎖定」
     不會生效（那是純前端切換，不送 API），**必須搭配再對同一列做一次「最小飛單額」的
     Enter（哪怕值不變）才能把鎖回的狀態真正寫回後端**。本案例的收尾步驟就是照這個
@@ -805,6 +919,8 @@ def _put_lay_off_setting_detail(page, game_id: str, play_type_id: str, items: li
     """繞過 UI，直接對 `PUT /api/LayOffSettingDetail` 送出指定 items（B65 前端擋 vs 後端擋驗證用）。
 
     回傳 HTTP 狀態碼。`extra` 通常帶 `triggerImmediateAutoLayOff`（見 B15/B52 前台真生效系列）。
+    ⚠️ 2026-10-02 起前端不再送這個旗標（勾選框已移除，Aaron 14:28 確認）；後端仍接受（實測帶 true／false 都回 200），
+    是否仍採用該旗標未驗，新寫的呼叫不要再帶。
     """
     return page.evaluate(
         """async ([gameId, playTypeId, items, extra]) => {
@@ -819,6 +935,64 @@ def _put_lay_off_setting_detail(page, game_id: str, play_type_id: str, items: li
         }""",
         [game_id, play_type_id, items, extra],
     )
+
+
+def _item_share(items: list[dict], selection: str):
+    """從 `GET /api/LayOffSettingDetail` 的選項清單取指定 selection 的 `actualShareAmount`。"""
+    return next(i for i in items if i["selection"] == selection)["actualShareAmount"]
+
+
+def _poll_lay_off_detail(page, game_id: str, play_type_id: str, done, describe,
+                         timeout_s: float = 45.0, interval_s: float = 2.0):
+    """輪詢 `GET /api/LayOffSettingDetail` 直到 `done(items)` 為真或逾時，回傳 (最後一次選項清單, 時間軸文字清單)。
+
+    2026-10-02 勾選框「保存后立即触发本次选项自动飞单」移除後，保存本身就會觸發自動飛單
+    （後端回 `executedCount`），但占成仍可能晚幾秒才反映（《遊戲機制》§5.4），所以讀占成要輪詢，
+    不可保存後只讀一次就下結論；逾時才讓呼叫端依最後一次的值判失敗，不放寬期望值。
+    `describe(items)` 回傳要寫進時間軸的簡短文字。
+    """
+    started = time.monotonic()
+    timeline: list[str] = []
+    while True:
+        items = _get_lay_off_setting_detail(page, game_id, play_type_id)
+        timeline.append(f"+{time.monotonic() - started:.1f}s：{describe(items)}")
+        if done(items) or time.monotonic() - started >= timeout_s:
+            return items, timeline
+        page.wait_for_timeout(int(interval_s * 1000))
+
+
+def _settle_lay_off_detail(page, game_id: str, play_type_id: str, indices,
+                           timeout_s: float = 30.0, interval_s: float = 2.0) -> list[dict]:
+    """連續兩次讀到相同的 `actualShareAmount`（指定 indices）才回傳，最長等 `timeout_s` 秒。
+
+    給「記錄占成、沒有固定期望值」的批次案例用（B94／B96）：保存即觸發自動飛單，
+    讀太快會讀到飛單前的值；等數值不再變動再記錄。
+    """
+    started = time.monotonic()
+    previous = None
+    while True:
+        items = _get_lay_off_setting_detail(page, game_id, play_type_id)
+        current = [items[i].get("actualShareAmount") for i in indices]
+        if current == previous or time.monotonic() - started >= timeout_s:
+            return items
+        previous = current
+        page.wait_for_timeout(int(interval_s * 1000))
+
+
+def _wait_bingo_window(player_page, min_remaining_sec: int = 150, timeout_sec: int = 420) -> None:
+    """等到賓果六合彩出現「新的一期且距離封盤至少 `min_remaining_sec` 秒」才往下做。
+
+    高頻彩種一期只有幾分鐘；會員下注＋後台設定＋輪詢占成必須在同一期內完成，否則新一期的占成
+    會歸零，讀到的 0 會被誤當成飛單結果（不關聯的案例期望值就是 0）。
+    """
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        text = player_page.locator("body").inner_text()
+        match = re.search(r"宾果六合彩\s+(\d{2}):(\d{2})\s+(\d{9})\b", text)
+        if match and int(match.group(1)) * 60 + int(match.group(2)) >= min_remaining_sec:
+            return
+        player_page.wait_for_timeout(1000)
+    raise AssertionError(f"等了 {timeout_sec} 秒仍沒有距離封盤至少 {min_remaining_sec} 秒的賓果六合彩期別")
 
 
 # ---- 組合型玩法 playTypeId 對照（T39，2026-09-03 完成全部 55 目標）----
@@ -977,21 +1151,21 @@ def _combo_items_restored_correctly(original: list[dict], restored: list[dict]) 
 
 
 @allure.title("[功能驗證] B64：共用自留上限：在組合型玩法輸入共用自留上限 -15 與 666666 並保存後，欄位值是否分別為 0 與 666666")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_combo_type_shared_cap_boundary(company_page):
     """平台案例：[功能驗證] B64：共用自留上限：在組合型玩法輸入共用自留上限 -15 與 666666 並保存後，欄位值是否分別為 0 與 666666
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；玩法與子項：连码（二全中、二中特、二特串、三全中、三中二、四全中）、过关、六肖、连肖（二肖至五肖的连中／连不中）、连尾（二尾至四尾的连中／连不中）、不中（五不中至十二不中）、多选中一（五中一至十中一）、特平中（一粒任中至五粒任中）、合肖（二合肖至五合肖的中／不中）、比大小（一比一至一比六），共55個設定畫面
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」。
+    1. 進入「系統設置」→「飛單選項設置」。
     2. 記錄原始設定；共用自留上限輸入 -15 並保存，讀取保存結果。
     3. 改輸入 666666 並保存，讀取保存結果。
     4. 還原原始設定與總開關，重新讀取確認。
@@ -1003,10 +1177,10 @@ def test_lay_off_detail_combo_type_shared_cap_boundary(company_page):
     - 共用自留上限在「不关连」及部分生肖組合的套用方向異常
 
     實作備註：
-    [功能驗證] B64：飛單選項明細設置：組合型玩法（含六肖與比大小全部6子項）輸入負數與超大值後共用自留上限是否正確處理
+    [功能驗證] B64：飛單選項設置：組合型玩法（含六肖與比大小全部6子項）輸入負數與超大值後共用自留上限是否正確處理
 
     步驟：
-    1. 使用公司帳號進入「飛單選項明細設置」頁，確認頁面可正常顯示組合型設定。
+    1. 使用公司帳號進入「飛單選項設置」頁，確認頁面可正常顯示組合型設定。
     2. 依序選擇三個彩種及每個組合型玩法／子項，確認「共用自留上限」欄位可輸入。
     3. 輸入 -15 並按「保存」，確認欄位顯示 0，且設定成功保存。
     4. 再輸入 666666 並按「保存」，確認欄位顯示 666666；若為「不关连」模式，依畫面規則確認套用對象。
@@ -1026,7 +1200,7 @@ def test_lay_off_detail_combo_type_shared_cap_boundary(company_page):
     games = list(_GAME_ID.items())
     targets = _combo_targets()
 
-    with allure.step("進入「飛單選項明細設置」頁面"):
+    with allure.step("進入「飛單選項設置」頁面"):
         sp.goto()
     allure.attach(
         "彩種：英國天天彩、香港六合彩、賓果六合彩\n"
@@ -1128,21 +1302,21 @@ def test_lay_off_detail_combo_type_shared_cap_boundary(company_page):
 
 
 @allure.title("[後端驗證] B65：後端自留上限限制：直接提交負數與超大自留上限後，系統是否拒絕負數並接受超大值")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_backend_rejects_negative_cap(company_page):
     """平台案例：[後端驗證] B65：後端自留上限限制：直接提交負數與超大自留上限後，系統是否拒絕負數並接受超大值
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；資料：標準型玩法（特码、正码、正特码、两面、生肖中、生肖不中、半波、特肖、尾数中、尾数不中、色波、七码、五行、一肖量、尾数量）與組合型玩法（连码、过关、六肖、连肖、连尾、不中、多选中一、特平中、合肖、比大小）的55個設定畫面，共70組後端資料
 
     步驟：
-    1. 用測試帳號登入後台，開啟「飛單選項明細設置」頁
+    1. 用測試帳號登入後台，開啟「飛單選項設置」頁
     2. 不經畫面，直接對每組玩法資料送出 -999：確認系統拒絕，且原資料沒有被改動；再送出 999999999：確認系統接受並儲存
     3. 把每組玩法資料恢復成測試前的內容，再讀取一次確認還原成功
 
@@ -1156,7 +1330,7 @@ def test_lay_off_detail_backend_rejects_negative_cap(company_page):
     B65：三彩種 × 全部70個 playTypeId，直接驗證後端自留上限邊界規則。
 
     步驟：
-    1. 使用後端測試工具以測試帳號登入，確認可取得「飛單選項明細設置」的測試資料。
+    1. 使用後端測試工具以測試帳號登入，確認可取得「飛單選項設置」的測試資料。
     2. 對三個彩種的標準型與組合型目標各送出負數及超大自留上限，記錄每次回應結果。
     3. 確認負數請求被拒絕且資料未被改壞；確認超大值請求成功且資料已寫入。
     4. 每個目標測試完成後還原原始資料，並重新讀取確認資料恢復。
@@ -1173,7 +1347,7 @@ def test_lay_off_detail_backend_rejects_negative_cap(company_page):
 
     report_lines: list[str] = []
     violations: list[str] = []
-    with allure.step("用測試帳號登入後台，開啟「飛單選項明細設置」頁"):
+    with allure.step("用測試帳號登入後台，開啟「飛單選項設置」頁"):
         sp.goto()
     allure.attach(
         "彩種：英國天天彩、香港六合彩、賓果六合彩\n"
@@ -1326,7 +1500,7 @@ def test_lay_off_setting_no_residual_unlocked_rows(company_page):
     )
 
 
-@allure.title("[邏輯驗證] B29：飛單設置：「保存」按鈕能否持久化「開啟飛單選項明細設定」的切換")
+@allure.title("[邏輯驗證] B29：飛單設置：「保存」按鈕能否持久化「開關選項設置」的切換")
 @allure.suite("飞单设置")
 @pytest.mark.write_action
 def test_lay_off_detail_mode_persists_via_save_button(company_page):
@@ -1335,7 +1509,7 @@ def test_lay_off_detail_mode_persists_via_save_button(company_page):
     ⚠️⚠️ 2026-08-31 解決機制文件與 POM 的矛盾（見交接檔 T20）：機制文件 §5.2 說「按保存時
     會與該列其他欄位一併寫入」；`set_cap_value()` 檔頭卻說鎖回只能靠「對最小飛單額再
     Enter 一次」，全程沒提保存按鈕。**實測證實機制文件是對的**——保存按鈕確實能持久化
-    「開啟飛單選項明細設定」的當下狀態，不需要額外對其他欄位做 Enter。整列持久化其實
+    「開關選項設置」的當下狀態，不需要額外對其他欄位做 Enter。整列持久化其實
     有兩條路徑都通：①按保存；②對任一 Enter-即時持久化欄位做 Enter（後者見 B35）。
     """
     page = company_page
@@ -1358,7 +1532,7 @@ def test_lay_off_detail_mode_persists_via_save_button(company_page):
         name="保存按鈕對明細設定持久化驗證",
         attachment_type=allure.attachment_type.TEXT,
     )
-    assert after == (not original), "保存按鈕未能持久化「開啟飛單選項明細設定」——與機制文件記載不符"
+    assert after == (not original), "保存按鈕未能持久化「開關選項設置」——與機制文件記載不符"
 
     with allure.step("還原「特码」為原值並保存"):
         sp.set_lay_off_detail_mode(row, original)
@@ -1373,7 +1547,7 @@ def test_lay_off_detail_mode_persists_via_save_button(company_page):
 @allure.suite("飞单设置")
 @pytest.mark.write_action
 def test_lay_off_detail_mode_toggle_alone_reverts_on_reload(company_page):
-    """B34：切換「開啟飛單選項明細設定」後不做任何持久化動作，reload 應恢復原狀。
+    """B34：切換「開關選項設置」後不做任何持久化動作，reload 應恢復原狀。
 
     ⚠️ 這個假設是 B29／B35 與整套收尾程序的地基，先前只在 POM 檔頭寫「切換當下沒有
     任何 API 請求送出」，卻從未反向驗證過「不送 API＝reload 會恢復」這個推論本身。
@@ -1482,8 +1656,8 @@ def test_lay_off_setting_non_default_games_consistency(company_page):
 
     ⚠️ 這兩個彩種**不能沿用 B28 的「locked_row_count()==total」判準**——B27 已發現鎖定列數
     落差極大（香港六合彩 70/70、英國天天彩 6/70、賓果六合彩 13/70），多數列本來就是解鎖
-    狀態。本案例改用更寬鬆但仍嚴謹的判準：不管該列目前鎖定或解鎖，兩個受「開啟飛單選項明細
-    設定」連動的欄位（自動飛單、每選項自留上限）有沒有互相同步（`consistent_row_count()`）。
+    狀態。本案例改用更寬鬆但仍嚴謹的判準：不管該列目前鎖定或解鎖，兩個受「開關選項設置」
+    連動的欄位（自動飛單、每選項自留上限）有沒有互相同步（`consistent_row_count()`）。
 
     步驟：
     1. 導覽到「飞单设置」頁，切到英國天天彩，掃描全部列的狀態自洽性
@@ -1552,19 +1726,22 @@ def test_lay_off_setting_non_default_games_mutex_roundtrip(company_page):
             with allure.step(f"{game}／「{row}」：切換明細設定為相反狀態，驗證互斥後再切回原狀"):
                 original = sp.is_lay_off_detail_mode_enabled(row)
                 sp.set_lay_off_detail_mode(row, not original)
-                toggled_toggleable = sp.is_auto_lay_off_toggleable(row)
+                # 2026-10-02 起公司層沒有「自动飞单」欄（交接檔 T94）：toggleable 為 None 時只略過自動飛單那一項。
+                toggled_toggleable = _auto_toggleable_or_none(sp, row)
                 toggled_cap_editable = sp.is_cap_editable(row)
                 sp.set_lay_off_detail_mode(row, original)
-                restored_toggleable = sp.is_auto_lay_off_toggleable(row)
+                restored_toggleable = _auto_toggleable_or_none(sp, row)
                 restored_cap_editable = sp.is_cap_editable(row)
             report_lines.append(
                 f"{game}／{row}：原始明細設定={original}；切換後 auto可互動={toggled_toggleable}、"
                 f"cap可編輯={toggled_cap_editable}；切回後 auto可互動={restored_toggleable}、"
                 f"cap可編輯={restored_cap_editable}"
             )
-            assert toggled_toggleable == original, f"{game}／{row} 切換明細設定後互斥規則不成立（自動飛單）"
+            if toggled_toggleable is not None:
+                assert toggled_toggleable == original, f"{game}／{row} 切換明細設定後互斥規則不成立（自動飛單）"
             assert toggled_cap_editable == original, f"{game}／{row} 切換明細設定後互斥規則不成立（自留上限）"
-            assert restored_toggleable == (not original), f"{game}／{row} 切回原狀後未恢復（自動飛單）"
+            if restored_toggleable is not None:
+                assert restored_toggleable == (not original), f"{game}／{row} 切回原狀後未恢復（自動飛單）"
             assert restored_cap_editable == (not original), f"{game}／{row} 切回原狀後未恢復（自留上限）"
     allure.attach(
         "\n".join(report_lines), name="非預設彩種互斥狀態機 roundtrip", attachment_type=allure.attachment_type.TEXT
@@ -1654,7 +1831,7 @@ def test_lay_off_setting_non_default_games_boundary_values(company_page):
 @allure.suite("飞单设置")
 @pytest.mark.write_action
 def test_lay_off_setting_non_default_games_save_and_game_id(company_page):
-    """B58：英國天天彩／賓果六合彩驗證「保存」按鈕對「開啟飛單選項明細設定」是否同樣有效
+    """B58：英國天天彩／賓果六合彩驗證「保存」按鈕對「開關選項設置」是否同樣有效
     （比照 B29），並用網路攔截確認 `PUT /api/LayOffSetting` 的 `gameId` 參數正確對應目標彩種。
 
     ⚠️ 附帶排除一個混淆變因：B27 觀察到的三彩種鎖定列數落差（70/6/13）有沒有可能其實是
@@ -1668,7 +1845,7 @@ def test_lay_off_setting_non_default_games_save_and_game_id(company_page):
     預期結果：
     - PUT payload 的 `gameId` 應對應目標彩種（2026-08-31 探索已知英國天天彩＝`ukLucky7`、
       賓果六合彩＝`bingo6`，與香港六合彩的 `markSix` 不同）
-    - 「保存」按鈕應能持久化「開啟飛單選項明細設定」的切換，跟 B29 一致
+    - 「保存」按鈕應能持久化「開關選項設置」的切換，跟 B29 一致
 
     oracle 來源：延伸 B29 的結論；gameId 對應為網路攔截直接讀取，A 級。
     """
@@ -1796,7 +1973,7 @@ def test_lay_off_setting_non_default_games_toggle_and_persistence_trap(company_p
 
 
 # ============================================================================
-# B60~B62：飛單設置「最小飛單額」×「開啟飛單選項明細設定」交叉驗證
+# B60~B62：飛單設置「最小飛單額」×「開關選項設置」交叉驗證
 # （2026-08-31 從零設計新增，見案例清單 §0.2）
 #
 # B28／B33 只確認了「自動飛單」與「每選項自留上限」兩欄受明細設定開關影響，「最小飛單額」
@@ -1804,7 +1981,7 @@ def test_lay_off_setting_non_default_games_toggle_and_persistence_trap(company_p
 # ============================================================================
 
 
-@allure.title("[邏輯驗證] B60：飛單設置「最小飛單額」×「開啟飛單選項明細設定」決策表-1：明細設定開時的耦合檢查")
+@allure.title("[邏輯驗證] B60：飛單設置「最小飛單額」×「開關選項設置」決策表-1：明細設定開時的耦合檢查")
 @allure.suite("飞单设置")
 @pytest.mark.write_action
 def test_lay_off_min_amount_detail_mode_decision_table_open(company_page):
@@ -1812,7 +1989,7 @@ def test_lay_off_min_amount_detail_mode_decision_table_open(company_page):
     不會被連帶改變。
 
     ⚠️ 這個交叉驗證先前完全沒做過——B30 只驗過「最小飛單額」欄位本身的邊界值行為，從未
-    明確斷言過它跟「開啟飛單選項明細設定」這個開關之間**沒有**耦合關係（B31/B35 已證實
+    明確斷言過它跟「開關選項設置」這個開關之間**沒有**耦合關係（B31/B35 已證實
     「每選項自留上限」有耦合陷阱，「最小飛單額」是否也有同樣的陷阱，先前只是**沒被排除**，
     不是已經驗證過不存在——實際上 B62 證實它也有，見下）。
 
@@ -1866,7 +2043,7 @@ def test_lay_off_min_amount_detail_mode_decision_table_open(company_page):
         assert sp.min_lay_off_amount(row) == original_min
 
 
-@allure.title("[邏輯驗證] B61：飛單設置「最小飛單額」×「開啟飛單選項明細設定」決策表-2：明細設定關時的耦合檢查")
+@allure.title("[邏輯驗證] B61：飛單設置「最小飛單額」×「開關選項設置」決策表-2：明細設定關時的耦合檢查")
 @allure.suite("飞单设置")
 @pytest.mark.write_action
 def test_lay_off_min_amount_detail_mode_decision_table_closed(company_page):
@@ -2042,36 +2219,36 @@ def test_odds_setting_table_visible(company_page):
 
 
 @allure.title("[邏輯驗證] B37：明細總開關：關閉明細設定後編輯欄位與批次工具是否鎖定，重新開啟後是否恢復")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_master_switch_transition(company_page):
     """平台案例：[邏輯驗證] B37：明細總開關：關閉明細設定後編輯欄位與批次工具是否鎖定，重新開啟後是否恢復
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；標準型玩法：特码、正码、正特码、两面、生肖中、生肖不中、半波、特肖、尾数中、尾数不中、色波、七码、五行、一肖量、尾数量；組合型玩法：连码、过关、六肖、连肖、连尾、不中、多选中一、特平中、合肖、比大小
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
-    2. 在每個標準型玩法關閉「启用飞单选项明细」，確認欄位、快速設置及批次工具無法操作；重新開啟後確認恢復
-    3. 在每個組合型玩法關閉「启用飞单选项明细」，確認畫面顯示「请先开启飞单选项明细」；重新開啟後確認提示消失且設定區可操作
-    4. 在「特码」關閉「启用飞单选项明细」後再點一次開關、於確認框按「取消」，確認開關仍維持關閉，最後把所有玩法的開關還原為原始狀態
+    1. 進入「系統設置」→「飛單選項設置」
+    2. 在每個標準型玩法關閉「开关选项设置」，確認欄位、快速設置及批次工具無法操作；重新開啟後確認恢復
+    3. 在每個組合型玩法關閉「开关选项设置」，確認畫面顯示「编辑已锁定，开启选项设置后才能编辑」；重新開啟後確認提示消失且設定區可操作
+    4. 在「特码」關閉「开关选项设置」後再點一次開關、於確認框按「取消」，確認開關仍維持關閉，最後把所有玩法的開關還原為原始狀態
 
     預期結果：
-    - 關閉「启用飞单选项明细」後，標準型的自動飛單、快速設置、批次按鈕及自留上限應無法操作，組合型應顯示開啟提示；重新開啟後應恢復；確認框按「取消」後開關應維持關閉
+    - 關閉「开关选项设置」後，標準型的自動飛單、快速設置、批次按鈕及自留上限應無法操作，組合型應顯示開啟提示；重新開啟後應恢復；確認框按「取消」後開關應維持關閉
 
     已知問題：
 
 
     實作備註：
-    [邏輯驗證] B37：飛單選項明細設置：關閉總開關後欄位是否被鎖住、重新開啟後是否恢復
+    [邏輯驗證] B37：飛單選項設置：關閉總開關後欄位是否被鎖住、重新開啟後是否恢復
 
     步驟：
-    1. 使用公司帳號進入「飛單選項明細設置」頁，確認可看到「启用飞单选项明细」總開關。
+    1. 使用公司帳號進入「飛單選項設置」頁，確認可看到「开关选项设置」總開關。
     2. 在每個彩種的標準型玩法關閉總開關，確認「自动飞单」、自留上限、快速設置及批次按鈕都不能操作；重新開啟後確認恢復。
     3. 在每個彩種的組合型玩法關閉總開關，確認編輯區顯示鎖定提示；重新開啟後確認提示消失。
     4. 在「特码」再次點擊總開關並於確認視窗按「取消」，確認開關仍維持關閉且欄位仍不可操作。
@@ -2080,7 +2257,7 @@ def test_lay_off_detail_master_switch_transition(company_page):
     判準（attach 佐證）
     關閉總開關後：標準型玩法的「自動飛單」開關與「每選項自留上限」欄位應變成不可操作、
     「快速设置」的選取與「套用」按鈕，以及「一鍵自動」「一鍵手動」按鈕應變成不可點擊；組合型玩法的編輯區應顯示
-    「编辑已锁定，启用飞单选项明细后才能编辑」提示文字。重新開啟總開關後，上述欄位應全部
+    「编辑已锁定，开启选项设置后才能编辑」提示文字。重新開啟總開關後，上述欄位應全部
     恢復可操作、提示文字應消失。點擊總開關後在確認框按「取消」，總開關應維持關閉、
     選項列維持不可操作。
 
@@ -2100,7 +2277,7 @@ def test_lay_off_detail_master_switch_transition(company_page):
     # ⚠️⚠️ 2026-09-01 推翻先前假設：舊版本測試假設「總開關關閉不影響組合型分類的可互動性」
     # （沿用 B67 的結論），但 §7.3 發現總開關其實是**跟著目前選中的分類連動**，不是整彩種
     # 共用一份——用 MCP 對「比大小」分類單獨覆核後證實：**組合型分類一樣受自己的總開關狀態
-    # 影響**，關閉時整個編輯區塊會被鎖住並顯示提示文字「编辑已锁定，启用飞单选项明细后才能
+    # 影響**，關閉時整個編輯區塊會被鎖住並顯示提示文字「编辑已锁定，开启选项设置后才能
     # 编辑」，跟標準型「不可互動」是同一種鎖定機制，只是呈現方式不同（標準型是逐欄位變
     # disabled，組合型是整塊區域被鎖）。**這與既有案例 B67 的結論矛盾**——B67 當時很可能是
     # 在「比大小」自身總開關恰好是開啟狀態下測的，才會觀察到「不受影響」；B67 本身不在本次
@@ -2108,7 +2285,7 @@ def test_lay_off_detail_master_switch_transition(company_page):
     report_lines: list[str] = []
     violations: list[str] = []
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
     allure.attach(
         "彩種：英國天天彩、香港六合彩、賓果六合彩\n"
@@ -2123,7 +2300,7 @@ def test_lay_off_detail_master_switch_transition(company_page):
         # ⚠️ 2026-09-01 發現：切換彩種後不能假設目前選中的分類還是「特码」——
         # 總開關與各欄位狀態都是跟著「目前選中分類」連動的（§7.3），每個玩法都要
         # 各自 select_category 一次，並各自讀取／還原自己那一份總開關。
-        with allure.step("在每個標準型玩法關閉「启用飞单选项明细」，確認欄位、快速設置及批次工具無法操作；重新開啟後確認恢復"):
+        with allure.step("在每個標準型玩法關閉「开关选项设置」，確認欄位、快速設置及批次工具無法操作；重新開啟後確認恢復"):
             for category in standard_categories:
                 sp.select_category(category)
                 original = sp.is_master_switch_enabled()
@@ -2187,7 +2364,7 @@ def test_lay_off_detail_master_switch_transition(company_page):
         # 組合型分類的總開關是各分類自己的一份，跟標準型的開關無關（§7.3）——分別控制、
         # 分別驗證、分別還原。鎖定時整塊編輯區會顯示提示文字，比逐一檢查個別欄位的
         # disabled 屬性更穩定（鎖定時部分元素的 role 會整個改變，見本函式上方的說明）。
-        with allure.step("在每個組合型玩法關閉「启用飞单选项明细」，確認畫面顯示「请先开启飞单选项明细」；重新開啟後確認提示消失且設定區可操作"):
+        with allure.step("在每個組合型玩法關閉「开关选项设置」，確認畫面顯示「编辑已锁定，开启选项设置后才能编辑」；重新開啟後確認提示消失且設定區可操作"):
             for category in combo_categories:
                 sp.select_category(category)
                 combo_original = sp.is_master_switch_enabled()
@@ -2206,7 +2383,7 @@ def test_lay_off_detail_master_switch_transition(company_page):
                 )
                 if combo_locked_when_off is not True:
                     violations.append(
-                        f"{game}／{category}：總開關關閉時應顯示「编辑已锁定，启用飞单选项明细后才能编辑」提示，實際未顯示"
+                        f"{game}／{category}：總開關關閉時應顯示「编辑已锁定，开启选项设置后才能编辑」提示，實際未顯示"
                     )
                 if combo_locked_when_on is not False:
                     violations.append(f"{game}／{category}：總開關開啟時不應再顯示編輯鎖定提示")
@@ -2214,7 +2391,7 @@ def test_lay_off_detail_master_switch_transition(company_page):
                 if sp.is_master_switch_enabled() != combo_original:
                     sp.set_master_switch(combo_original)
 
-        with allure.step("在「特码」關閉「启用飞单选项明细」後再點一次開關、於確認框按「取消」，確認開關仍維持關閉，最後把所有玩法的開關還原為原始狀態"):
+        with allure.step("在「特码」關閉「开关选项设置」後再點一次開關、於確認框按「取消」，確認開關仍維持關閉，最後把所有玩法的開關還原為原始狀態"):
             sp.select_category("特码")
             cancel_original = sp.is_master_switch_enabled()
 
@@ -2239,7 +2416,7 @@ def test_lay_off_detail_master_switch_transition(company_page):
 
     allure.attach(
         "\n".join(report_lines),
-        name="判準：關閉「启用飞单选项明细」後，標準型的自動飛單、快速設置、批次按鈕及自留上限應無法操作，組合型應顯示開啟提示；重新開啟後應恢復；確認框按「取消」後開關應維持關閉",
+        name="判準：關閉「开关选项设置」後，標準型的自動飛單、快速設置、批次按鈕及自留上限應無法操作，組合型應顯示開啟提示；重新開啟後應恢復；確認框按「取消」後開關應維持關閉",
         attachment_type=allure.attachment_type.TEXT,
     )
     assert not violations, "以下彩種／玩法驗證失敗（共 %d 項）：\n%s" % (
@@ -2249,21 +2426,21 @@ def test_lay_off_detail_master_switch_transition(company_page):
 
 
 @allure.title("[邏輯驗證] B44：自動飛單批次設定：對標準型玩法按「一键自动／一键手动」後，首列、中間列、末列是否分別開啟與關閉")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_batch_tools_apply_to_all_options(level1_agent_page):
     """平台案例：[邏輯驗證] B44：自動飛單批次設定：對標準型玩法按「一键自动／一键手动」後，首列、中間列、末列是否分別開啟與關閉
 
     前置條件：
     - 帳號：一級代理
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 帳號：一級代理；彩種：英國天天彩、香港六合彩、賓果六合彩；標準型玩法：特码、正码、正特码、两面、生肖中、生肖不中、半波、特肖、尾数中、尾数不中、色波、七码、五行、一肖量、尾数量；每玩法驗首列、中間列、末列
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
+    1. 進入「系統設置」→「飛單選項設置」
     2. 依序進入每個標準型玩法：按「一键自动」確認首列、中間列、末列開啟，再按「一键手动」確認三個位置關閉，最後還原原始狀態
     3. 切換其他玩法前後，讀取未操作的「正码」首列、中間列、末列，確認狀態維持不變
 
@@ -2274,10 +2451,10 @@ def test_lay_off_detail_batch_tools_apply_to_all_options(level1_agent_page):
     - 覆蓋缺口：本案例沿用首列、中間列、末列檢查，尚未涵蓋全部選項；本次只統一文字，不擴增執行範圍。
 
     實作備註：
-    [邏輯驗證] B44：飛單選項明細設置：標準型玩法批次設定後選項狀態是否正確套用且不影響其他分類
+    [邏輯驗證] B44：飛單選項設置：標準型玩法批次設定後選項狀態是否正確套用且不影響其他分類
 
     步驟：
-    1. 使用一級代理帳號進入「飛單選項明細設置」頁，確認標準型玩法顯示「自动飞单」欄。
+    1. 使用一級代理帳號進入「飛單選項設置」頁，確認標準型玩法顯示「自动飞单」欄。
     2. 逐一選擇三個彩種及15個標準型玩法，按「一键自动」，確認首列、中間列、末列全部開啟。
     3. 按「一键手动」，確認首列、中間列、末列全部關閉。
     4. 切換到其他玩法再切回，確認未操作的「正码」第1、25、49列狀態沒有被改變。
@@ -2298,7 +2475,7 @@ def test_lay_off_detail_batch_tools_apply_to_all_options(level1_agent_page):
 
     report_lines: list[str] = []
     violations: list[str] = []
-    with allure.step("進入「飛單選項明細設置」頁面"):
+    with allure.step("進入「飛單選項設置」頁面"):
         sp.goto()
     allure.attach(
         "彩種：英國天天彩、香港六合彩、賓果六合彩\n"
@@ -2359,21 +2536,21 @@ def test_lay_off_detail_batch_tools_apply_to_all_options(level1_agent_page):
 
 
 @allure.title("[邏輯驗證] B46：組合勾選限制：取消所有組合後按「保存」，是否顯示提示並阻止送出資料")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_combo_requires_at_least_one_selection(company_page):
     """平台案例：[邏輯驗證] B46：組合勾選限制：取消所有組合後按「保存」，是否顯示提示並阻止送出資料
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；玩法與子項：连码（二全中、二中特、二特串、三全中、三中二、四全中）、过关、六肖、连肖（二肖至五肖的连中／连不中）、连尾（二尾至四尾的连中／连不中）、不中（五不中至十二不中）、多选中一（五中一至十中一）、特平中（一粒任中至五粒任中）、合肖（二合肖至五合肖的中／不中）、比大小（一比一至一比六），共55個設定畫面
 
     步驟：
-    1. 進入「系统设置」→「飞单选项明细设置」
+    1. 進入「系统设置」→「飞单选项设置」
     2. 依序切換測試範圍內的彩種、玩法與子項，記錄原始勾選及設定值
     3. 先勾選第一個組合建立變更，再取消所有勾選；原本零勾選的畫面另修改共用自留上限，確保按保存時確實有未保存變更
     4. 按「保存」，確認畫面顯示「请选择号码或选项」，且沒有出現保存成功提示
@@ -2401,7 +2578,7 @@ def test_lay_off_detail_combo_requires_at_least_one_selection(company_page):
     violations: list[str] = []
     report_lines: list[str] = []
 
-    with allure.step("進入「系统设置」→「飞单选项明细设置」"):
+    with allure.step("進入「系统设置」→「飞单选项设置」"):
         sp.goto()
     allure.attach(
         "彩種：英國天天彩、香港六合彩、賓果六合彩\n"
@@ -2498,7 +2675,7 @@ def test_lay_off_detail_combo_requires_at_least_one_selection(company_page):
 
 
 @allure.title("[缺陷回歸] B83：不关连共用自留上限：在「不关连」模式保存共用自留上限後，是否仍套用到已勾選組合")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 @pytest.mark.xfail(
     strict=True,
@@ -2509,14 +2686,14 @@ def test_lay_off_detail_unrelated_shared_cap_keeps_selected_target(company_page)
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：香港六合彩；玩法：过关；選項：第一個組合；設定值：54321
 
     步驟：
-    1. 進入「飛單選項明細設置」，選擇「香港六合彩」與「过关」，確認設定區可操作
+    1. 進入「飛單選項設置」，選擇「香港六合彩」與「过关」，確認設定區可操作
     2. 記錄原始設定，只勾選第一個組合，其餘組合保持未勾選
     3. 先選擇「关连」再選擇「不关连」；兩次都輸入共用自留上限 54321、按「保存」，並讀回已勾選與未勾選組合的金額
     4. 還原「过关」原始設定，重新讀取並確認資料與操作前一致
@@ -2558,7 +2735,7 @@ def test_lay_off_detail_unrelated_shared_cap_keeps_selected_target(company_page)
         name="測試範圍：彩種＝香港六合彩；玩法＝过关；選項＝第一個組合；設定值＝54321",
         attachment_type=allure.attachment_type.TEXT,
     )
-    with allure.step("進入「飛單選項明細設置」，選擇「香港六合彩」與「过关」，確認設定區可操作"):
+    with allure.step("進入「飛單選項設置」，選擇「香港六合彩」與「过关」，確認設定區可操作"):
         sp.goto()
         sp.switch_game(game)
         category_switch_original = _goto_combo_target_and_ensure_switch(
@@ -2597,7 +2774,9 @@ def test_lay_off_detail_unrelated_shared_cap_keeps_selected_target(company_page)
             targets = [
                 page.get_by_text("不关连", exact=True).first.locator(".."),
                 page.get_by_role("spinbutton", name="共用自留上限").first,
-                page.get_by_role("checkbox").nth(0).locator("xpath=.."),
+                # 2026-10-02 起工具列新增「全选」checkbox（Aaron 17:25 確認是 RD 刻意改動）排在組合列之前，
+                # 這裡要的是第 0 個組合列的 checkbox，所以改用排除工具列的組合列 checkbox
+                sp._combo_boxes().nth(0).locator("xpath=.."),
             ]
             for index, target in enumerate(targets):
                 target.evaluate(
@@ -2636,21 +2815,21 @@ def test_lay_off_detail_unrelated_shared_cap_keeps_selected_target(company_page)
 
 
 @allure.title("[畫面驗證] B42：玩法分類清單：切換彩種後，玩法分類清單是否維持相同的25個項目")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.smoke
 def test_lay_off_detail_categories_consistent_across_games(company_page):
     """平台案例：[畫面驗證] B42：玩法分類清單：切換彩種後，玩法分類清單是否維持相同的25個項目
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：唯讀案例不需記錄或修改設定
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；標準型玩法：特码、正码、正特码、两面、生肖中、生肖不中、半波、特肖、尾数中、尾数不中、色波、七码、五行、一肖量、尾数量；組合型玩法：连码、过关、六肖、连肖、连尾、不中、多选中一、特平中、合肖、比大小
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」，記錄預設彩種的玩法分類清單
+    1. 進入「系統設置」→「飛單選項設置」，記錄預設彩種的玩法分類清單
     2. 依序切換英國天天彩、香港六合彩、賓果六合彩，逐一比對25個玩法分類的名稱、數量與順序
     3. 還原彩種選取
 
@@ -2661,10 +2840,10 @@ def test_lay_off_detail_categories_consistent_across_games(company_page):
 
 
     實作備註：
-    [畫面驗證] B42：飛單選項明細設置：切換彩種後玩法分類清單是否一致
+    [畫面驗證] B42：飛單選項設置：切換彩種後玩法分類清單是否一致
 
     步驟:
-    1. 導覽到「飛單選項明細設置」頁，記錄預設彩種的玩法分類清單。
+    1. 導覽到「飛單選項設置」頁，記錄預設彩種的玩法分類清單。
     2. 切換其他彩種，比對分類清單是否一致。
     3. 還原彩種選取。
 
@@ -2681,7 +2860,7 @@ def test_lay_off_detail_categories_consistent_across_games(company_page):
         name="測試範圍：彩種＝英國天天彩、香港六合彩、賓果六合彩；標準型玩法＝特码、正码、正特码、两面、生肖中、生肖不中、半波、特肖、尾数中、尾数不中、色波、七码、五行、一肖量、尾数量；組合型玩法＝连码、过关、六肖、连肖、连尾、不中、多选中一、特平中、合肖、比大小",
         attachment_type=allure.attachment_type.TEXT,
     )
-    with allure.step("導覽到「飛單選項明細設置」頁，記錄預設彩種的玩法分類清單"):
+    with allure.step("導覽到「飛單選項設置」頁，記錄預設彩種的玩法分類清單"):
         sp.goto()
         hk_categories = sp.category_labels()
     with allure.step("依序切換英國天天彩、香港六合彩、賓果六合彩，逐一比對25個玩法分類的名稱、數量與順序"):
@@ -2704,22 +2883,22 @@ def test_lay_off_detail_categories_consistent_across_games(company_page):
 
 
 @allure.title("[功能驗證] B43：每選項自留上限：修改標準型玩法的「每選項自留上限」並保存後，重新整理是否仍顯示設定值")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_standard_type_cap_roundtrip(company_page):
     """平台案例：[功能驗證] B43：每選項自留上限：修改標準型玩法的「每選項自留上限」並保存後，重新整理是否仍顯示設定值
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；標準型玩法：特码、正码、正特码、两面、生肖中、生肖不中、半波、特肖、尾数中、尾数不中、色波、七码、五行、一肖量、尾数量；每玩法驗首列、中間列、末列
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
-    2. 確認「启用飞单选项明细」已開啟；每個標準型玩法的首列、中間列、末列依序輸入1234並保存，重新整理後讀取數值；「特码」首列另測 -10 與 888888
+    1. 進入「系統設置」→「飛單選項設置」
+    2. 確認「开关选项设置」已開啟；每個標準型玩法的首列、中間列、末列依序輸入1234並保存，重新整理後讀取數值；「特码」首列另測 -10 與 888888
     3. 將首列、中間列、末列的自留上限與總開關還原為原值
 
     預期結果：
@@ -2732,8 +2911,8 @@ def test_lay_off_detail_standard_type_cap_roundtrip(company_page):
     [功能驗證] B43：修改標準型玩法的「每選項自留上限」並保存後，重新整理是否保留設定值
 
     步驟:
-    1. 導覽到「飛單選項明細設置」頁。
-    2. 選擇測試範圍中的彩種與玩法，確認「启用飞单选项明细」為開啟狀態。
+    1. 導覽到「飛單選項設置」頁。
+    2. 選擇測試範圍中的彩種與玩法，確認「开关选项设置」為開啟狀態。
     3. 記錄首列、中間列與末列的「每選項自留上限」。
     4. 將三個位置改為 1234，保存並重新整理頁面。
     5. 確認三個位置仍顯示 1234；「特码」首列另輸入 -10 與 888888，分別確認結果。
@@ -2757,7 +2936,7 @@ def test_lay_off_detail_standard_type_cap_roundtrip(company_page):
     default_probes = [("1234", "1234")]
     extra_probes_for = {"特码": [("1234", "1234"), ("-10", "0"), ("888888", "888888")]}
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
     allure.attach(
         "彩種：英國天天彩、香港六合彩、賓果六合彩\n"
@@ -2773,14 +2952,14 @@ def test_lay_off_detail_standard_type_cap_roundtrip(company_page):
             sp.switch_game(game)
             sp.select_category(category)
 
-            # ⚠️⚠️ 2026-09-01 重大發現：「啟用飛單選項明細」總開關的畫面顯示狀態是
+            # ⚠️⚠️ 2026-09-01 重大發現：「開關選項設置」總開關的畫面顯示狀態是
             # 跟著「目前選中的分類」連動的，不是整個彩種共用一個狀態——同一頁面上
             # 切「特码」顯示已開啟，切「五行」顯示未開啟，切回「特码」又變回已開啟
             # （MCP 手動來回切換 3 次重現一致）。因此每個分類都要各自確認、各自開，
             # 不能只在進入彩種時開一次就假設對整批玩法都生效。
             category_switch_original = sp.is_master_switch_enabled()
 
-            with allure.step("確認「启用飞单选项明细」已開啟；每個標準型玩法的首列、中間列、末列依序輸入1234並保存，重新整理後讀取數值；「特码」首列另測 -10 與 888888"):
+            with allure.step("確認「开关选项设置」已開啟；每個標準型玩法的首列、中間列、末列依序輸入1234並保存，重新整理後讀取數值；「特码」首列另測 -10 與 888888"):
                 if not category_switch_original:
                     sp.set_master_switch(True)
 
@@ -2859,21 +3038,21 @@ def test_lay_off_detail_standard_type_cap_roundtrip(company_page):
 
 
 @allure.title("[功能驗證] B49：組合型關聯模式：組合型關聯模式與共用自留上限保存後，套用結果是否正確")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_compare_shared_cap_declaration(company_page):
     """平台案例：[功能驗證] B49：組合型關聯模式：組合型關聯模式與共用自留上限保存後，套用結果是否正確
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；玩法與子項：连码（二全中、二中特、二特串、三全中、三中二、四全中）、过关、六肖、连肖（二肖至五肖的连中／连不中）、连尾（二尾至四尾的连中／连不中）、不中（五不中至十二不中）、多选中一（五中一至十中一）、特平中（一粒任中至五粒任中）、合肖（二合肖至五合肖的中／不中）、比大小（一比一至一比六），共55個設定畫面
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」。
+    1. 進入「系統設置」→「飛單選項設置」。
     2. 記錄原始設定，只勾選第一個組合；切換「关连／不关连」並分別保存、讀回模式。
     3. 輸入共用自留上限 500 並保存，核對已勾選及未勾選組合的金額。
     4. 還原原始設定與總開關，重新讀取確認。
@@ -2885,7 +3064,7 @@ def test_lay_off_detail_compare_shared_cap_declaration(company_page):
     - 共用自留上限在「不关连」及部分生肖組合的套用方向異常
 
     實作備註：
-    [功能驗證] B49：飛單選項明細設置：組合型玩法（含六肖與比大小全部6子項）修改關聯模式與共用自留上限後，設定是否正確保存並套用
+    [功能驗證] B49：飛單選項設置：組合型玩法（含六肖與比大小全部6子項）修改關聯模式與共用自留上限後，設定是否正確保存並套用
 
     步驟：
     1. 使用公司帳號進入每個彩種的組合型玩法與子項，記錄原始勾選狀態與金額。
@@ -2912,7 +3091,7 @@ def test_lay_off_detail_compare_shared_cap_declaration(company_page):
         attachment_type=allure.attachment_type.TEXT,
     )
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
     allure.attach(
         "彩種：英國天天彩、香港六合彩、賓果六合彩\n"
@@ -3030,14 +3209,14 @@ def test_lay_off_detail_compare_shared_cap_declaration(company_page):
 
 
 @allure.title("[功能驗證] B84：組合型設定保存：組合型玩法修改設定並保存後，重新整理頁面資料是否保留")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_combo_ui_values_after_refresh(company_page):
     """平台案例：[功能驗證] B84：組合型設定保存：組合型玩法修改設定並保存後，重新整理頁面資料是否保留
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
@@ -3046,7 +3225,7 @@ def test_lay_off_detail_combo_ui_values_after_refresh(company_page):
     - 選項：修改一個目標勾選，其餘勾選為控制組
 
     步驟：
-    1. 進入「飛單選項明細設置」，選擇香港六合彩／过关並記錄原值。
+    1. 進入「飛單選項設置」，選擇香港六合彩／过关並記錄原值。
     2. 切換「关连／不关连」、修改共用自留上限及一個目標勾選，按「保存」。
     3. 重新整理並回到同一玩法，核對關聯模式、共用自留上限及所有勾選。
     4. 還原關聯模式、共用自留上限、勾選與總開關，保存並重新整理確認。
@@ -3066,7 +3245,7 @@ def test_lay_off_detail_combo_ui_values_after_refresh(company_page):
     共用自留上限及多個選擇勾選，可用一次操作區分「後端已保存但前端顯示舊值」與正常結果。
 
     步驟：
-    1. 進入「飛單選項明細設置」的香港六合彩／过关，從畫面記錄關聯模式、共用自留上限、
+    1. 進入「飛單選項設置」的香港六合彩／过关，從畫面記錄關聯模式、共用自留上限、
        所有「選擇」勾選及總開關原值；選一個可改變的勾選作目標，其餘組合作控制組。
     2. 從畫面切換關聯模式、輸入不同的共用自留上限並只改變目標勾選，再按「保存」。
     3. 重新整理頁面並回到相同彩種與玩法，從畫面讀取三項設定，確認修改值保留且控制組不變。
@@ -3081,7 +3260,7 @@ def test_lay_off_detail_combo_ui_values_after_refresh(company_page):
     game = "香港六合彩"
     category = "过关"
 
-    with allure.step("進入「飛單選項明細設置」的香港六合彩／过关，從畫面記錄關聯模式、共用自留上限、所有選擇勾選及總開關原值"):
+    with allure.step("進入「飛單選項設置」的香港六合彩／过关，從畫面記錄關聯模式、共用自留上限、所有選擇勾選及總開關原值"):
         sp.goto()
         sp.switch_game(game)
         category_switch_original = _goto_combo_target_and_ensure_switch(
@@ -3162,19 +3341,19 @@ def test_lay_off_detail_combo_ui_values_after_refresh(company_page):
     assert restored == original, f"還原後畫面未恢復原值：預期{original}，實際{restored}"
 
 
-@allure.title("[畫面驗證] B38：飛單選項明細設置：開啟總開關後飛單設置頁的「開啟飛單選項明細設定」開關是否仍可切換")
+@allure.title("[畫面驗證] B38：飛單選項設置：開啟總開關後飛單設置頁的「開關選項設置」開關是否仍可切換")
 @allure.suite("飞单设置")
 @pytest.mark.write_action
 def test_k7_master_switch_effect_on_k4_detail_toggle(company_page):
-    """[畫面驗證] B38：飛單選項明細設置：開啟總開關後飛單設置頁的「開啟飛單選項明細設定」開關是否仍可切換
+    """[畫面驗證] B38：飛單選項設置：開啟總開關後飛單設置頁的「開關選項設置」開關是否仍可切換
 
     步驟:
-    1. 導覽到「飛單選項明細設置」頁，開啟總開關（會跳出確認框，按「確定」）。
-    2. 切到「飛單設置」頁，點擊「正码」列的「開啟飛單選項明細設定」開關，觀察是否切換成功。
-    3. 把「正码」的開關還原為原值（不需按保存），再回到「飛單選項明細設置」頁把總開關還原。
+    1. 導覽到「飛單選項設置」頁，開啟總開關（會跳出確認框，按「確定」）。
+    2. 切到「飛單設置」頁，點擊「正码」列的「開關選項設置」開關，觀察是否切換成功。
+    3. 把「正码」的開關還原為原值（不需按保存），再回到「飛單選項設置」頁把總開關還原。
 
     判準（attach 佐證）
-    開啟總開關後，「飛單設置」頁「正码」列的「開啟飛單選項明細設定」開關應仍可正常切換
+    開啟總開關後，「飛單設置」頁「正码」列的「開關選項設置」開關應仍可正常切換
     （點擊後狀態與點擊前相反），畫面不出現鎖定、禁用或錯誤提示文字。
 
     ⚠️⚠️ 2026-08-31 結論修正（重要）：**手動探索時曾觀察到「飛單設置」頁的開關點擊
@@ -3263,81 +3442,81 @@ def test_k7_master_switch_effect_on_k4_detail_toggle(company_page):
     )
 
 
-@allure.title("[畫面驗證] B54：頁面閒置：在飛單選項明細設置頁閒置25秒後，是否仍停留原頁且未跳回登入頁")
-@allure.suite("飞单选项明细设置")
+@allure.title("[畫面驗證] B54：頁面閒置：在飛單選項設置頁閒置25秒後，是否仍停留原頁且未跳回登入頁")
+@allure.suite("飞单选项设置")
 @pytest.mark.smoke
 def test_lay_off_detail_page_stable_during_extended_dwell(company_page):
-    """平台案例：[畫面驗證] B54：頁面閒置：在飛單選項明細設置頁閒置25秒後，是否仍停留原頁且未跳回登入頁
+    """平台案例：[畫面驗證] B54：頁面閒置：在飛單選項設置頁閒置25秒後，是否仍停留原頁且未跳回登入頁
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：唯讀案例不需記錄或修改設定
 
     測試範圍：
-    - 公司層後台；頁面：飛單選項明細設置；閒置時間：25秒
+    - 公司層後台；頁面：飛單選項設置；閒置時間：25秒
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」，記錄目前網址
-    2. 保持頁面25秒不做任何操作，再確認頁面是否仍停留在「飛單選項明細設置」
+    1. 進入「系統設置」→「飛單選項設置」，記錄目前網址
+    2. 保持頁面25秒不做任何操作，再確認頁面是否仍停留在「飛單選項設置」
 
     預期結果：
-    - 閒置25秒後仍應停留在飛單選項明細設置頁，不應被自動導回登入頁或其他頁面
+    - 閒置25秒後仍應停留在飛單選項設置頁，不應被自動導回登入頁或其他頁面
 
     已知問題：
 
 
     實作備註：
-    [畫面驗證] B54：飛單選項明細設置：頁面閒置後是否維持在目前頁面
+    [畫面驗證] B54：飛單選項設置：頁面閒置後是否維持在目前頁面
 
     步驟：
-    1. 使用公司帳號進入「飛單選項明細設置」頁，記錄網址、彩種與玩法。
+    1. 使用公司帳號進入「飛單選項設置」頁，記錄網址、彩種與玩法。
     2. 保持頁面不操作25秒，確認網址與頁面內容仍維持不變。
     3. 確認沒有被導回登入頁、首頁或其他設定頁。
 
     判準（attach 佐證）
-    閒置25秒後仍應停留在飛單選項明細設置頁，不應被自動導回登入頁或其他頁面。
+    閒置25秒後仍應停留在飛單選項設置頁，不應被自動導回登入頁或其他頁面。
     """
     page = company_page
     sp = LayOffDetailSettingPage(page)
     allure.attach(
-        "公司層後台／飛單選項明細設置頁／閒置25秒",
-        name="測試範圍：公司層後台；頁面＝飛單選項明細設置；閒置時間＝25秒",
+        "公司層後台／飛單選項設置頁／閒置25秒",
+        name="測試範圍：公司層後台；頁面＝飛單選項設置；閒置時間＝25秒",
         attachment_type=allure.attachment_type.TEXT,
     )
-    with allure.step("導覽到「飛單選項明細設置」頁，記錄目前網址"):
+    with allure.step("導覽到「飛單選項設置」頁，記錄目前網址"):
         sp.goto()
         url_before = page.url
 
-    with allure.step("保持頁面25秒不做任何操作，再確認頁面是否仍停留在「飛單選項明細設置」"):
+    with allure.step("保持頁面25秒不做任何操作，再確認頁面是否仍停留在「飛單選項設置」"):
         page.wait_for_timeout(25_000)
 
     url_after = page.url
     allure.attach(
         f"停留前：{url_before}\n停留後：{url_after}",
-        name="判準：閒置25秒後仍應停留在飛單選項明細設置頁，不應被自動導回登入頁或其他頁面",
+        name="判準：閒置25秒後仍應停留在飛單選項設置頁，不應被自動導回登入頁或其他頁面",
         attachment_type=allure.attachment_type.TEXT,
     )
     assert url_after == url_before, "頁面在無操作情況下被導向別處，重現了交接檔 T12 的現象"
 
 
 @allure.title("[畫面驗證] B68：設定欄位顯示：切換標準型與組合型玩法後，必要欄位、按鈕與選項列數是否正確顯示")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.smoke
 def test_lay_off_detail_all_categories_screen_elements(company_page):
     """平台案例：[畫面驗證] B68：設定欄位顯示：切換標準型與組合型玩法後，必要欄位、按鈕與選項列數是否正確顯示
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：唯讀案例不需記錄或修改設定
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；標準型玩法：特码、正码、正特码、两面、生肖中、生肖不中、半波、特肖、尾数中、尾数不中、色波、七码、五行、一肖量、尾数量；組合型頂層玩法：连码、过关、六肖、连肖、连尾、不中、多选中一、特平中、合肖、比大小；組合型設定畫面：55個
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
-    2. 依序切換三個彩種與測試範圍內所有玩法，確認「启用飞单选项明细」、「保存」、表頭、設定欄位及選項列數；另確認「快速设置」只出現在特码、正码、正特码
+    1. 進入「系統設置」→「飛單選項設置」
+    2. 依序切換三個彩種與測試範圍內所有玩法，確認「开关选项设置」、「保存」、表頭、設定欄位及選項列數；另確認「快速设置」只出現在特码、正码、正特码
     3. 依序進入三個彩種的55個組合型設定畫面，確認每個子項都有「保存」、「关连」、「共用自留上限」及至少一個可勾選組合
 
     預期結果：
@@ -3347,10 +3526,10 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
 
 
     實作備註：
-    [畫面驗證] B68：飛單選項明細設置：玩法分類的畫面欄位是否正常顯示
+    [畫面驗證] B68：飛單選項設置：玩法分類的畫面欄位是否正常顯示
 
     步驟：
-    1. 使用公司帳號進入「飛單選項明細設置」頁，確認畫面可正常載入。
+    1. 使用公司帳號進入「飛單選項設置」頁，確認畫面可正常載入。
     2. 依序切換三個彩種，逐一查看25個玩法，確認總開關、保存按鈕及必要設定欄位皆存在。
     3. 查看標準型玩法，確認表頭與首列、中間列、末列數量符合畫面規格；只有指定玩法顯示快速設置。
     4. 查看組合型55個設定畫面，確認每個畫面都有保存、关连、共用自留上限及可勾選組合。
@@ -3361,7 +3540,7 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
     每选项自留上限」3 個表頭且列數符合預期；「自动飞单」是代理層欄位，由 B82 驗證。
     組合型 55 個設定畫面都應有关连選項與共用自留上限欄位（「六肖」
     為 2 組、其餘為 1 組）且組合列數大於 0；快速設置面板僅「特码／正码／正特码」3 個分類顯示，
-    其餘分類不顯示；公司層不顯示「保存後立即觸發」，該代理層欄位另由下方二級代理案例驗證。
+    其餘分類不顯示。「保存後立即觸發」勾選框 2026-10-02 起已移除（Aaron 確認），任何層級都不再顯示。
     """
     page = company_page
     sp = LayOffDetailSettingPage(page)
@@ -3379,7 +3558,7 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
     expected_quick_set_categories = {"特码", "正码", "正特码"}
     standard_headers = ("选项", "实际占成金额", "每选项自留上限")
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
     allure.attach(
         "彩種：英國天天彩、香港六合彩、賓果六合彩\n"
@@ -3391,13 +3570,13 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
     )
 
     per_game_category: dict[tuple[str, str], dict] = {}
-    with allure.step("依序切換三個彩種與測試範圍內所有玩法，確認「启用飞单选项明细」、「保存」、表頭、設定欄位及選項列數；另確認「快速设置」只出現在特码、正码、正特码"):
+    with allure.step("依序切換三個彩種與測試範圍內所有玩法，確認「开关选项设置」、「保存」、表頭、設定欄位及選項列數；另確認「快速设置」只出現在特码、正码、正特码"):
         for game in games:
             sp.switch_game(game)
-            master_switch_visible = page.get_by_text("启用飞单选项明细", exact=True).is_visible()
+            master_switch_visible = page.get_by_text("开关选项设置", exact=True).is_visible()
             categories = sp.category_labels()
             assert len(categories) == 25, f"{game} 預期 25 個分類，實際 {len(categories)}：{categories}"
-            assert master_switch_visible, f"{game} 總開關「啟用飛單選項明細」未找到"
+            assert master_switch_visible, f"{game} 總開關「開關選項設置」未找到"
 
             for name in categories:
                 sp.select_category(name)
@@ -3525,48 +3704,48 @@ def test_lay_off_detail_all_categories_screen_elements(company_page):
         "\n".join(violations),
     )
 
-@allure.title("[畫面驗證] B81：窄視窗導覽：視窗縮為1280×720後，是否仍可從頂部「…」選單進入飛單選項明細設置")
-@allure.suite("飞单选项明细设置")
+@allure.title("[畫面驗證] B81：窄視窗導覽：視窗縮為1280×720後，是否仍可從頂部「…」選單進入飛單選項設置")
+@allure.suite("飞单选项设置")
 @pytest.mark.smoke
 def test_lay_off_detail_navigation_from_overflow_menu(company_page):
-    """平台案例：[畫面驗證] B81：窄視窗導覽：視窗縮為1280×720後，是否仍可從頂部「…」選單進入飛單選項明細設置
+    """平台案例：[畫面驗證] B81：窄視窗導覽：視窗縮為1280×720後，是否仍可從頂部「…」選單進入飛單選項設置
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：唯讀案例不需記錄或修改設定
 
     測試範圍：
-    - 公司層後台；視窗：1280×720；導覽：頂部「…」→「系统设置」→「飞单选项明细设置」
+    - 公司層後台；視窗：1280×720；導覽：頂部「…」→「系统设置」→「飞单选项设置」
 
     步驟：
     1. 將瀏覽器調整為 1280×720，確認頂部「系统设置」被收進「…」選單
-    2. 展開「…」後點擊「系统设置」，再由左側點擊「飞单选项明细设置」
-    3. 核對網址、25 個玩法分類、總開關「启用飞单选项明细」與「保存」按鈕
+    2. 展開「…」後點擊「系统设置」，再由左側點擊「飞单选项设置」
+    3. 核對網址、25 個玩法分類、總開關「开关选项设置」與「保存」按鈕
 
     預期結果：
-    - 1280×720視窗下應可從頂部「…」進入「系统设置」，並看到25個玩法、「启用飞单选项明细」及「保存」
+    - 1280×720視窗下應可從頂部「…」進入「系统设置」，並看到25個玩法、「开关选项设置」及「保存」
 
     已知問題：
 
 
     實作備註：
-    [畫面驗證] B81：窄視窗下，從頂部「…」選單是否仍可進入飛單選項明細設置
+    [畫面驗證] B81：窄視窗下，從頂部「…」選單是否仍可進入飛單選項設置
 
     步驟：
     1. 使用公司帳號將瀏覽器調整為1280×720，確認「系统设置」收進頂部「…」選單。
-    2. 展開「…」並點擊「系统设置」，再點擊左側「飞单选项明细设置」。
+    2. 展開「…」並點擊「系统设置」，再點擊左側「飞单选项设置」。
     3. 確認仍可進入正確頁面，且頁面顯示25個玩法、總開關及「保存」按鈕。
 
     判準（attach 佐證）
     窄視窗下仍應能從正常選單路徑進入 `/setting/lay-off-setting-detail`；頁面應顯示 25 個玩法、
-    「启用飞单选项明细」總開關及「保存」按鈕，不得因導覽收合而無法使用。
+    「开关选项设置」總開關及「保存」按鈕，不得因導覽收合而無法使用。
     """
     page = company_page
     sp = LayOffDetailSettingPage(page)
     allure.attach(
-        "公司層後台／1280×720視窗／頂部「…」選單／飛單選項明細設置入口",
-        name="測試範圍：公司層後台；視窗＝1280×720；導覽＝頂部「…」→「系统设置」→「飞单选项明细设置」",
+        "公司層後台／1280×720視窗／頂部「…」選單／飛單選項設置入口",
+        name="測試範圍：公司層後台；視窗＝1280×720；導覽＝頂部「…」→「系统设置」→「飞单选项设置」",
         attachment_type=allure.attachment_type.TEXT,
     )
 
@@ -3577,13 +3756,13 @@ def test_lay_off_detail_navigation_from_overflow_menu(company_page):
         system_visible_before = system_item.count() > 0 and system_item.last.is_visible()
         overflow_visible = page.locator(".el-menu--horizontal > .el-sub-menu").last.is_visible()
 
-    with allure.step("展開「…」後點擊「系统设置」，再由左側點擊「飞单选项明细设置」"):
+    with allure.step("展開「…」後點擊「系统设置」，再由左側點擊「飞单选项设置」"):
         sp.goto()
 
-    with allure.step("核對網址、25 個玩法分類、總開關「启用飞单选项明细」與「保存」按鈕"):
+    with allure.step("核對網址、25 個玩法分類、總開關「开关选项设置」與「保存」按鈕"):
         actual_url = page.url
         categories = sp.category_labels()
-        master_visible = page.get_by_text("启用飞单选项明细", exact=True).is_visible()
+        master_visible = page.get_by_text("开关选项设置", exact=True).is_visible()
         save_visible = page.get_by_role("button", name="保存", exact=True).is_visible()
 
     allure.attach(
@@ -3594,14 +3773,14 @@ def test_lay_off_detail_navigation_from_overflow_menu(company_page):
         f"玩法數：{len(categories)}（期望 25）\n"
         f"總開關可見：{master_visible}（期望 True）\n"
         f"保存按鈕可見：{save_visible}（期望 True）",
-        name="判準：1280×720視窗下應可從頂部「…」進入「系统设置」，並看到25個玩法、「启用飞单选项明细」及「保存」",
+        name="判準：1280×720視窗下應可從頂部「…」進入「系统设置」，並看到25個玩法、「开关选项设置」及「保存」",
         attachment_type=allure.attachment_type.TEXT,
     )
     assert not system_visible_before, "1280×720 下「系统设置」未被收進溢出選單，案例前置不成立"
     assert overflow_visible, "1280×720 下未找到頂部「…」溢出選單"
     assert actual_url.endswith("/setting/lay-off-setting-detail")
     assert len(categories) == 25, f"玩法數預期 25，實際 {len(categories)}：{categories}"
-    assert master_visible, "未顯示「启用飞单选项明细」總開關"
+    assert master_visible, "未顯示「开关选项设置」總開關"
     assert save_visible, "未顯示「保存」按鈕"
 
 
@@ -3674,7 +3853,7 @@ def _login_company_backend_as(
 
 
 @allure.title("[權限驗證] B82：代理欄位權限：一至九級代理登入標準型玩法後，是否都能看到「自动飞单」欄")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.smoke
 def test_lay_off_detail_agent_levels_show_auto_lay_off_column(browser, xzh_qat):
     """平台案例：[權限驗證] B82：代理欄位權限：一至九級代理登入標準型玩法後，是否都能看到「自动飞单」欄
@@ -3687,7 +3866,7 @@ def test_lay_off_detail_agent_levels_show_auto_lay_off_column(browser, xzh_qat):
     - 帳號層級：一至九級代理；彩種：英國天天彩、香港六合彩、賓果六合彩；標準型玩法：特码、正码、正特码、两面、生肖中、生肖不中、半波、特肖、尾数中、尾数不中、色波、七码、五行、一肖量、尾数量
 
     步驟：
-    1. 依測試範圍逐一登入代理後台，進入「飛單選項明細設置」。
+    1. 依測試範圍逐一登入代理後台，進入「飛單選項設置」。
     2. 依序切換彩種及標準型玩法，檢查「自动飞单」表頭。
     3. 彙整各層結果；缺少有效密碼的層級另列未執行，不計為通過。
 
@@ -3702,7 +3881,7 @@ def test_lay_off_detail_agent_levels_show_auto_lay_off_column(browser, xzh_qat):
 
     步驟：
     1. 使用指定的一至九級代理帳號逐一登入後台；若登入失敗，記錄錯誤訊息並附上畫面截圖。
-    2. 登入成功後進入「飛單選項明細設置」，依序切換三個彩種與15個標準型玩法。
+    2. 登入成功後進入「飛單選項設置」，依序切換三個彩種與15個標準型玩法。
     3. 查看每個玩法的表頭，確認是否顯示「自动飞单」欄，並記錄缺少欄位的層級、彩種與玩法。
     4. 完成每個代理層級後登出並關閉該頁面，避免不同帳號互相影響。
 
@@ -3807,7 +3986,7 @@ def test_lay_off_detail_agent_levels_show_auto_lay_off_column(browser, xzh_qat):
 
 
 @allure.title("[畫面驗證] B93：組合型設定欄位：切換子項後欄位是否完整顯示")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.smoke
 def test_lay_off_detail_level2_agent_all_combo_targets_screen_elements(browser, xzh_qat):
     """平台案例：[畫面驗證] B93：組合型設定欄位：切換子項後欄位是否完整顯示
@@ -3822,12 +4001,12 @@ def test_lay_off_detail_level2_agent_all_combo_targets_screen_elements(browser, 
     - 子項：各組合型玩法展開共 55 個設定畫面
 
     步驟：
-    1. 以二級代理登入後台，進入「飛單選項明細設置」。
-    2. 依序切換各彩種與組合型子項，檢查保存、立即觸發、关连、共用自留上限及組合勾選。
+    1. 以二級代理登入後台，進入「飛單選項設置」。
+    2. 依序切換各彩種與組合型子項，檢查保存、关连、共用自留上限及組合勾選。
     3. 彙整缺少的欄位與所在彩種、玩法、子項。
 
     預期結果：
-    - 每個設定畫面都應有保存、立即觸發、关连、共用自留上限及可勾選組合；缺少任何一項均列為失敗。
+    - 每個設定畫面都應有保存、关连、共用自留上限及可勾選組合；缺少任何一項均列為失敗。
 
     已知問題：
 
@@ -3835,9 +4014,9 @@ def test_lay_off_detail_level2_agent_all_combo_targets_screen_elements(browser, 
     實作備註：
     二級代理 aaa222：三彩種各 55 個組合型子項的唯讀畫面驗證。
 
-    公司層不顯示「保存后立即触发本次选项自动飞单」；這是二級代理實際設定飛單
-    時才具備的操作欄位。因此本案例以 aaa222 驗證每個組合型子項都有保存、立即
-    觸發、關聯、共用自留上限與至少一個組合列，全程不保存或修改任何設定。
+    2026-10-02 起「保存后立即触发本次选项自动飞单」勾選框已移除（Aaron 14:28 確認），
+    不再列入必要欄位；本案例以 aaa222 驗證每個組合型子項都有保存、關聯、共用自留上限
+    與至少一個組合列，全程不保存或修改任何設定。
     """
     page = browser.new_page()
     games = (("英国天天彩", "ukLucky7"), ("香港六合彩", "markSix"), ("宾果六合彩", "bingo6"))
@@ -3855,14 +4034,13 @@ def test_lay_off_detail_level2_agent_all_combo_targets_screen_elements(browser, 
 
         sp = LayOffDetailSettingPage(page)
         sp.goto()
-        with allure.step("二級代理逐一切換三彩種的55個組合型子項，唯讀確認保存、立即觸發、关连、共用自留上限與組合列"):
+        with allure.step("二級代理逐一切換三彩種的55個組合型子項，唯讀確認保存、关连、共用自留上限與組合列"):
             for game, _game_id in games:
                 sp.switch_game(game)
                 for label, category, sub_item, _play_type_id, expected_blocks in targets:
                     _goto_combo_target(sp, category, sub_item)
                     record = {
                         "save": page.get_by_role("button", name="保存", exact=True).is_visible(),
-                        "trigger": sp.trigger_now_visible(),
                         "relation_blocks": sp.relation_radio_block_count(),
                         "cap_blocks": sp.shared_cap_field_count(),
                         "combo_items": sp.combo_item_count(),
@@ -3870,8 +4048,6 @@ def test_lay_off_detail_level2_agent_all_combo_targets_screen_elements(browser, 
                     report_lines.append(f"{game}／{label}：{record}")
                     if not record["save"]:
                         violations.append(f"{game}／{label}：保存按鈕未找到")
-                    if not record["trigger"]:
-                        violations.append(f"{game}／{label}：保存後立即觸發勾選框未找到")
                     if record["relation_blocks"] != expected_blocks:
                         violations.append(
                             f"{game}／{label}：关连區塊預期{expected_blocks}，實際{record['relation_blocks']}"
@@ -3902,21 +4078,21 @@ def test_lay_off_detail_level2_agent_all_combo_targets_screen_elements(browser, 
 
 
 @allure.title("[功能驗證] B69：快速设置條件：在「快速设置」選擇波色、大小或單雙條件後，選中的號碼是否符合條件")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_quick_set_property_matches_rules(company_page):
     """平台案例：[功能驗證] B69：快速设置條件：在「快速设置」選擇波色、大小或單雙條件後，選中的號碼是否符合條件
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；玩法：特码、正码、正特码（只有這3個玩法顯示「快速设置」）
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
+    1. 進入「系統設置」→「飛單選項設置」
     2. 清除原有選取後，分別勾選红波／蓝波／绿波、大／小、单／双、合单／合双、尾大／尾小；每次逐一記錄1～49號的選取結果，再清除選取進行下一條件
 
     預期結果：
@@ -3926,14 +4102,14 @@ def test_lay_off_detail_quick_set_property_matches_rules(company_page):
 
 
     實作備註：
-    [功能驗證] B69：飛單選項明細設置：快速設置依波色/大小/單雙等屬性勾選後，選中的號碼是否正確
+    [功能驗證] B69：飛單選項設置：快速設置依波色/大小/單雙等屬性勾選後，選中的號碼是否正確
 
     測試範圍:
     彩種：英國天天彩、香港六合彩、賓果六合彩
     玩法：特码、正码、正特码（快速設置面板僅此3個標準型玩法存在，其餘22個玩法無此面板、不適用本案例）
 
     步驟：
-    1. 使用公司帳號進入「飛單選項明細設置」，選擇有「快速设置」的特码、正码或正特码。
+    1. 使用公司帳號進入「飛單選項設置」，選擇有「快速设置」的特码、正码或正特码。
     2. 在快速設置中逐一選擇波色、大小、單雙、合單／合雙及尾大／尾小條件。
     3. 查看畫面自動勾選的號碼，記錄每個條件下的選取結果。
     4. 將選取結果與號碼顏色及頁面規則比對，確認每個條件都只選出符合條件的號碼。
@@ -3963,7 +4139,7 @@ def test_lay_off_detail_quick_set_property_matches_rules(company_page):
     tail_big = {n for n in range(1, 50) if n % 10 >= 5}
     tail_small = {n for n in range(1, 50) if n % 10 < 5}
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
 
     report_lines: list[str] = []
@@ -4009,21 +4185,21 @@ def test_lay_off_detail_quick_set_property_matches_rules(company_page):
 
 
 @allure.title("[邏輯驗證] B70：快速设置多條件：在「快速设置」同時選波色與「大」後，是否選中符合任一條件的號碼")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_quick_set_multiple_properties_are_union(company_page):
     """平台案例：[邏輯驗證] B70：快速设置多條件：在「快速设置」同時選波色與「大」後，是否選中符合任一條件的號碼
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；玩法：特码、正码、正特码（只有這3個玩法顯示「快速设置」）；波色組合：红波＋大、蓝波＋大、绿波＋大
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
+    1. 進入「系統設置」→「飛單選項設置」
     2. 清除原有選取；依序驗證红波＋大、蓝波＋大、绿波＋大三組聯集結果，完成後清空選取
 
     預期結果：
@@ -4033,7 +4209,7 @@ def test_lay_off_detail_quick_set_multiple_properties_are_union(company_page):
 
 
     實作備註：
-    [邏輯驗證] B70：飛單選項明細設置：快速設置同時勾選多個屬性時，選中號碼是交集還是聯集
+    [邏輯驗證] B70：飛單選項設置：快速設置同時勾選多個屬性時，選中號碼是交集還是聯集
 
     測試範圍:
     彩種：英國天天彩、香港六合彩、賓果六合彩
@@ -4041,7 +4217,7 @@ def test_lay_off_detail_quick_set_multiple_properties_are_union(company_page):
     波色組合：红波＋大、蓝波＋大、绿波＋大（2026-09-04 由「红波＋大」單組擴充為三波色各一組）
 
     步驟：
-    1. 使用公司帳號進入「飛單選項明細設置」，選擇特码、正码或正特码。
+    1. 使用公司帳號進入「飛單選項設置」，選擇特码、正码或正特码。
     2. 讀取畫面上每個號碼球的顏色分類，計算红波／蓝波／绿波與「大」的聯集。
     3. 依序只選「红波」與「大」、只選「蓝波」與「大」、只選「绿波」與「大」，各自記錄畫面選中的號碼。
     4. 將三組結果分別與對應的聯集比較，確認同時選取時的結果符合規則。
@@ -4062,7 +4238,7 @@ def test_lay_off_detail_quick_set_multiple_properties_are_union(company_page):
         attachment_type=allure.attachment_type.TEXT,
     )
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
 
     report_lines: list[str] = []
@@ -4108,21 +4284,21 @@ def test_lay_off_detail_quick_set_multiple_properties_are_union(company_page):
 
 
 @allure.title("[功能驗證] B71：快速设置選取：在「快速设置」按「重置」與「反選」後，選取狀態是否正確清空與反轉")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_quick_set_reset_and_invert(company_page):
     """平台案例：[功能驗證] B71：快速设置選取：在「快速设置」按「重置」與「反選」後，選取狀態是否正確清空與反轉
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；玩法：特码、正码、正特码（只有這3個玩法顯示「快速设置」）
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
+    1. 進入「系統設置」→「飛單選項設置」
     2. 先勾選號碼1、2、3後按「重置」，逐一確認1～49號皆未選取；再勾選1、2、3後按「反選」，確認1、2、3取消且4～49全部選中
 
     預期結果：
@@ -4139,7 +4315,7 @@ def test_lay_off_detail_quick_set_reset_and_invert(company_page):
     玩法：特码、正码、正特码
 
     步驟：
-    1. 使用公司帳號進入「飛單選項明細設置」，選擇有「快速设置」的標準型玩法。
+    1. 使用公司帳號進入「飛單選項設置」，選擇有「快速设置」的標準型玩法。
     2. 勾選號碼1、2、3後按「重置」，確認所有號碼都變成未選取。
     3. 再勾選號碼1、2、3後按「反選」，確認1、2、3取消選取，其餘號碼全部被選取。
     4. 再按「重置」清除選取，確認畫面恢復乾淨狀態。
@@ -4157,7 +4333,7 @@ def test_lay_off_detail_quick_set_reset_and_invert(company_page):
         attachment_type=allure.attachment_type.TEXT,
     )
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
 
     report_lines: list[str] = []
@@ -4199,21 +4375,21 @@ def test_lay_off_detail_quick_set_reset_and_invert(company_page):
 
 
 @allure.title("[功能驗證] B72：快速设置套用條件：快速設置缺少條件時不能套用，完整輸入後只修改選中號碼")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_quick_set_apply_conditions_and_scope(company_page):
     """平台案例：[功能驗證] B72：快速设置套用條件：快速設置缺少條件時不能套用，完整輸入後只修改選中號碼
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；玩法：特码、正码、正特码；操作選項：號碼1；未選取控制組：號碼2、3；條件輸入值：123；套用值：777（只有這3個玩法顯示「快速设置」）
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」。
+    1. 進入「系統設置」→「飛單選項設置」。
     2. 記錄號碼 1、2、3 原值；只輸入 123 或只勾選號碼 1，分別確認「套用」不可點擊。
     3. 只勾選號碼 1 並輸入 777，按「套用」後核對號碼 1、2、3。
     4. 還原每選項自留上限與總開關、清除快速设置選取，保存並重新整理確認。
@@ -4252,7 +4428,7 @@ def test_lay_off_detail_quick_set_apply_conditions_and_scope(company_page):
         attachment_type=allure.attachment_type.TEXT,
     )
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
 
     report_lines: list[str] = []
@@ -4331,21 +4507,21 @@ def test_lay_off_detail_quick_set_apply_conditions_and_scope(company_page):
 
 
 @allure.title("[功能驗證] B73：全部设置：在「全部设置」輸入321並套用後，1～49號是否全部顯示321")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_set_all_options_applies_to_all_49(company_page):
     """平台案例：[功能驗證] B73：全部设置：在「全部设置」輸入321並套用後，1～49號是否全部顯示321
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；玩法：特码、正码、正特码（只有這3個玩法顯示「快速设置」）
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
+    1. 進入「系統設置」→「飛單選項設置」
     2. 記錄號碼1～49的「每選項自留上限」；在「全部设置」輸入321並套用，逐一確認49個號碼皆為321，最後依測試前快照還原全部數值與總開關
 
     預期結果：
@@ -4355,14 +4531,14 @@ def test_lay_off_detail_set_all_options_applies_to_all_49(company_page):
 
 
     實作備註：
-    [功能驗證] B73：飛單選項明細設置：「全部設置」輸入數值後是否套用到全部49個選項
+    [功能驗證] B73：飛單選項設置：「全部設置」輸入數值後是否套用到全部49個選項
 
     測試範圍:
     彩種：英國天天彩、香港六合彩、賓果六合彩
     玩法：特码、正码、正特码
 
     步驟：
-    1. 使用公司帳號進入「飛單選項明細設置」，選擇特码、正码或正特码。
+    1. 使用公司帳號進入「飛單選項設置」，選擇特码、正码或正特码。
     2. 在「全部设置」輸入321並按「套用」，確認畫面開始更新全部選項。
     3. 逐一查看1～49號，確認每個「每選項自留上限」都變為321。
     4. 使用「全部设置」還原原始值，逐一修正與批次值不同的列，最後確認總開關恢復原值。
@@ -4380,7 +4556,7 @@ def test_lay_off_detail_set_all_options_applies_to_all_49(company_page):
         attachment_type=allure.attachment_type.TEXT,
     )
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
 
     report_lines: list[str] = []
@@ -4421,21 +4597,21 @@ def test_lay_off_detail_set_all_options_applies_to_all_49(company_page):
 
 
 @allure.title("[邏輯驗證] B74：快速设置覆蓋數值：先在「全部设置」輸入500再套用「快速设置」800後，已選號碼是否顯示800")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_quick_set_overrides_set_all_options(company_page):
     """平台案例：[邏輯驗證] B74：快速设置覆蓋數值：先在「全部设置」輸入500再套用「快速设置」800後，已選號碼是否顯示800
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；玩法：特码、正码、正特码；操作選項：號碼1～49；全部設置值：500；快速設置條件：红波；快速設置值：800（只有這3個玩法顯示「快速设置」）
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」。
+    1. 進入「系統設置」→「飛單選項設置」。
     2. 記錄號碼 1～49 原值；在「全部设置」輸入 500 並套用。
     3. 在「快速设置」勾選「红波」、輸入 800 並套用；核對红波與非红波號碼。
     4. 清除快速设置選取，還原號碼 1～49 的值與總開關。
@@ -4474,7 +4650,7 @@ def test_lay_off_detail_quick_set_overrides_set_all_options(company_page):
         attachment_type=allure.attachment_type.TEXT,
     )
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
 
     report_lines: list[str] = []
@@ -4529,21 +4705,21 @@ def test_lay_off_detail_quick_set_overrides_set_all_options(company_page):
 
 
 @allure.title("[畫面驗證] B76：快速设置切換玩法：切換到其他玩法再切回後，快速設置的號碼與條件是否已清空")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_quick_set_state_not_kept_across_category_switch(company_page):
     """平台案例：[畫面驗證] B76：快速设置切換玩法：切換到其他玩法再切回後，快速設置的號碼與條件是否已清空
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；玩法：特码、正码、正特码（只有這3個玩法顯示「快速设置」）
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
+    1. 進入「系統設置」→「飛單選項設置」
     2. 清除原有選取，勾選號碼1與「红波」但不按「套用」；切到另一玩法再返回，逐一確認號碼與快速設置條件皆已取消，且自留上限未改變
 
     預期結果：
@@ -4553,7 +4729,7 @@ def test_lay_off_detail_quick_set_state_not_kept_across_category_switch(company_
 
 
     實作備註：
-    [畫面驗證] B76：飛單選項明細設置：切換分類後再切回時，快速設置的已選狀態是否保留
+    [畫面驗證] B76：飛單選項設置：切換分類後再切回時，快速設置的已選狀態是否保留
 
     測試範圍:
     彩種：英國天天彩、香港六合彩、賓果六合彩
@@ -4577,7 +4753,7 @@ def test_lay_off_detail_quick_set_state_not_kept_across_category_switch(company_
         attachment_type=allure.attachment_type.TEXT,
     )
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
 
     report_lines: list[str] = []
@@ -4613,21 +4789,21 @@ def test_lay_off_detail_quick_set_state_not_kept_across_category_switch(company_
 
 
 @allure.title("[功能驗證] B77：快速设置保存：在「快速设置」將號碼1設為456並保存後，重新整理是否保留且號碼2不變")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_quick_set_apply_persists_after_save(company_page):
     """平台案例：[功能驗證] B77：快速设置保存：在「快速设置」將號碼1設為456並保存後，重新整理是否保留且號碼2不變
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；玩法：特码、正码、正特码（只有這3個玩法顯示「快速设置」）
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
+    1. 進入「系統設置」→「飛單選項設置」
     2. 記錄號碼1、2的原值；只勾選號碼1，透過「快速设置」套用456後按「保存」，重新整理並確認號碼1為456、未勾選的號碼2維持原值，最後還原
 
     預期結果：
@@ -4637,7 +4813,7 @@ def test_lay_off_detail_quick_set_apply_persists_after_save(company_page):
 
 
     實作備註：
-    [功能驗證] B77：飛單選項明細設置：透過快速設置套用設定值後保存，重新整理頁面資料是否保留
+    [功能驗證] B77：飛單選項設置：透過快速設置套用設定值後保存，重新整理頁面資料是否保留
 
     測試範圍:
     彩種：英國天天彩、香港六合彩、賓果六合彩
@@ -4662,7 +4838,7 @@ def test_lay_off_detail_quick_set_apply_persists_after_save(company_page):
         attachment_type=allure.attachment_type.TEXT,
     )
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
 
     report_lines: list[str] = []
@@ -4727,28 +4903,29 @@ def test_lay_off_detail_quick_set_apply_persists_after_save(company_page):
 
 
 @allure.title("[功能驗證] B78：立即觸發：勾選「立即觸發」並修改單一選項後，是否正常保存且不影響其他選項")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
+@pytest.mark.skip(reason="功能已移除，Aaron 2026-10-02 確認")
 def test_lay_off_detail_trigger_now_checkbox_scopes_to_changed_options(level1_agent_page):
     """平台案例：[功能驗證] B78：立即觸發：勾選「立即觸發」並修改單一選項後，是否正常保存且不影響其他選項
 
     前置條件：
     - 帳號：一級代理
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；玩法：特码；修改選項：1；未修改選項：2
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
+    1. 進入「系統設置」→「飛單選項設置」
     2. 逐一切換三個彩種，記錄號碼1、2與總開關原值；勾選「保存后立即触发本次选项自动飞单」，將號碼1設為111並保存，重新整理確認號碼1為111且號碼2不變，最後取消立即觸發並還原
 
     預期結果：
     - 保存時不得出現錯誤；選項1應變為111，未修改的選項2應維持原值；測試後應恢復兩個選項與勾選框的原始狀態
 
     已知問題：
-
+    - 功能已移除：「保存后立即触发本次选项自动飞单」勾選框已不在頁面上（Aaron 2026-10-02 14:28 確認），案例停用（skip），編號不回收，函式保留待 Aaron 決定是否刪除。
 
     實作備註：
     [功能驗證] B78：勾選「保存後立即觸發」時，修改單一選項能否正常保存且不影響其他選項
@@ -4778,7 +4955,7 @@ def test_lay_off_detail_trigger_now_checkbox_scopes_to_changed_options(level1_ag
         attachment_type=allure.attachment_type.TEXT,
     )
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
 
     report_lines: list[str] = []
@@ -4850,21 +5027,21 @@ def test_lay_off_detail_trigger_now_checkbox_scopes_to_changed_options(level1_ag
 
 
 @allure.title("[邏輯驗證] B79：每選項自留上限輸入：在標準型玩法輸入負數、超大值、非數字、小數或空值後，欄位值是否依規則處理")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_standard_type_cap_negative_and_oversized_all_categories(company_page):
     """平台案例：[邏輯驗證] B79：每選項自留上限輸入：在標準型玩法輸入負數、超大值、非數字、小數或空值後，欄位值是否依規則處理
 
     前置條件：
     - 帳號：公司帳號
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 彩種：英國天天彩、香港六合彩、賓果六合彩；標準型玩法：特码、正码、正特码、两面、生肖中、生肖不中、半波、特肖、尾数中、尾数不中、色波、七码、五行、一肖量、尾数量；負數與超大值每玩法驗首列、中間列、末列
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
+    1. 進入「系統設置」→「飛單選項設置」
     2. 記錄每個標準型玩法首列、中間列、末列的原值；三個位置輸入-20並保存、重新整理後，再輸入888888並保存、重新整理
     3. 在特码、正特码、生肖中的第一列依序輸入abc、12.5、空值及貼入文字abc，確認保存後未覆蓋原本整數，最後還原原始數值
 
@@ -4875,7 +5052,7 @@ def test_lay_off_detail_standard_type_cap_negative_and_oversized_all_categories(
     - 覆蓋缺口：本案例沿用首列、中間列、末列檢查，尚未涵蓋全部選項；本次只統一文字，不擴增執行範圍。
 
     實作備註：
-    [邏輯驗證] B79：飛單選項明細設置：每選項自留上限輸入負數與超大值後的處理
+    [邏輯驗證] B79：飛單選項設置：每選項自留上限輸入負數與超大值後的處理
 
     測試範圍:
     彩種：英國天天彩、香港六合彩、賓果六合彩
@@ -4910,7 +5087,7 @@ def test_lay_off_detail_standard_type_cap_negative_and_oversized_all_categories(
         attachment_type=allure.attachment_type.TEXT,
     )
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
 
     report_lines: list[str] = []
@@ -5078,21 +5255,21 @@ def test_lay_off_detail_standard_type_cap_negative_and_oversized_all_categories(
 
 
 @allure.title("[邏輯驗證] B80：批次設定覆蓋手動值：手動關閉首列、中間列、末列後按「一键自动」，是否全部重新開啟")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_lay_off_detail_batch_tools_override_manual_toggle(level1_agent_page):
     """平台案例：[邏輯驗證] B80：批次設定覆蓋手動值：手動關閉首列、中間列、末列後按「一键自动」，是否全部重新開啟
 
     前置條件：
     - 帳號：一級代理
-    - 頁面：系統設置 → 飛單選項明細設置
+    - 頁面：系統設置 → 飛單選項設置
     - 原值：需要修改設定時，先記錄被測欄位原值，結束後還原並重新讀取確認
 
     測試範圍：
     - 帳號：一級代理；彩種：英國天天彩、香港六合彩、賓果六合彩；標準型玩法：特码、正码、正特码、两面、生肖中、生肖不中、半波、特肖、尾数中、尾数不中、色波、七码、五行、一肖量、尾数量；每玩法驗首列、中間列、末列
 
     步驟：
-    1. 進入「系統設置」→「飛單選項明細設置」
+    1. 進入「系統設置」→「飛單選項設置」
     2. 記錄首列、中間列、末列的「自动飞单」原值；手動關閉三個位置後按「一键自动」，逐一確認全部重新開啟，最後依測試前狀態還原
 
     預期結果：
@@ -5102,7 +5279,7 @@ def test_lay_off_detail_batch_tools_override_manual_toggle(level1_agent_page):
     - 覆蓋缺口：本案例沿用首列、中間列、末列檢查，尚未涵蓋全部選項；本次只統一文字，不擴增執行範圍。
 
     實作備註：
-    [邏輯驗證] B80：飛單選項明細設置：手動關閉首列、中間列、末列後，按「一鍵自動」是否重新開啟
+    [邏輯驗證] B80：飛單選項設置：手動關閉首列、中間列、末列後，按「一鍵自動」是否重新開啟
 
     測試範圍:
     彩種：英國天天彩、香港六合彩、賓果六合彩
@@ -5110,7 +5287,7 @@ def test_lay_off_detail_batch_tools_override_manual_toggle(level1_agent_page):
     七码、五行、一肖量、尾数量
 
     步驟：
-    1. 使用一級代理帳號進入「飛單選項明細設置」，確認標準型玩法顯示「自动飞单」欄。
+    1. 使用一級代理帳號進入「飛單選項設置」，確認標準型玩法顯示「自动飞单」欄。
     2. 依序選擇三個彩種與15個標準型玩法，記錄首列、中間列、末列的原始開關狀態。
     3. 手動關閉這三個位置，再按「一键自动」，確認三個位置全部重新開啟。
     4. 將三個位置及玩法開關恢復為測試前狀態。
@@ -5128,7 +5305,7 @@ def test_lay_off_detail_batch_tools_override_manual_toggle(level1_agent_page):
         attachment_type=allure.attachment_type.TEXT,
     )
 
-    with allure.step("導覽到「飛單選項明細設置」頁"):
+    with allure.step("導覽到「飛單選項設置」頁"):
         sp.goto()
 
     report_lines: list[str] = []
@@ -5176,7 +5353,7 @@ def test_lay_off_detail_batch_tools_override_manual_toggle(level1_agent_page):
 
 
 @allure.title("[功能驗證] B85：二全中关连飛單：二全中三個下注項超額投注後，組合占成金額是否依三組組合正確飛單")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_pick_two_three_numbers_auto_lay_off_calculation(page, xzh_qat):
     """平台案例：[功能驗證] B85：二全中关连飛單：二全中三個下注項超額投注後，組合占成金額是否依三組組合正確飛單
@@ -5194,17 +5371,19 @@ def test_pick_two_three_numbers_auto_lay_off_calculation(page, xzh_qat):
     步驟：
     1. 會員前台進入賓果六合彩→连码→二全中，確認開盤期別。
     2. 選擇 1、2、3，每注輸入 5000，確認三組組合後送出。
-    3. 二級代理進入同彩種玩法，設「关连」、共用自留上限 100、自動飛單與立即觸發，勾選投注對應組合後保存。
+    3. 二級代理進入同彩種玩法，設「关连」、共用自留上限 100、自動飛單，勾選投注對應組合後保存（保存即觸發自動飛單）。
     4. 重新整理並讀取 1、2、3 的組合占成金額，完成後還原原始設定。
 
     預期結果：
     - 三個下注項各涵蓋兩組組合，自留上限每組 100，組合占成金額應各為 200。
+    - 點開占成明细視窗（欄位為「序号／投注选项／占成金额／可飞额」），每個下注項各 2 列，投注選項與占成金額各為 100，序号從 1 起連續；「可飞额」只記錄、不判定。
 
     已知問題：
     - 覆蓋限制：目前實作僅測範圍列出的彩種與玩法，未完成三彩種全玩法。
 
     實作備註：
     B85：二全中選1/2/3形成三組組合，每個下注項占成應為100+100=200。
+    占成明细視窗欄位 2026-10-02 起由「投注选项／占成金额／补货」改為「序号／投注选项／占成金额／可飞额」（Aaron 當日 17:25 確認是 RD 刻意改動，交接檔 T94）；「可飞额」計算規則沒有規格，不斷言。
     """
     player_username, player_password = player_credentials()
     player_page = page.context.new_page()
@@ -5214,13 +5393,13 @@ def test_pick_two_three_numbers_auto_lay_off_calculation(page, xzh_qat):
     original_items = None
     k4_original = None
     master_original = None
-    trigger_original = None
     try:
         with allure.step("登入會員前台，選擇賓果六合彩→連碼→二全中，確認目前有開盤中期別"):
             player.login(xzh_qat["frontend_url"], player_username, player_password)
             player.select_bingo6_pick_two_all_hit()
             if not player.is_open():
                 pytest.skip("B85 BLOCKED：賓果六合彩目前尚未開盤，未修改後台設定、未送出注單")
+            _wait_bingo_window(player_page)
             issue = player.current_issue()
 
             with allure.step("會員前台先選1/2/3、每注輸入5000，確認三組組合後送出投注"):
@@ -5235,12 +5414,12 @@ def test_pick_two_three_numbers_auto_lay_off_calculation(page, xzh_qat):
                 k4.goto("飞单设置")
                 k4.switch_game("宾果六合彩")
                 k4_original = k4.is_lay_off_detail_mode_enabled("二全中")
-                k4.set_lay_off_detail_mode("二全中", True)
+                k4.set_lay_off_detail_mode("二全中", True, confirm=False)
                 if not k4_original:
-                    backend.get_by_role("dialog", name="启用飞单选项明细").get_by_role("button", name="确定").click()
+                    backend.get_by_role("dialog", name="开启选项设置").get_by_role("button", name="确定").click()
                 k4.save()
 
-        with allure.step("設定關聯、共用自留上限100、自動飛單、選擇1/2/3與保存後立即觸發，再由UI保存"):
+        with allure.step("設定關聯、共用自留上限100、自動飛單與選擇1/2/3，再由UI保存（保存即觸發自動飛單）並反覆讀取占成"):
             detail = LayOffDetailSettingPage(backend)
             detail.goto()
             detail.switch_game("宾果六合彩")
@@ -5249,13 +5428,16 @@ def test_pick_two_three_numbers_auto_lay_off_calculation(page, xzh_qat):
             master_original = detail.is_master_switch_enabled()
             detail.set_master_switch(True)
             original_items = _get_lay_off_setting_detail(backend, "bingo6", "pickTwoAllHit")
-            trigger_original = detail.trigger_now_enabled()
             detail.set_relation_linked(True)
             detail.set_shared_cap("100")
             detail.set_combo_auto_lay_off(True)
             detail.set_combo_marked_indices([0, 1, 2])
-            detail.set_trigger_now(True)
-            detail.save()
+            save_notice = detail.save_and_read_notice()
+            _, poll_timeline = _poll_lay_off_detail(
+                backend, "bingo6", "pickTwoAllHit",
+                done=lambda items: [int(i["actualShareAmount"] or 0) for i in items[:3]] == [200, 200, 200],
+                describe=lambda items: "下注項1/2/3 占成=%s" % [i["actualShareAmount"] for i in items[:3]],
+            )
 
         with allure.step("後台重新載入二全中，讀取下注項1/2/3的組合占成金額"):
             backend.reload()
@@ -5264,38 +5446,55 @@ def test_pick_two_three_numbers_auto_lay_off_calculation(page, xzh_qat):
             detail.select_category("连码")
             detail.select_sub_item("二全中")
             amounts = [detail.combo_share_amount(index) for index in (0, 1, 2)]
+            # 占成明细視窗現行欄位為「序号／投注选项／占成金额／可飞额」（2026-10-02 起；舊為「投注选项／占成金额／补货」，
+            # Aaron 當日 17:25 確認是 RD 刻意改動，交接檔 T94，見 `combo_share_detail`）。
+            # 明細照原判準比對（投注選項，占成金額）；「序号」檢查為從 1 起的連續序號；
+            # 「可飞额」沒有規格，只記錄、不斷言。
             expected_details = {
-                0: {("01,02", 100, 0), ("01,03", 100, 0)},
-                1: {("01,02", 100, 0), ("02,03", 100, 0)},
-                2: {("01,03", 100, 0), ("02,03", 100, 0)},
+                0: {("01,02", 100), ("01,03", 100)},
+                1: {("01,02", 100), ("02,03", 100)},
+                2: {("01,03", 100), ("02,03", 100)},
             }
             actual_details = {}
+            layoffable_text = []
+            seq_by_index = {}
+            window_meta = {}
             for index in (0, 1, 2):
                 rows = detail.combo_share_detail(index)
+                window_meta[index] = dict(detail.last_share_detail_meta)
                 actual_details[index] = {
-                    (row["bet_option"], row["share_amount"], row["replenishment"])
+                    (row["bet_option"], row["share_amount"])
                     for row in rows
                 }
+                seq_by_index[index] = [row["seq"] for row in rows]
+                layoffable_text.append(f"下注項{index + 1}：" + "、".join(
+                    f"序号{row['seq']} {row['bet_option']} 可飞额={row['layoffable']}" for row in rows))
+            issue_at_check = player.current_issue()
 
         allure.attach(
-            "期號：%s\n下注：二全中 1/2/3，每組5000\n組合：[1,2]、[1,3]、[2,3]\n"
+            "期號：%s（讀回時 %s）\n下注：二全中 1/2/3，每組5000\n組合：[1,2]、[1,3]、[2,3]\n"
             "下注項1：100([1,2]) + 100([1,3]) = 200，實際=%s\n"
             "下注項2：100([1,2]) + 100([2,3]) = 200，實際=%s\n"
-            "下注項3：100([1,3]) + 100([2,3]) = 200，實際=%s\n成功訊息：%s"
-            % (issue, amounts[0], amounts[1], amounts[2], success_message),
+            "下注項3：100([1,3]) + 100([2,3]) = 200，實際=%s\n成功訊息：%s\n"
+            "保存後畫面提示：%r\n占成反覆讀取記錄：%s\n"
+            "占成明细視窗表頭與分頁文字：%s\n占成明细視窗「序号」（期望從 1 起連續）：%s\n"
+            "占成明细視窗「序号／可飞额」逐筆（可飞额只記錄、不斷言）：%s"
+            % (issue, issue_at_check, amounts[0], amounts[1], amounts[2], success_message,
+               save_notice, "；".join(poll_timeline), window_meta, seq_by_index, "；".join(layoffable_text)),
             name="B85 組合展開與飛單算式（實際值 vs 期望值）",
             attachment_type=allure.attachment_type.TEXT,
         )
+        assert issue_at_check == issue, f"讀回時已跨期（{issue}→{issue_at_check}），不可用新一期的值下結論"
         assert amounts == [200, 200, 200]
         assert actual_details == expected_details, (
             f"三個下注項的占成明細不符：預期={expected_details}，實際={actual_details}"
         )
+        assert all(seqs == list(range(1, len(seqs) + 1)) for seqs in seq_by_index.values()), (
+            f"占成明细「序号」應從 1 起連續：{seq_by_index}"
+        )
     finally:
         if original_items is not None and "/auth/sign-in" not in backend.url:
-            _put_lay_off_setting_detail(
-                backend, "bingo6", "pickTwoAllHit", original_items,
-                triggerImmediateAutoLayOff=bool(trigger_original),
-            )
+            _put_lay_off_setting_detail(backend, "bingo6", "pickTwoAllHit", original_items)
         if master_original is not None and "/auth/sign-in" not in backend.url:
             cleanup_detail = LayOffDetailSettingPage(backend)
             cleanup_detail.goto()
@@ -5308,7 +5507,7 @@ def test_pick_two_three_numbers_auto_lay_off_calculation(page, xzh_qat):
             k4 = SystemSettingPage(backend)
             k4.switch_game("宾果六合彩")
             k4.set_lay_off_detail_mode("二全中", k4_original)
-            dialog = backend.get_by_role("dialog", name="启用飞单选项明细")
+            dialog = backend.get_by_role("dialog", name="开启选项设置")
             if dialog.count() and dialog.is_visible():
                 dialog.get_by_role("button", name="确定").click()
             k4.save()
@@ -5316,7 +5515,7 @@ def test_pick_two_three_numbers_auto_lay_off_calculation(page, xzh_qat):
 
 
 @allure.title("[功能驗證] B86：標準型自動飛單：標準型玩法超額投注後，實際占成金額是否等於每選項自留上限")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_standard_option_auto_lay_off_actual_share(page, xzh_qat):
     """平台案例：[功能驗證] B86：標準型自動飛單：標準型玩法超額投注後，實際占成金額是否等於每選項自留上限
@@ -5334,8 +5533,8 @@ def test_standard_option_auto_lay_off_actual_share(page, xzh_qat):
     步驟：
     1. 會員前台進入賓果六合彩→特码，對號碼 1 下注 5000。
     2. 二級代理進入同彩種玩法，開啟明細設定，將號碼 1 的每選項自留上限設為 100。
-    3. 開啟自動飛單、勾選立即觸發並保存；重新整理後讀取號碼 1 占成金額。
-    4. 還原每選項自留上限、明細模式、總開關與立即觸發原值。
+    3. 開啟自動飛單並保存（保存即觸發自動飛單）；反覆讀取占成，再重新整理後讀取號碼 1 占成金額。
+    4. 還原每選項自留上限、明細模式與總開關原值。
 
     預期結果：
     - 保存觸發後號碼 1 的實際占成金額應為 100。
@@ -5350,12 +5549,13 @@ def test_standard_option_auto_lay_off_actual_share(page, xzh_qat):
     player_page = page.context.new_page()
     player = PlayerBetPage(player_page)
     backend = page
-    original_items = k4_original = master_original = trigger_original = None
+    original_items = k4_original = master_original = None
     try:
         player.login(xzh_qat["frontend_url"], username, password)
         player.select_bingo6_standard_special()
         if not player.is_open():
             pytest.skip("B86 BLOCKED：賓果六合彩目前尚未開盤，未修改設定、未送出注單")
+        _wait_bingo_window(player_page)
         issue = player.current_issue()
         with allure.step("會員前台先對特码選項1下注5000並確認送出"):
             success = player.place_standard_bet("1", "5000")
@@ -5369,9 +5569,9 @@ def test_standard_option_auto_lay_off_actual_share(page, xzh_qat):
         k4.goto("飞单设置")
         k4.switch_game("宾果六合彩")
         k4_original = k4.is_lay_off_detail_mode_enabled("特码")
-        k4.set_lay_off_detail_mode("特码", True)
+        k4.set_lay_off_detail_mode("特码", True, confirm=False)
         if not k4_original:
-            backend.get_by_role("dialog", name="启用飞单选项明细").get_by_role("button", name="确定").click()
+            backend.get_by_role("dialog", name="开启选项设置").get_by_role("button", name="确定").click()
         k4.save()
 
         detail = LayOffDetailSettingPage(backend)
@@ -5382,27 +5582,33 @@ def test_standard_option_auto_lay_off_actual_share(page, xzh_qat):
         detail.set_master_switch(True)
         detail.wait_until_category_unlocked()
         original_items = _get_lay_off_setting_detail(backend, "bingo6", "bonusNumber")
-        trigger_original = detail.trigger_now_enabled()
+        share_before = _item_share(original_items, "01")
         detail.set_option_cap(1, "100")
         detail.set_option_auto_lay_off(1, True)
-        detail.set_trigger_now(True)
-        detail.save()
+        with allure.step("按「保存」（保存即觸發自動飛單），讀取畫面提示並反覆讀取號碼 1 的占成金額直到等於 100"):
+            save_notice = detail.save_and_read_notice()
+            _, poll_timeline = _poll_lay_off_detail(
+                backend, "bingo6", "bonusNumber",
+                done=lambda items: _item_share(items, "01") == 100,
+                describe=lambda items: "號碼1 占成=%s" % _item_share(items, "01"),
+            )
 
         backend.reload()
         _reload_and_navigate_with_retry(detail, backend, "宾果六合彩", "特码")
         actual = detail.option_share_amount(1)
+        issue_at_check = player.current_issue()
         allure.attach(
-            f"期號：{issue}\n投注：特码選項1，5000\n每選項自留上限：100\n實際占成金額：{actual}\n成功訊息：{success}",
+            f"期號：{issue}（讀回時 {issue_at_check}）\n投注：特码選項1，5000\n每選項自留上限：100\n"
+            f"保存前號碼1占成（API）：{share_before}\n保存後畫面提示：{save_notice!r}\n"
+            f"占成反覆讀取記錄：{'；'.join(poll_timeline)}\n實際占成金額（重新整理後畫面）：{actual}（期望 100）\n成功訊息：{success}",
             name="B86 標準型自動飛單結果",
             attachment_type=allure.attachment_type.TEXT,
         )
+        assert issue_at_check == issue, f"讀回時已跨期（{issue}→{issue_at_check}），不可用新一期的值下結論"
         assert actual == 100
     finally:
         if original_items is not None and "/auth/sign-in" not in backend.url:
-            _put_lay_off_setting_detail(
-                backend, "bingo6", "bonusNumber", original_items,
-                triggerImmediateAutoLayOff=bool(trigger_original),
-            )
+            _put_lay_off_setting_detail(backend, "bingo6", "bonusNumber", original_items)
         if master_original is not None and "/auth/sign-in" not in backend.url:
             cleanup_detail = LayOffDetailSettingPage(backend)
             cleanup_detail.goto()
@@ -5414,7 +5620,7 @@ def test_standard_option_auto_lay_off_actual_share(page, xzh_qat):
             k4 = SystemSettingPage(backend)
             k4.switch_game("宾果六合彩")
             k4.set_lay_off_detail_mode("特码", k4_original)
-            dialog = backend.get_by_role("dialog", name="启用飞单选项明细")
+            dialog = backend.get_by_role("dialog", name="开启选项设置")
             if dialog.count() and dialog.is_visible():
                 dialog.get_by_role("button", name="确定").click()
             k4.save()
@@ -5422,7 +5628,7 @@ def test_standard_option_auto_lay_off_actual_share(page, xzh_qat):
 
 
 @allure.title("[功能驗證] B87：二全中不关连飛單：二全中不關聯模式超額投注後，三個下注項組合占成金額是否全飛為0")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_pick_two_unrelated_auto_lay_off_all_share_zero(page, xzh_qat):
     """平台案例：[功能驗證] B87：二全中不关连飛單：二全中不關聯模式超額投注後，三個下注項組合占成金額是否全飛為0
@@ -5440,8 +5646,8 @@ def test_pick_two_unrelated_auto_lay_off_all_share_zero(page, xzh_qat):
     步驟：
     1. 會員前台進入賓果六合彩→连码→二全中，選擇 1、2、3，每注 5000 並送出。
     2. 二級代理進入同彩種玩法，設「不关连」、共用自留上限 100、自動飛單及投注對應勾選。
-    3. 勾選立即觸發並保存，重新整理後讀取三個下注項組合占成金額。
-    4. 還原原始設定、總開關、明細模式與立即觸發狀態。
+    3. 保存（保存即觸發自動飛單），反覆讀取占成，再重新整理後讀取三個下注項組合占成金額。
+    4. 還原原始設定、總開關與明細模式。
 
     預期結果：
     - 觸發後三個下注項的組合占成金額都應為 0。
@@ -5456,12 +5662,13 @@ def test_pick_two_unrelated_auto_lay_off_all_share_zero(page, xzh_qat):
     player_page = page.context.new_page()
     player = PlayerBetPage(player_page)
     backend = page
-    original_items = k4_original = master_original = trigger_original = None
+    original_items = k4_original = master_original = None
     try:
         player.login(xzh_qat["frontend_url"], username, password)
         player.select_bingo6_pick_two_all_hit()
         if not player.is_open():
             pytest.skip("B87 BLOCKED：賓果六合彩目前尚未開盤，未修改設定、未送出注單")
+        _wait_bingo_window(player_page)
         issue = player.current_issue()
         with allure.step("會員前台先選1/2/3、每注輸入5000，確認三組組合後送出投注"):
             success = player.place_pick_two_bet(("1", "2", "3"), "5000")
@@ -5475,9 +5682,9 @@ def test_pick_two_unrelated_auto_lay_off_all_share_zero(page, xzh_qat):
         k4.goto("飞单设置")
         k4.switch_game("宾果六合彩")
         k4_original = k4.is_lay_off_detail_mode_enabled("二全中")
-        k4.set_lay_off_detail_mode("二全中", True)
+        k4.set_lay_off_detail_mode("二全中", True, confirm=False)
         if not k4_original:
-            backend.get_by_role("dialog", name="启用飞单选项明细").get_by_role("button", name="确定").click()
+            backend.get_by_role("dialog", name="开启选项设置").get_by_role("button", name="确定").click()
         k4.save()
 
         detail = LayOffDetailSettingPage(backend)
@@ -5488,13 +5695,17 @@ def test_pick_two_unrelated_auto_lay_off_all_share_zero(page, xzh_qat):
         master_original = detail.is_master_switch_enabled()
         detail.set_master_switch(True)
         original_items = _get_lay_off_setting_detail(backend, "bingo6", "pickTwoAllHit")
-        trigger_original = detail.trigger_now_enabled()
         detail.set_relation_linked(False)
         detail.set_shared_cap("100")
         detail.set_combo_auto_lay_off(True)
         detail.set_combo_marked_indices([0, 1, 2])
-        detail.set_trigger_now(True)
-        detail.save()
+        with allure.step("按「保存」（保存即觸發自動飛單），讀取畫面提示並反覆讀取三個下注項的占成直到全為 0"):
+            save_notice = detail.save_and_read_notice()
+            _, poll_timeline = _poll_lay_off_detail(
+                backend, "bingo6", "pickTwoAllHit",
+                done=lambda items: [int(i["actualShareAmount"] or 0) for i in items[:3]] == [0, 0, 0],
+                describe=lambda items: "下注項1/2/3 占成=%s" % [i["actualShareAmount"] for i in items[:3]],
+            )
 
         backend.reload()
         detail.goto()
@@ -5502,19 +5713,19 @@ def test_pick_two_unrelated_auto_lay_off_all_share_zero(page, xzh_qat):
         detail.select_category("连码")
         detail.select_sub_item("二全中")
         amounts = [detail.combo_share_amount(index) for index in (0, 1, 2)]
+        issue_at_check = player.current_issue()
         allure.attach(
-            f"期號：{issue}\n下注：[1,2]、[1,3]、[2,3]，每組5000\n模式：不关连\n共用自留上限：100\n"
-            f"下注項1/2/3組合占成：{amounts}\n成功訊息：{success}",
+            f"期號：{issue}（讀回時 {issue_at_check}）\n下注：[1,2]、[1,3]、[2,3]，每組5000\n模式：不关连\n共用自留上限：100\n"
+            f"保存後畫面提示：{save_notice!r}\n占成反覆讀取記錄：{'；'.join(poll_timeline)}\n"
+            f"下注項1/2/3組合占成（重新整理後畫面）：{amounts}（期望 [0, 0, 0]）\n成功訊息：{success}",
             name="B87 不關聯模式全飛結果",
             attachment_type=allure.attachment_type.TEXT,
         )
+        assert issue_at_check == issue, f"讀回時已跨期（{issue}→{issue_at_check}），新一期的 0 不是飛單結果"
         assert amounts == [0, 0, 0]
     finally:
         if original_items is not None and "/auth/sign-in" not in backend.url:
-            _put_lay_off_setting_detail(
-                backend, "bingo6", "pickTwoAllHit", original_items,
-                triggerImmediateAutoLayOff=bool(trigger_original),
-            )
+            _put_lay_off_setting_detail(backend, "bingo6", "pickTwoAllHit", original_items)
         if master_original is not None and "/auth/sign-in" not in backend.url:
             cleanup_detail = LayOffDetailSettingPage(backend)
             cleanup_detail.goto()
@@ -5527,7 +5738,7 @@ def test_pick_two_unrelated_auto_lay_off_all_share_zero(page, xzh_qat):
             k4 = SystemSettingPage(backend)
             k4.switch_game("宾果六合彩")
             k4.set_lay_off_detail_mode("二全中", k4_original)
-            dialog = backend.get_by_role("dialog", name="启用飞单选项明细")
+            dialog = backend.get_by_role("dialog", name="开启选项设置")
             if dialog.count() and dialog.is_visible():
                 dialog.get_by_role("button", name="确定").click()
             k4.save()
@@ -5594,7 +5805,7 @@ def _combo_share_snapshot(detail, page, game_id, play_type_id, indices, stage, n
 
 
 @allure.title("[功能驗證] B97：不关连占成對帳：觸發飛單後組合金額與明細是否一致")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_pick_two_unrelated_aggregate_matches_share_detail(page, xzh_qat):
     """平台案例：[功能驗證] B97：不关连占成對帳：觸發飛單後組合金額與明細是否一致
@@ -5610,9 +5821,9 @@ def test_pick_two_unrelated_aggregate_matches_share_detail(page, xzh_qat):
     - 投注：01、02、03，每注 5000；共用自留上限 100
 
     步驟：
-    1. 二級代理進入「飛單選項明細設置」，記錄並準備總開關與自動飛單，避免新注單先被排程處理。
+    1. 二級代理進入「飛單選項設置」，記錄並準備總開關與自動飛單，避免新注單先被排程處理。
     2. 會員投注 01、02、03，每注 5000；讀取觸發前組合占成金額及占成明細。
-    3. 設定「不关连」、共用自留上限 100、自動飛單與三組勾選，勾立即觸發後保存。
+    3. 設定「不关连」、共用自留上限 100、自動飛單與三組勾選後保存（保存即觸發自動飛單）。
     4. 確認同一期，讀取觸發後組合占成金額及占成明細，完成後還原設定。
 
     預期結果：
@@ -5628,11 +5839,11 @@ def test_pick_two_unrelated_aggregate_matches_share_detail(page, xzh_qat):
     前置條件：後台先登入並把總開關開好、自動飛單先關掉（避免新注單在讀取前被排程飛掉）；
               賓果期距只有 1～2 分鐘，全程必須在同一期完成，跨期即作廢重跑。
     步驟：
-    1. 後台登入 aaa222 並導覽到「系统设置→飞单选项明细设置→宾果六合彩→连码→二全中」。
+    1. 後台登入 aaa222 並導覽到「系统设置→飞单选项设置→宾果六合彩→连码→二全中」。
     2. 前台以 aaa010 選 01／02／03、每注 5,000 送出（三組組合各一注）。
     3. 觸發前讀 01／02／03 的「組合占成金額」與各自的「占成明細」視窗。
     4. 後台設「不关连」、共用自留上限 100、自動飛單、勾選 01／02／03，
-       勾「保存后立即触发」並保存。
+       並保存（2026-10-02 起「保存后立即触发」勾選框已移除，保存即觸發自動飛單）。
     5. 觸發後再讀一次三組的聚合欄位與占成明細，並確認期號未變。
     預期結果：不關聯模式共用自留上限存為 0、全部無條件飛出，
               三組的聚合欄位與明細合計都應為 0 且兩者一致。
@@ -5682,7 +5893,7 @@ def test_pick_two_unrelated_aggregate_matches_share_detail(page, xzh_qat):
                                            indices, "觸發前", notes)
             report["before"] = before
 
-        with allure.step("設不关连、共用自留上限 100、自動飛單、勾選三組，勾立即觸發後保存"):
+        with allure.step("設不关连、共用自留上限 100、自動飛單、勾選三組後保存（保存即觸發自動飛單）並反覆讀取占成"):
             _dismiss_backend_overlay(backend)
             detail.set_master_switch(True)
             detail.wait_until_category_unlocked(timeout_ms=20000)
@@ -5691,10 +5902,14 @@ def test_pick_two_unrelated_aggregate_matches_share_detail(page, xzh_qat):
             if backend.get_by_role("switch", name="自动飞单").count():
                 detail.set_combo_auto_lay_off(True)
             detail.set_combo_marked_indices(list(indices))
-            detail.set_trigger_now(True)
             _dismiss_backend_overlay(backend)
-            detail.save()
-            backend.wait_for_timeout(1500)
+            report["save_notice"] = detail.save_and_read_notice()
+            _, report["poll_timeline"] = _poll_lay_off_detail(
+                backend, "bingo6", "pickTwoAllHit",
+                done=lambda items: all(int(items[i]["actualShareAmount"] or 0) == 0 for i in indices),
+                describe=lambda items: "占成=%s" % [items[i]["actualShareAmount"] for i in indices],
+                timeout_s=30.0,
+            )
 
         with allure.step("觸發後再讀一次三組的聚合欄位與占成明細，並確認仍在同一期"):
             _goto_combo_target(detail, "连码", "二全中", fast=True)
@@ -5705,12 +5920,13 @@ def test_pick_two_unrelated_aggregate_matches_share_detail(page, xzh_qat):
 
         lines = [f"期號：下注前 {issue_before}／下注後 {issue_after_bet}／讀回時 {issue_at_check}",
                  f"下注：01/02/03 三組組合各 5,000（{success}）",
-                 "模式：不关连；共用自留上限：100；自動飛單：開；保存後立即觸發：勾選", ""]
+                 "模式：不关连；共用自留上限：100；自動飛單：開；保存即觸發自動飛單（無「保存后立即触发」勾選框）",
+                 f"保存後畫面提示：{report.get('save_notice')!r}；占成反覆讀取記錄：{'；'.join(report.get('poll_timeline') or [])}", ""]
         for stage, snapshot in (("觸發前", before), ("觸發後", after)):
             for name, entry in snapshot.items():
                 rows = entry["detail_rows"]
                 detail_text = ("讀取失敗" if rows is None else
-                               "；".join(f"{r['bet_option']}＝{r['share_amount']}（補貨{r['replenishment']}）"
+                               "；".join(f"{r['bet_option']}＝{r['share_amount']}（可飞额{r['layoffable']}）"
                                          for r in rows) or "（無明細列）")
                 lines.append(
                     f"{stage}／選項 {name}：聚合欄位＝{entry['ui_aggregate']}、"
@@ -5857,7 +6073,7 @@ def _real_combo_selected_names(
 
 
 @allure.title("[功能驗證] B94：組合型关连飛單：集中下注並觸發後是否完整記錄占成")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 @pytest.mark.parametrize(
     "game,game_id,relation_mode",
@@ -5883,8 +6099,8 @@ def test_real_combo_targets_relation_modes(page, xzh_qat, game, game_id, relatio
 
     步驟：
     1. 依指定彩種與尚未完成的目標，在會員前台集中下注，記錄成功與失敗項目。
-    2. 二級代理進入「飛單選項明細設置」，對投注目標設「关连」、共用自留上限 100、自動飛單及對應勾選。
-    3. 勾選立即觸發並保存，重新整理後讀取占成並記錄 API 與畫面結果。
+    2. 二級代理進入「飛單選項設置」，對投注目標設「关连」、共用自留上限 100、自動飛單及對應勾選。
+    3. 保存（保存即觸發自動飛單），重新整理後讀取占成並記錄 API 與畫面結果。
     4. 逐項還原原始設定，列出執行或還原失敗的彩種與玩法。
 
     預期結果：
@@ -5988,7 +6204,6 @@ def test_real_combo_targets_relation_modes(page, xzh_qat, game, game_id, relatio
             bet_message = target["bet_message"]
             original_items: list[dict] | None = None
             master_original: bool | None = None
-            trigger_original: bool | None = None
             try:
                 category_switch_original = _goto_combo_target_and_ensure_switch(
                     detail, page, game, category, sub_item, fast=True
@@ -5997,7 +6212,6 @@ def test_real_combo_targets_relation_modes(page, xzh_qat, game, game_id, relatio
                 detail.set_master_switch(True)
                 detail.wait_until_category_unlocked(timeout_ms=45000)
                 original_items = _get_lay_off_setting_detail(page, game_id, play_type_id)
-                trigger_original = detail.trigger_now_enabled()
                 marked_indices = _real_combo_mark_indices(category, sub_item, original_items, block_count, selection_offset)
                 if not marked_indices:
                     raise AssertionError("找不到與前台投注對應的後台組合列")
@@ -6011,7 +6225,6 @@ def test_real_combo_targets_relation_modes(page, xzh_qat, game, game_id, relatio
                     if detail.page.get_by_role("switch", name="自动飞单").count():
                         detail.set_combo_auto_lay_off(True, block)
                 detail.set_combo_marked_indices(marked_indices)
-                detail.set_trigger_now(True)
                 detail.save()
                 page.wait_for_timeout(800)
 
@@ -6022,7 +6235,8 @@ def test_real_combo_targets_relation_modes(page, xzh_qat, game, game_id, relatio
                 # 讀占成前用完整等待，table=10 的分享金額按鈕可能比 checkbox 晚一個非同步
                 # render 週期出現；過快讀取會把真實按鈕誤判成不存在。
                 _goto_combo_target(detail, category, sub_item, fast=False)
-                current_items = _get_lay_off_setting_detail(page, game_id, play_type_id)
+                # 保存即觸發自動飛單，占成可能晚幾秒才反映：等數值連續兩次相同再讀。
+                current_items = _settle_lay_off_detail(page, game_id, play_type_id, marked_indices)
                 # API GET 是後端實際計算值的穩定來源；表格的 share-amount button 在不同
                 # 組合排版下可能晚於 checkbox 非同步渲染，UI 讀取只作旁證，不讓短暫 DOM
                 # 時序把已完成的真實飛單判成失敗。
@@ -6049,10 +6263,7 @@ def test_real_combo_targets_relation_modes(page, xzh_qat, game, game_id, relatio
             finally:
                 if original_items is not None and "/auth/sign-in" not in page.url:
                     try:
-                        _put_lay_off_setting_detail(
-                            page, game_id, play_type_id, original_items,
-                            triggerImmediateAutoLayOff=bool(trigger_original),
-                        )
+                        _put_lay_off_setting_detail(page, game_id, play_type_id, original_items)
                     except Exception as exc:
                         failures.append(f"{game}／{label}／{relation_mode}：還原 K7 失敗 {exc}")
                 if master_original is not None and "/auth/sign-in" not in page.url:
@@ -6120,7 +6331,7 @@ _REAL_COMBO_SHARED_CAP = Decimal("100")
 
 
 def _enable_selection_detail_for_targets(page, targets) -> list[str]:
-    """把本批玩法在**本層級**的「啟用飛單選項明細」總開關一次全部打開（下注前置）。
+    """把本批玩法在**本層級**的「開關選項設置」總開關一次全部打開（下注前置）。
 
     ⚠️⚠️ 這是效能前置，不是替代被測行為。2026-09-05 實測發現：總開關是**每個 playType
     各一個**（＝K4 表格該列的 `isSelectionDetailEnabled`），所以逐目標都得開一次；而用 UI
@@ -6157,7 +6368,7 @@ def _enable_selection_detail_for_targets(page, targets) -> list[str]:
                 [game_id, sorted(play_type_ids)],
             )
             if not str(status).startswith("ok"):
-                notes.append(f"{game_id}：開啟飛單選項明細總開關未完成（{status}）")
+                notes.append(f"{game_id}：開啟「開關選項設置」總開關未完成（{status}）")
         except Exception as exc:
             notes.append(f"{game_id}：開啟總開關失敗 {type(exc).__name__}: {exc}")
     return notes
@@ -6259,7 +6470,7 @@ def _standard_sub_items(category: str) -> list[tuple["str | None", int]]:
 
 
 @allure.title("[功能驗證] B95：標準型逐層飛單：觸發後占成是否不超過自留上限")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_real_standard_targets_multi_level(page, xzh_qat):
     """平台案例：[功能驗證] B95：標準型逐層飛單：觸發後占成是否不超過自留上限
@@ -6277,8 +6488,8 @@ def test_real_standard_targets_multi_level(page, xzh_qat):
 
     步驟：
     1. 會員前台依批次目標各下注 5000，記錄期號與成功訊息。
-    2. 依指定順序登入各級代理，進入「飛單選項明細設置」並讀取投注對應列的觸發前占成。
-    3. 設每選項自留上限 100、開啟自動飛單、勾立即觸發並保存，重新讀取占成。
+    2. 依指定順序登入各級代理，進入「飛單選項設置」並讀取投注對應列的觸發前占成。
+    3. 設每選項自留上限 100、開啟自動飛單並保存（保存即觸發自動飛單），重新讀取占成。
     4. 逐項比較觸發前後金額，記錄未完成項目並保留本次設定。
 
     預期結果：
@@ -6293,7 +6504,7 @@ def test_real_standard_targets_multi_level(page, xzh_qat):
 
     測試範圍：指定彩種 × 15 個標準型玩法 × 指定代理層級（預設二級至九級）。
     步驟：前台每個玩法對一個投注格下注 5000 →逐層登入後台→找出有正占成的選項列→
-    設每選項自留上限 100、開自動飛單、勾立即觸發並保存→重讀該列占成。
+    設每選項自留上限 100、開自動飛單並保存（保存即觸發自動飛單）→反覆讀取該列占成。
     判準：觸發前該列占成須為正值，觸發後須等於觸發前占成與自留上限 100 的較小值；讀不到正占成即不算驗到。
 
     ⚠️ 全程以「畫面列號」定位，不使用 API 的 selection 索引——生肖類玩法的畫面是
@@ -6354,7 +6565,7 @@ def test_real_standard_targets_multi_level(page, xzh_qat):
         """回傳本次下注那一列的列號（1-based）。
 
         ⚠️ 早期版本是「掃描全部選項、取所有占成大於 0 的列」，看似穩健，實際會把
-        **先前批次殘留的注單**一併納入驗證——那些注單多半屬於已結算的期別，立即觸發
+        **先前批次殘留的注單**一併納入驗證——那些注單多半屬於已結算的期別，自動飛單
         本來就不會動它們，於是被誤判成飛單失效（實測：英國天天彩「特码」第 1 列在
         六個層級都讀到 170～808 的殘留占成，觸發前後不變）。
         本次下注的是畫面第 `option_index + 1` 格，號碼型玩法的前後台列序一致，
@@ -6390,10 +6601,16 @@ def test_real_standard_targets_multi_level(page, xzh_qat):
         for n in hits:
             detail.set_option_cap(n, str(_STANDARD_RETENTION_CAP))
             detail.set_option_auto_lay_off(n, True)
-        detail.set_trigger_now(True)
         detail.save()
-        detail.select_category(target["category"], wait_for_networkidle=False)
-        after = {n: detail.option_share_amount(n) for n in hits}
+        # 保存即觸發自動飛單，占成可能晚幾秒才反映：重讀到等於期望值為止，最長約 30 秒。
+        expected_after = {n: min(before[n], _STANDARD_RETENTION_CAP) for n in hits}
+        after = {}
+        for _attempt in range(10):
+            detail.select_category(target["category"], wait_for_networkidle=False)
+            after = {n: detail.option_share_amount(n) for n in hits}
+            if after == expected_after:
+                break
+            page.wait_for_timeout(3000)
         # ⚠️ 標準型的判準是「收斂到自留上限」，不是組合型不關聯模式那種「歸零」：
         # 超過上限的部分才飛出去，上限以內的本來就該留著。原值低於上限時不會飛。
         for n in hits:
@@ -6421,7 +6638,7 @@ def test_real_standard_targets_multi_level(page, xzh_qat):
 
 
 @allure.title("[功能驗證] B96：組合型逐層飛單：觸發後占成是否符合關聯模式")
-@allure.suite("飞单选项明细设置")
+@allure.suite("飞单选项设置")
 @pytest.mark.write_action
 def test_real_combo_targets_relation_modes_unrelated(page, xzh_qat):
     """平台案例：[功能驗證] B96：組合型逐層飛單：觸發後占成是否符合關聯模式
@@ -6440,7 +6657,7 @@ def test_real_combo_targets_relation_modes_unrelated(page, xzh_qat):
     步驟：
     1. 依批次設定逐層關閉自動飛單並開啟明細總開關，會員前台集中下注並記錄期號。
     2. 依指定順序登入各級代理，讀取對應下注項觸發前占成。
-    3. 設定指定關聯模式、共用自留上限 100、自動飛單及對應勾選，勾立即觸發後保存。
+    3. 設定指定關聯模式、共用自留上限 100、自動飛單及對應勾選後保存（保存即觸發自動飛單）。
     4. 確認仍為同一期，核對占成並記錄未完成項目，保留本次設定。
 
     預期結果：
@@ -6458,7 +6675,7 @@ def test_real_combo_targets_relation_modes_unrelated(page, xzh_qat):
     略過既有完成項。
     步驟：下注前先關掉本批玩法在各層級的自動飛單（必要前置，見
     `_disable_auto_lay_off_for_targets`）→前台每組5000（六肖中／不中各一筆）→
-    逐層登入後台→逐項設定關聯模式、共用自留上限100、自動飛單及立即觸發→讀回占成。
+    逐層登入後台→逐項設定關聯模式、共用自留上限100、自動飛單及對應勾選並保存（保存即觸發自動飛單）→讀回占成。
     設定與開關刻意保留、不還原。
     判準：同一期、觸發前確有正占成；不關聯批觸發後所有選取項實際占成為0，
     關聯批則應剩下「每個組合各保留 100」的金額且必須低於觸發前；缺值或跨期不可算通過。
@@ -6558,7 +6775,7 @@ def test_real_combo_targets_relation_modes_unrelated(page, xzh_qat):
             # ②先把總開關擺到位，否則每個目標要多花 20 秒等欄位解鎖。
             notes = _disable_auto_lay_off_for_targets(page, targets)
             notes += _enable_selection_detail_for_targets(page, targets)
-            prep_notes.append(f"{level}：關閉自動飛單＋開啟飛單選項明細總開關前置完成"
+            prep_notes.append(f"{level}：關閉自動飛單＋開啟「開關選項設置」總開關前置完成"
                               + ("；未完成 " + "／".join(notes) if notes else ""))
         detail.goto()
 
@@ -6626,14 +6843,13 @@ def test_real_combo_targets_relation_modes_unrelated(page, xzh_qat):
             lap(f"auto{block}")
         detail.set_combo_marked_indices(indices)
         lap("marks")
-        detail.set_trigger_now(True)
-        lap("trigger")
         detail.save()
         lap("save")
         # 以UI切回同子項刷新；不每項reload整個後台，也不還原設定。
         _goto_combo_target(detail, target["category"], target["sub_item"], fast=True)
         lap("reopen")
-        current = _get_lay_off_setting_detail(page, game_id, target["play_type_id"])
+        # 保存即觸發自動飛單，占成可能晚幾秒才反映：等數值連續兩次相同再讀。
+        current = _settle_lay_off_detail(page, game_id, target["play_type_id"], indices)
         lap("readback")
         if timing:
             print("    耗時 " + " ".join(marks), flush=True)

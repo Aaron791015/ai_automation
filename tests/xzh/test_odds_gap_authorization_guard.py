@@ -5,6 +5,7 @@
 """
 import json
 import os
+from itertools import zip_longest
 from pathlib import Path
 from decimal import Decimal
 
@@ -518,44 +519,110 @@ def test_odds_gap_setting_page_marks_dormant_rows(auth_guard):
     assert not failures, '判準（attach 佐證）\n驗證失敗：\n- ' + '\n- '.join(failures)
 
 
+def _compare_gap_rows(expected, actual, limit=5):
+    """附件用：逐帳號、逐彩種比對兩份赔率差分設定，列出各組列數與不一致的列。
+
+    只產生「實際值 vs 預期值」佐證，不參與 PASS／FAIL 判定；判定仍由案例自己的 assert 負責。
+    每組最多列出 limit 列不一致內容，避免附件過大（完整內容見 run 目錄的 gap-*.json）。
+    """
+    groups, bad_groups = [], 0
+    for account in dict.fromkeys([*expected, *actual]):
+        expected_games, actual_games = expected.get(account, {}), actual.get(account, {})
+        for game in dict.fromkeys([*expected_games, *actual_games]):
+            expected_rows, actual_rows = expected_games.get(game, []), actual_games.get(game, [])
+            diffs = [{'第幾列': i, '預期': e, '實際': a}
+                     for i, (e, a) in enumerate(zip_longest(expected_rows, actual_rows), 1) if e != a]
+            group = {'帳號': account, '彩種': GAMES.get(game, game), '預期列數': len(expected_rows),
+                     '實際列數': len(actual_rows), '不一致列數': len(diffs)}
+            if diffs:
+                bad_groups += 1
+                group['不一致列（最多%d列）' % limit] = diffs[:limit]
+            groups.append(group)
+    return {'比對組數（帳號×彩種）': len(groups), '不一致組數': bad_groups, '各組': groups}
+
+
 @pytest.mark.write_action
 @pytest.mark.skipif(not os.environ.get('XZH_AUTH_GUARD_SIDE_RESUME_DIR'),
                     reason='僅於明確指定本輪中斷快照時執行專用還原，不屬日常回歸')
-@allure.title('[還原] 專門恢復本輪全鏈授權並核對賓果原值')
+@allure.title('[還原] 上一輪中斷後恢復一至九級代理的「赚取赔率差」授權：逐層重新勾選後，授權與赔率差分設定是否都與上一輪原值一致')
 def test_odds_gap_authorization_recover_owned_chain(auth_guard):
+    """平台案例：[還原] 上一輪中斷後恢復一至九級代理的「赚取赔率差」授權：逐層重新勾選後，授權與赔率差分設定是否都與上一輪原值一致
+    前置條件：設定環境變數 XZH_AUTH_GUARD_SIDE_RESUME_DIR 指向上一輪資料夾（內有 baseline.json、gap-baseline.json、ui-target-ids.json）；上一輪中斷在授權已全部取消的狀態（例如 TC-004 逐層取消到一級後中斷），公司 QAT 帳號鏈 aaa111～aaa999 九個代理目前全部未勾選「赚取赔率差」，赔率差分設定沒有被改動；未設定該變數時本案例略過，不屬日常回歸。
+    測試範圍：
+    - 彩種：英國天天彩、香港六合彩、賓果六合彩（預設三個；環境變數 XZH_AUTH_GUARD_GAMES 縮小時只比對指定彩種）
+    - 玩法：各彩種赔率差分設定頁的全部設定列，只做唯讀比對、不抽樣；「赚取赔率差」授權是帳號層權限，不分彩種與玩法
+    - 帳號：公司 QAT 帳號鏈一至九級代理 aaa111～aaa999 與會員 aaa010（會員沒有此授權欄位，只記錄、不修改）
+    步驟：
+    1. 讀取上一輪原值檔，公司從「用户管理」逐級進入「编辑」→「基本资料」記錄一至九級代理（及會員）「赚取赔率差」的勾選狀態，並讀取各彩種赔率差分設定；確認九個代理目前全部未勾選、赔率差分設定與原值逐列相同，不符就停止、不修改。
+    2. 由一級到九級逐層檢查「赚取赔率差」：未勾選者在「基本资料」勾選並按「保存」，再重新開啟確認已勾選；失敗則重新整理頁面再試一次（每層最多兩次）。
+    3. 重新讀取一至九級代理（及會員）的勾選狀態與各彩種赔率差分設定，與上一輪原值逐項比對；寫出還原結果檔並判定是否已完全還原。
+    預期結果：一至九級代理與會員的授權欄位都與上一輪原值一致（九個代理重新勾選、會員沒有此欄位）；各彩種赔率差分設定與上一輪原值逐列逐欄相同；還原結果檔的 resolved、authorization_equal、gap_equal 都是 true。起點不符（九個代理並非全部未勾選，或赔率差分設定與原值不同）時，案例直接判失敗，且不做任何保存。
+    佐證方式：Allure 附件（起點與最終的授權、赔率差分「實際值 vs 預期值」比對、逐層還原結果）；本次 run 目錄的 before-recovery.json、gap-before-recovery.json、recovery-<帳號>-<次數>.json／.png、recovery-progress.json、final.json、gap-final.json、restore-result.json；另把 restore-resolved.json 寫回上一輪資料夾。
+    實作備註：本案例會寫入 QAT（只透過 UI 勾選「赚取赔率差」並按「保存」，不用 API 改值）；逐層還原結果只記錄、不單獨判定，是否通過以最後一步的全鏈比對為準；赔率差分設定是以 ui-target-ids.json 內上一輪由畫面取得的目標識別唯讀讀取。
+    """
     previous = Path(os.environ['XZH_AUTH_GUARD_SIDE_RESUME_DIR'])
-    baseline = json.loads((previous / 'baseline.json').read_text(encoding='utf-8'))
-    gap_baseline = json.loads((previous / 'gap-baseline.json').read_text(encoding='utf-8'))
-    auth_guard.target_ids.update(json.loads((previous / 'ui-target-ids.json').read_text(encoding='utf-8')))
-    current = auth_guard.snapshot()
-    auth_guard.run.dump('before-recovery.json', current)
-    assert all(current[a] is False for a in CHAIN_ACCOUNTS[:9]), '只恢復本輪已核對的全關狀態'
-    gap_current = auth_guard.gap_snapshot('gap-before-recovery')
-    def stored(snapshot):
-        return {a: {g: [(r['playTypeId'], r.get('oddsGap'), r.get('subOddsGap')) for r in rows]
-                    for g, rows in games.items()} for a, games in snapshot.items()}
-    assert stored(gap_current) == stored(gap_baseline), '非本輪授權設定異動，停止覆寫'
-    results = []
-    for index, account in enumerate(CHAIN_ACCOUNTS[:9]):
-        error = None
-        for attempt in range(2):
-            try:
-                if auth_guard.read(index) is not True:
-                    auth_guard.save(True, f'recovery-{account}-{attempt}')
-                assert auth_guard.read(index) is True
-                error = None
-                break
-            except Exception as exc:
-                error = str(exc)
-                auth_guard.page.reload(wait_until='domcontentloaded')
-        results.append({'account': account, 'restored': error is None, 'error': error})
-        auth_guard.run.dump('recovery-progress.json', results)
-    final = auth_guard.snapshot()
-    gap_final = auth_guard.gap_snapshot('gap-final')
-    auth_guard.run.dump('final.json', final)
-    resolved = final == baseline and gap_final == gap_baseline
-    result = {'resolved': resolved, 'authorization_equal': final == baseline,
-              'gap_equal': gap_final == gap_baseline, 'evidence_run': str(auth_guard.run.dir)}
-    auth_guard.run.dump('restore-result.json', result)
-    (previous / 'restore-resolved.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
-    assert resolved, '仍有未恢復項，詳見recovery-progress與final'
+    with allure.step('讀取上一輪原值檔，公司從「用户管理」逐級進入「编辑」→「基本资料」記錄一至九級代理（及會員）「赚取赔率差」的勾選狀態，並讀取各彩種赔率差分設定；確認九個代理目前全部未勾選、赔率差分設定與原值逐列相同，不符就停止、不修改'):
+        baseline = json.loads((previous / 'baseline.json').read_text(encoding='utf-8'))
+        gap_baseline = json.loads((previous / 'gap-baseline.json').read_text(encoding='utf-8'))
+        auth_guard.target_ids.update(json.loads((previous / 'ui-target-ids.json').read_text(encoding='utf-8')))
+        current = auth_guard.snapshot()
+        auth_guard.run.dump('before-recovery.json', current)
+        allure.attach(json.dumps({'預期': '一至九級代理全部未勾選（false）',
+                                  '實際': {a: current.get(a) for a in CHAIN_ACCOUNTS[:9]},
+                                  '逐帳號是否符合預期': {a: current.get(a) is False for a in CHAIN_ACCOUNTS[:9]},
+                                  '會員（只記錄，不判定；null＝沒有此欄位）': current.get(CHAIN_ACCOUNTS[9])},
+                                 ensure_ascii=False, default=str),
+                      '起點核對：一至九級代理「赚取赔率差」目前勾選狀態（預期全部未勾選 false；會員只記錄，不判定）',
+                      allure.attachment_type.JSON)
+        assert all(current[a] is False for a in CHAIN_ACCOUNTS[:9]), '只恢復本輪已核對的全關狀態'
+        gap_current = auth_guard.gap_snapshot('gap-before-recovery')
+        def stored(snapshot):
+            return {a: {g: [(r['playTypeId'], r.get('oddsGap'), r.get('subOddsGap')) for r in rows]
+                        for g, rows in games.items()} for a, games in snapshot.items()}
+        allure.attach(json.dumps(_compare_gap_rows(stored(gap_baseline), stored(gap_current)),
+                                 ensure_ascii=False, default=str),
+                      '起點核對：各彩種赔率差分設定目前值 vs 上一輪原值（逐列比對玩法、主欄差分、副欄差分；預期不一致列數為 0）',
+                      allure.attachment_type.JSON)
+        assert stored(gap_current) == stored(gap_baseline), '非本輪授權設定異動，停止覆寫'
+    with allure.step('由一級到九級逐層檢查「赚取赔率差」：未勾選者在「基本资料」勾選並按「保存」，再重新開啟確認已勾選；失敗則重新整理頁面再試一次（每層最多兩次）'):
+        results = []
+        for index, account in enumerate(CHAIN_ACCOUNTS[:9]):
+            error = None
+            for attempt in range(2):
+                try:
+                    if auth_guard.read(index) is not True:
+                        auth_guard.save(True, f'recovery-{account}-{attempt}')
+                    assert auth_guard.read(index) is True
+                    error = None
+                    break
+                except Exception as exc:
+                    error = str(exc)
+                    auth_guard.page.reload(wait_until='domcontentloaded')
+            results.append({'account': account, 'restored': error is None, 'error': error})
+            auth_guard.run.dump('recovery-progress.json', results)
+        allure.attach(json.dumps({'預期': '一至九級每層 restored＝true、error＝null（逐層結果只記錄；是否通過以最後一步全鏈比對為準）',
+                                  '實際': results}, ensure_ascii=False, default=str),
+                      '逐層還原結果：一至九級代理是否已重新勾選（預期每層 restored＝true；通過與否以最後核對為準）',
+                      allure.attachment_type.JSON)
+    with allure.step('重新讀取一至九級代理（及會員）的勾選狀態與各彩種赔率差分設定，與上一輪原值逐項比對；寫出還原結果檔並判定是否已完全還原'):
+        final = auth_guard.snapshot()
+        gap_final = auth_guard.gap_snapshot('gap-final')
+        auth_guard.run.dump('final.json', final)
+        resolved = final == baseline and gap_final == gap_baseline
+        result = {'resolved': resolved, 'authorization_equal': final == baseline,
+                  'gap_equal': gap_final == gap_baseline, 'evidence_run': str(auth_guard.run.dir)}
+        auth_guard.run.dump('restore-result.json', result)
+        allure.attach(json.dumps({'預期（上一輪原值）': baseline, '實際（還原後）': final,
+                                  '逐帳號是否一致': {a: final.get(a) == baseline.get(a)
+                                                for a in dict.fromkeys([*baseline, *final])}},
+                                 ensure_ascii=False, default=str),
+                      '最終核對：一至九級代理與會員的授權欄位，還原後實際值 vs 上一輪原值（預期逐帳號相同；null＝沒有此欄位）',
+                      allure.attachment_type.JSON)
+        allure.attach(json.dumps(_compare_gap_rows(gap_baseline, gap_final), ensure_ascii=False, default=str),
+                      '最終核對：各彩種赔率差分設定，還原後實際值 vs 上一輪原值（逐列完整欄位比對；預期不一致列數為 0）',
+                      allure.attachment_type.JSON)
+        allure.attach(json.dumps(result, ensure_ascii=False, default=str),
+                      '最終判定：授權一致（authorization_equal）、赔率差分一致（gap_equal）與整體還原結果（resolved）；預期三項皆為 true',
+                      allure.attachment_type.JSON)
+        (previous / 'restore-resolved.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+        assert resolved, '仍有未恢復項，詳見recovery-progress與final'

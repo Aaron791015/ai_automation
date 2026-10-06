@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""`xzh_qa.odds_gap_oplog` 的離線比對邏輯（B108／交接 T66）。
+"""`xzh_qa.odds_gap_oplog` 的離線比對邏輯（B108／交接 T66；B109～B111 的新紀錄判定與權限差集）。
 
 前置條件：無；不連線、不改設定。樣本格式取自 2026-09-29 MCP 實測的 `/api/AuditLogs` 回應。
 """
 from decimal import Decimal as D
 
-from xzh_qa.odds_gap_oplog import (compare_ui_batch, expected_records, match_expected, normalize,
-                                   parse_ui_row, ui_time, unexpected_records)
+from xzh_qa.odds_gap_oplog import (AuditLogReader, compare_ui_batch, expected_records, for_target, match_expected,
+                                   normalize, parse_ui_row, permission_change, ui_time, unexpected_records)
 
 
 def _row(pid, name, main, sub=None):
@@ -91,3 +91,44 @@ def test_畫面整批與API比對():
                              "aaron01", "x", "2026-09-29 16:01:36"]) for r in records]
     assert compare_ui_batch(ui_rows, records, account="aaa222") == []
     assert compare_ui_batch(ui_rows[:2], records, account="aaa222")[0] == "畫面 2 筆、API 3 筆"
+
+
+def test_篩目標帳號與彩種_兩入口格式不同():
+    items = [{"id": 1, "entityId": "aaa222 / 宾果六合彩 / 特码A"}, {"id": 2, "entityId": "aaa2222 / 宾果六合彩 / 特码A"},
+             {"id": 3, "entityId": "aaa222 / 香港六合彩 / 特码A"}, {"id": 4, "entityId": "aaa999"}]
+    assert [i["id"] for i in for_target(items, "aaa222", "宾果六合彩", scoped=False)] == [1]
+    assert [i["id"] for i in for_target(items, "aaa999", scoped=False)] == [4]
+    scoped = [{"id": 5, "entityId": "宾果六合彩 / 特码A"}, {"id": 6, "entityId": "香港六合彩 / 正码"}]
+    assert [i["id"] for i in for_target(scoped, "aaa222", "宾果六合彩", scoped=True)] == [5]
+
+
+def test_權限清單差集找出切換的那一項():
+    off = {"fields": ["权限"], "beforeValues": [["飞单", "赚取赔率差"]], "afterValues": [["飞单"]]}
+    on = {"fields": ["权限"], "beforeValues": [["飞单"]], "afterValues": [["赚取赔率差", "飞单"]]}
+    assert permission_change(off) == ([], ["赚取赔率差"])
+    assert permission_change(on) == (["赚取赔率差"], [])
+    assert permission_change({"fields": ["昵称"], "beforeValues": ["a"], "afterValues": ["b"]}) == ([], [])
+
+
+class _FakeReader(AuditLogReader):
+    """不連線：依 pageIndex／batchId 回預先準備的回應。"""
+
+    def __init__(self, pages, batches):
+        self.pages, self.batches, self.calls = pages, batches, []
+
+    def _get(self, params):
+        self.calls.append(params)
+        if "batchId" in params:
+            return {"items": self.batches[params["batchId"]], "totalCount": len(self.batches[params["batchId"]])}
+        return {"items": self.pages[params["pageIndex"] - 1], "pageCount": len(self.pages)}
+
+
+def test_只取操作前最大id之後的紀錄_展開新批次_不碰舊批次():
+    pages = [[{"id": 30, "batchId": "new", "batchCount": 2}, {"id": 21, "batchId": None, "batchCount": 1}],
+             [{"id": 10, "batchId": "old", "batchCount": 5}]]
+    reader = _FakeReader(pages, {"new": [{"id": 30}, {"id": 31}], "old": [{"id": 10}, {"id": 25}]})
+    assert reader.latest_id("2026-09-30") == 30
+    got = reader.records_after("2026-09-30", 20)
+    assert [i["id"] for i in got] == [21, 30, 31]
+    assert not any(c.get("batchId") == "old" for c in reader.calls), "舊批次不應展開"
+    assert reader.records_after("2026-09-30", 31) == []

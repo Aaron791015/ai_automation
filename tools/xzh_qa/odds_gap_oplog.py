@@ -20,6 +20,12 @@
   `fields` 只列有變動的「差分」「副差分」、`beforeValues`／`afterValues`、`operatorAccount`、
   `createdAt`（UTC）。七碼記代表列（如「单0」）。
 - 上級代理也看得到公司對其下級所做的修改（aaa111 看得到公司改 aaa222～aaa666 的紀錄）。
+
+2026-09-30 補（B109～B111，規格見 `新綜合_賠率差分設定頁規格.md`「操作日誌」四項邊界）：
+- 「應該沒有紀錄」要用紀錄 `id` 判斷（`latest_id` → `records_after`），不靠時間窗——
+  時間窗要放寬 `CLOCK_MARGIN` 才對得上伺服器時鐘，放寬後會把前後步驟的紀錄算進來；
+  `id` 是全表遞增，比操作前最大值大的就是本次之後新增的。
+- 「赚取赔率差」授權記在 `topic=account`（「账号」），变更项「权限」，前後值是整串權限清單。
 """
 from __future__ import annotations
 
@@ -33,6 +39,11 @@ from xzh_qa.odds_gap_oracle import dec
 TOPIC = "oddsGapSetting"
 #: 「类型」下拉的正式選項文字（兩個入口相同，2026-09-29 MCP 實測）
 TOPIC_LABEL = "赔率差分设定"
+#: 授權開關所在的類型（2026-09-30 實測：「赚取赔率差」切換記在這裡，不在「赔率差分设定」）
+ACCOUNT_TOPIC = "account"
+ACCOUNT_TOPIC_LABEL = "账号"
+PERMISSION_FIELD = "权限"
+EARN_ODDS_GAP = "赚取赔率差"
 #: 設定欄位 → 日誌「变更项」文字
 FIELD_LABELS = (("oddsGap", "差分"), ("subOddsGap", "副差分"))
 TAIPEI = timezone(timedelta(hours=8))
@@ -112,6 +123,40 @@ class AuditLogReader:
         if response.status != 200:
             raise ReadOnlyApiError("/api/AuditLogs", response.status, response.text())
         return response.json()
+
+    def _list(self, day: str, index: int, topic: str, target_user_id: int | None) -> dict:
+        params = {"topic": topic, "startDate": day, "endDate": day, "pageIndex": index, "pageSize": 25}
+        if target_user_id is not None:
+            params["targetUserId"] = target_user_id
+        return self._get(params)
+
+    def latest_id(self, day: str, topic: str = TOPIC) -> int:
+        """目前該類型最新一筆紀錄的 id（全表遞增）；操作前記下，之後只看比它大的。"""
+        items = self._list(day, 1, topic, None).get("items") or []
+        return max((i["id"] for i in items), default=0)
+
+    def records_after(self, day: str, mark: int, *, topic: str = TOPIC,
+                      target_user_id: int | None = None, max_pages: int = 20) -> list[dict]:
+        """id 大於 `mark` 的全部紀錄（已展開批次、未正規化、未篩帳號）。
+
+        列表新到舊，翻到有舊紀錄的那一頁即停。新批次的代表列 id 一定比操作前的所有紀錄大，
+        所以只展開 id > mark 的代表列，不會混進舊批次的子列。
+        """
+        heads = []
+        for index in range(1, max_pages + 1):
+            body = self._list(day, index, topic, target_user_id)
+            items = body.get("items") or []
+            newer = [i for i in items if i["id"] > mark]
+            heads += newer
+            if len(newer) < len(items) or not items or index >= (body.get("pageCount") or 0):
+                break
+        out, seen = [], set()
+        for head in heads:
+            for item in self.members(head, target_user_id):
+                if item["id"] not in seen:
+                    seen.add(item["id"])
+                    out.append(item)
+        return sorted(out, key=lambda i: i["id"])
 
     def heads(self, day: str, since: datetime, until: datetime,
               target_user_id: int | None = None, max_pages: int = 20) -> list[dict]:
@@ -200,6 +245,39 @@ def unexpected_records(records: list[dict], *matches: dict) -> list[dict]:
     """時間窗內同操作者、同帳號同彩種，卻不屬於任何一次預期保存的紀錄（如未改動的玩法被記錄）。"""
     used = {r["id"] for m in matches for r in m["matched"].values()}
     return [r for r in records if r["id"] not in used]
+
+
+def for_target(items: list[dict], account: str, game_name: str | None = None, *, scoped: bool) -> list[dict]:
+    """篩出屬於 `account`（及彩種）的紀錄。
+
+    `scoped`＝帳號「日志」頁（已帶 targetUserId，目标不帶帳號）；否則是「操作日志」頁，
+    目标帶帳號前綴（差分：「帳號 / 彩種 / 玩法」；账号類型：只有帳號）。
+    """
+    out = []
+    for item in items:
+        entity = item.get("entityId") or ""
+        if not scoped:
+            if entity == account:
+                entity = ""
+            elif entity.startswith(account + " / "):
+                entity = entity[len(account) + 3:]
+            else:
+                continue
+        if game_name and not entity.startswith(game_name + " / "):
+            continue
+        out.append(item)
+    return out
+
+
+def permission_change(item: dict) -> tuple[list[str], list[str]]:
+    """「账号」類型的「权限」紀錄 → (新增的權限, 移除的權限)；前後值是整串清單，要比差集才知道切了哪一項。"""
+    fields = list(item.get("fields") or [])
+    if PERMISSION_FIELD not in fields:
+        return [], []
+    i = fields.index(PERMISSION_FIELD)
+    before = set((item.get("beforeValues") or [])[i] or [])
+    after = set((item.get("afterValues") or [])[i] or [])
+    return sorted(after - before), sorted(before - after)
 
 
 def parse_ui_row(cells: list[str]) -> dict:

@@ -59,10 +59,16 @@ def test_save_and_remaining_by_scope(index, via, game, gap_context, odds_gap_man
 @allure.step("依full/sample實際範圍輸入邊界值，每次保存後立即核對與還原")
 def test_boundary_by_scope(index, via, game, gap_context, odds_gap_manifest, odds_gap_run):
     """前置條件：以本組via指定身分登入，依full/sample選擇主／副欄。
-    操作步驟：逐條輸入、保存讀回，每次完成後還原；另輸入超過剩餘差分的值（取至四位小數）保存讀回。
-    預期結果：合法值保存正確、正數不得生效；超扣可保存且讀回等於輸入值（2026-09-29 新版文件：儲存時不檢查超扣）；未定義處理不自行推定。
-    佐證方式：每條輸入的畫面值、回應與還原日誌。
-    已知問題：超位小數處置仍待確認；文字／空值處理仍待確認；新版文件另記「由前端把關」，若日後前端改為阻擋超扣，需先確認變更依據再調整預期。
+    操作步驟：逐條輸入並保存、重新整理頁面讀回，每次完成後還原。
+    - 可保存的寫法：0、-0.0001、超過 4 位的小數（-0.12346、-0.00019、-0.00001）、省略整數（-.5）、小數點後沒有數字（-1.）、-0、0.0000、前導零（-01.1）、-1000；另貼上前後有空格的 -1.1。
+    - 不可保存的寫法：正數 1；非數字（abc、--1，另貼上 abc）、清空欄位、含逗號（-1,000）。
+    - 另輸入超過剩餘差分的值（取至四位小數）。
+    預期結果：
+    - 2026-10-06 Aaron 裁定的輸入規則：-0.12346 四捨五入後存成 -0.1235，-.5 存成 -0.5，-1. 存成 -1，-0 與 0.0000 存成 0，-01.1 存成 -1.1，貼上與手動輸入同一套規則並去掉前後空格，-1000 可保存（負值不設下限）。
+    - 超扣可保存且讀回等於輸入值（2026-09-29 新版文件：儲存時不檢查超扣）；正數 1 不得成為有效正差分。
+    - 非數字、清空、含逗號必須同時符合三點：無法保存成功、重新整理後仍為原值、畫面看得到提示（提示用字未定，只判有沒有出現）。
+    佐證方式：每條輸入的畫面值、保存回應、重新整理後讀回值、畫面提示與還原日誌，列出實際值與期望值。
+    已知問題：Snotra-032——非數字與清空被存成 0、含逗號被拿掉逗號，三類輸入目前判失敗，修復前預期不通過；新版文件另記「由前端把關」，若日後前端改為阻擋超扣，需先確認變更依據再調整預期。
     """
     try:
         result = check_boundary_inputs(gap_context(index, via=via), game, odds_gap_manifest)
@@ -70,9 +76,8 @@ def test_boundary_by_scope(index, via, game, gap_context, odds_gap_manifest, odd
         allure.attach(f"本組層級={index+1}，彩種={game}；各輸入與還原詳見 {odds_gap_run.dir}",
                       "B91實際範圍與佐證", allure.attachment_type.TEXT)
     assert all(r["ok"] for r in result["legal"]), "合法輸入讀回不符"
+    assert all(r["ok"] for r in result["must_block"]), "應阻擋的輸入沒有被阻擋（Snotra-032）"
     assert not result["positive_persisted"], "正數已成為有效差分"
-    if result["undefined"]:
-        pytest.skip("BLOCKED（部分）：明確值已檢查；超位小數；文字／空值等處理仍待規格裁定，見附件")
 
 
 @allure.suite("賠率差分分批驗收")

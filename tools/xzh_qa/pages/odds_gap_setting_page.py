@@ -29,12 +29,15 @@ from decimal import Decimal
 from playwright.sync_api import Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from xzh_qa.config_loader import chain_accounts
 from xzh_qa.odds_gap_client import GAMES
 from xzh_qa.odds_gap_oracle import dec
 from xzh_qa.pages.dashboard_page import AgentHierarchyPage
 
 #: 設定目標帳號鏈：索引 0～8 為一～九級代理，索引 9 為會員。
-CHAIN_ACCOUNTS = ["aaa" + str(i) * 3 for i in range(1, 10)] + ["aaa010"]
+#: 預設 aaa111～aaa999、aaa010；環境變數 `XZH_CHAIN=b` 時為 bbb111～bbb999、bbb010（見 config_loader）。
+#: ⚠️ 模組載入時就決定，須在 python／pytest 行程啟動前設好環境變數。
+CHAIN_ACCOUNTS = chain_accounts()
 
 
 class OddsGapTabMissing(AssertionError):

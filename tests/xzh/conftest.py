@@ -62,7 +62,7 @@ def level1_agent_page(page, xzh_qat):
 import json
 import os
 
-from xzh_qa.config_loader import agent_password
+from xzh_qa.config_loader import agent_password, chain_lock_name
 from xzh_qa.odds_gap_client import OddsGapClient
 from xzh_qa.odds_gap_flows import GapContext
 from xzh_qa.odds_gap_run_state import OddsGapRunState
@@ -99,7 +99,7 @@ def odds_gap_chain_exclusive(request):
         pytest.exit("有未解決還原異常，停止後續案例；請先核對 restore-pending 紀錄", returncode=2)
     state = OddsGapRunState.start("chain-owner")
     try:
-        with state.chain_lock("aaa111-through-aaa010"):
+        with state.chain_lock(chain_lock_name()):
             yield
     except ChainBusy as exc:
         pytest.skip(f"BLOCKED：{exc}")

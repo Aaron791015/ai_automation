@@ -27,7 +27,7 @@ import allure
 import pytest
 
 from xzh_qa.odds_gap_spec import load_spec, compare_spec, field_inventory
-from xzh_qa.odds_gap_safety import guarded_gaps, strict_gap_values
+from xzh_qa.odds_gap_safety import guarded_gaps, restore_equal
 
 from xzh_qa.odds_gap_client import GAMES, OddsGapClient, ReadOnlyApiError, ancestor_sum, gap_values
 from xzh_qa.odds_gap_oracle import dec, remaining_gap
@@ -226,7 +226,7 @@ def check_rows(ctx: GapContext, game_id: str, manifest: dict) -> dict:
     if restore_baseline:
         baseline = json.loads(Path(restore_baseline).read_text(encoding="utf-8"))[ctx.account][game_id]
         result["restore_snapshot_source"] = baseline["source"]
-        result["final_restoration_equal"] = strict_gap_values(api_rows) == strict_gap_values(baseline["rows"])
+        result["final_restoration_equal"] = restore_equal(ctx.account, game_id, baseline["rows"], api_rows)
     ctx.run.dump(f"b89-{ctx.account}-{game_id}.json", result)
     attach(f"{GAMES[game_id]}｜{ctx.account} 正式規格核對", json.dumps(result, ensure_ascii=False, default=str))
     assert comparison['status'] == 'PASS', '玩法／主副欄與正式規格不符，詳見逐欄附件'
@@ -473,32 +473,127 @@ def _attach_save_flow(ctx: GapContext, game_id: str, result: dict,
 # --------------------------------------------------------------------------
 # B91：輸入邊界與異常
 # --------------------------------------------------------------------------
-
-#: 依規格可判定的合法輸入（有明確期望值）。
-LEGAL_INPUTS = [("0", Decimal("0"), "允許 0"),
-                ("-0.0001", Decimal("-0.0001"), "允許四位負小數")]
-#: 規格未明訂處置方式的輸入——只記錄實際行為並列待確認，⛔ 不自行規定截斷／捨入／空值語意。
-# Aaron最新指示：暫撤回截斷判準，超位小數只觀察並列BLOCKED，不能判PASS/FAIL。
-UNDEFINED_INPUTS = ["abc", "", "1", "-0.00001", "-0.12346", "-0.00019"]
-#: 超扣（輸入超過剩餘差分）：2026-09-29 新版文件明訂儲存時不檢查超扣、由投注時最低賠率擋住，
-#: 預期保存成功且讀回等於畫面輸入值。超扣值取至四位小數（往負向取），不與待確認的超位小數混測。
+# 判準依據：《新綜合_賠率差分設定頁規格.md》「輸入判準」（Aaron 2026-10-06 裁定；正數條為 10/02 裁定）。
+# 每一種輸入只會落在下列四類之一，沒有「規格未定」的類別：
+#   ① 照存／存成（LEGAL_INPUTS、貼上、超扣）：保存成功（HTTP 200／204），重新整理後讀回等於期望值。
+#   ② 應阻擋（MUST_BLOCK_INPUTS）：三者**同時**成立才 PASS ——
+#      無法保存成功（沒送出請求，或回 400／422）、重新整理後仍為原值、畫面看得到提示（只判有無，不比文字）。
+#      現況（2026-10-05 實測）會被存成別的值，判 FAIL，失敗訊息註明已知缺陷 Snotra-032。
+#   ③ 正數：10/02 定案，現行判定維持「不得成為有效正差分」。
+#   ④ 超扣：2026-09-29 新版文件，儲存時不檢查超扣，可保存且讀回等於輸入值。
+#: 應阻擋的預期標記（與 Decimal 期望值並列於條件表）。
+EXPECT_BLOCK = "block"
+#: 正數的預期標記：10/02 定案，判定維持「不得被保存成有效正差分」。
+EXPECT_POSITIVE = "positive"
+#: 超扣（輸入超過剩餘差分）：預期保存成功且讀回等於畫面輸入值。超扣值取至四位小數（往負向取）。
 OVERDRAW_EXPECTED = "entered"
+
+#: 「照存／存成」：（輸入、讀回期望值、說明）。期望值取自規格表，或套用「超過 4 位小數前端四捨五入到 4 位」推得
+#: （`-0.00001` 為依該規則推得、未經 10/02 實測；`-0.00019` 與 `-0.12346` 為 10/02 實測值）。
+LEGAL_INPUTS = [("0", Decimal("0"), "允許 0"),
+                ("-0.0001", Decimal("-0.0001"), "允許四位負小數"),
+                ("-0.12346", Decimal("-0.1235"), "超過 4 位小數：前端四捨五入到 4 位"),
+                ("-0.00019", Decimal("-0.0002"), "超過 4 位小數：前端四捨五入到 4 位"),
+                ("-0.00001", Decimal("0"), "超過 4 位小數：四捨五入到 4 位後為 0"),
+                ("-.5", Decimal("-0.5"), "省略整數，存成 -0.5"),
+                ("-1.", Decimal("-1"), "小數點後沒有數字，存成 -1"),
+                ("-0", Decimal("0"), "負零，存成 0"),
+                ("0.0000", Decimal("0"), "0.0000，存成 0"),
+                ("-01.1", Decimal("-1.1"), "前導零，存成 -1.1"),
+                ("-1000", Decimal("-1000"), "負值不設下限，只限總位數")]
+#: 「應阻擋」：（輸入、說明）。「--1」與「abc」在畫面上打得進去的部分依實際鍵入，不預設會被瀏覽器擋掉。
+MUST_BLOCK_INPUTS = [("abc", "非數字文字"), ("--1", "兩個負號"), ("", "清空欄位"), ("-1,000", "含逗號")]
+#: 貼上與手動輸入同一套規則；前後空格自動去掉。（輸入、預期、說明）
+PASTE_INPUTS = [("abc", EXPECT_BLOCK, "貼上非數字文字"),
+                (" -1.1 ", Decimal("-1.1"), "貼上前後有空格的 -1.1，空格自動去掉")]
+#: 提示文字用字未定（規格：只判有沒有出現）。畫面右下角的成功通知不算提示。
+SUCCESS_NOTICE_WORD = "成功"
+#: 把文字放進系統剪貼簿：QAT 是 http，`navigator.clipboard` 不存在，只能走 `execCommand('copy')`（2026-10-02／10/05 對照實測可行）。
+SET_CLIPBOARD_JS = """(t) => { const ta = document.createElement('textarea'); ta.value = t;
+    ta.style.cssText = 'position:fixed;left:0;top:0;opacity:0'; document.body.appendChild(ta);
+    ta.focus(); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; }"""
+
+
+def paste_text(ctx, row_index: int, col: int, text: str):
+    """實際 Ctrl+V 貼上並失焦，回傳失焦後的欄位字串；兩種剪貼簿路徑都不可用時回 None，不冒充貼上。
+
+    先走頁面物件的 `navigator.clipboard`（https 站台）；QAT 是 http、該 API 不存在時，
+    改用 `execCommand('copy')` 把文字放進系統剪貼簿。⚠️ 後者無法讀回原剪貼簿內容，執行後剪貼簿為貼上的文字。
+    """
+    shown = ctx.setting.paste_raw(row_index, col, text)
+    if shown is not None:
+        return shown
+    if not ctx.page.evaluate(SET_CLIPBOARD_JS, text):
+        return None
+    box = ctx.setting.input_box(row_index, col)
+    box.fill("", force=True)
+    box.press("Control+V")
+    ctx.page.keyboard.press("Tab")
+    return box.input_value()
+
+
+def shown_number(text):
+    """畫面失焦後的字串轉成 Decimal；空白或非數字回 None（不猜測）。"""
+    try:
+        return dec(text)
+    except Exception:
+        return None
+
+
+def read_row_hints(ctx, row_index: int, wait_ms: int = 600) -> list[str]:
+    """讀第 `row_index` 列的行內提示：列內 class 含 error 的節點文字。
+
+    ⚠️ 行內紅字不是 toast，`ctx.setting.messages()` 讀不到（見規格「輸入判準」正數條）。
+    提示可能在失焦或點「保存」後才出現，沒讀到時最多再等 `wait_ms` 毫秒。
+    """
+    row = ctx.setting._rows().nth(row_index)
+    waited = 0
+    while True:
+        texts = [t.strip() for t in row.locator('[class*="error"]').all_inner_texts() if t.strip()]
+        if texts or waited >= wait_ms:
+            return list(dict.fromkeys(texts))
+        ctx.page.wait_for_timeout(100)
+        waited += 100
+
+
+def judge_must_block(status, original, read_back, hints) -> dict:
+    """「應阻擋」的三條件：①無法保存成功 ②重新整理後仍為原值 ③看得到提示；缺任一條即不通過。"""
+    save_refused = status in (None, 400, 422)
+    unchanged = read_back == original
+    hint_seen = bool(hints)
+    reasons = []
+    if not save_refused:
+        reasons.append(f"保存成功（HTTP {status}），應被阻擋")
+    if not unchanged:
+        reasons.append(f"重新整理後讀回 {read_back}，應仍為原值 {original}")
+    if not hint_seen:
+        reasons.append("畫面沒有任何提示")
+    return {"save_refused": save_refused, "unchanged": unchanged, "hint_seen": hint_seen,
+            "ok": not reasons, "reasons": reasons}
 
 
 def check_boundary_inputs(ctx: GapContext, game_id: str, manifest: dict) -> dict:
-    """依full/sample選欄，每種條件同批保存並立即還原；不同條件不共用已改設定。"""
+    """依full/sample選欄，每種條件同批保存並立即還原；不同條件不共用已改設定。
+
+    回傳 `legal`（照存／存成與超扣）、`must_block`（應阻擋）、`positive`（正數觀察）、
+    `blocked`（無法執行的條件）；`undefined` 為舊呼叫端保留，現在恆為空——所有輸入都已有判準。
+    任一條件不符規格即 AssertionError；只剩無法執行的條件（缺欄位、無剪貼簿）才 skip。
+    """
     rows = ctx.open(game_id)
     inventory, coverage = field_inventory(rows, boundary=True)
     targets = [(x['row'], x['col'], x['play_id'], x['field'], x['play']) for x in inventory if 'reason' not in x]
-    result = {"legal": [], "undefined": [], "blocked": [x for x in inventory if 'reason' in x],
+    result = {"legal": [], "must_block": [], "positive": [], "undefined": [],
+              "blocked": [x for x in inventory if 'reason' in x],
               "coverage": coverage, "batch_observations": [], "positive_persisted": False}
     ctx.run.dump(f"b91-{ctx.account}-{game_id}.json", result)
     attach('B91實際欄位範圍', json.dumps(coverage, ensure_ascii=False))
     if not targets:
         pytest.skip('BLOCKED：所選規格欄位皆缺失')
     conditions = [(raw, expected, note, "type") for raw, expected, note in LEGAL_INPUTS]
-    conditions += [(raw, None, "未定義輸入處理", "type") for raw in UNDEFINED_INPUTS]
-    conditions += [("abc", None, "貼上文字", "paste"), (None, OVERDRAW_EXPECTED, "超扣可保存", "overdraw")]
+    conditions += [("1", EXPECT_POSITIVE, "正數不得成為有效正差分", "type")]
+    conditions += [(raw, EXPECT_BLOCK, f"應阻擋：{why}", "type") for raw, why in MUST_BLOCK_INPUTS]
+    conditions += [(raw, expected, note, "paste") for raw, expected, note in PASTE_INPUTS]
+    conditions += [(None, OVERDRAW_EXPECTED, "超扣可保存", "overdraw")]
     input_scope = os.environ.get("XZH_GAP_BOUNDARY_INPUTS")
     if input_scope:
         selected_inputs = json.loads(input_scope)
@@ -508,10 +603,11 @@ def check_boundary_inputs(ctx: GapContext, game_id: str, manifest: dict) -> dict
     rounds = []
     for condition in conditions:
         # 正數預期被拒絕，逐欄單獨提交，避免某一欄擋住整張表掩蓋其他欄漏洞。
-        selections = [[target] for target in targets] if condition[0] == "1" else [targets]
+        selections = [[target] for target in targets] if condition[1] == EXPECT_POSITIVE else [targets]
         rounds.extend((*condition, selection) for selection in selections)
     key = f"b91-{ctx.account}-{game_id}.json"
     for raw, expected, note, mode, active_targets in rounds:
+        rejecting = expected in (EXPECT_BLOCK, EXPECT_POSITIVE)
         rows = ctx.open(game_id)
         items = []
         with guarded_gaps(ctx, game_id, rows) as transaction:
@@ -520,62 +616,99 @@ def check_boundary_inputs(ctx: GapContext, game_id: str, manifest: dict) -> dict
                 remaining_key = "remainingSubOddsGap" if col else "remainingOddsGap"
                 value = (str((original - dec(rows[i][remaining_key]) - STEP).quantize(STEP, rounding=ROUND_FLOOR))
                          if mode == "overdraw" else raw)
+                # 輸入前先記下該列既有的錯誤類節點文字，之後只算「新出現」的提示，常駐文字不能冒充提示。
+                baseline = read_row_hints(ctx, i, wait_ms=0) if rejecting else []
                 if mode == "paste":
-                    after = ctx.setting.paste_raw(i, col, value)
+                    after = paste_text(ctx, i, col, value)
                     if after is None:
                         result["blocked"].append({"play": play, "field": field, "condition": note,
-                                                  "reason": "此 QAT 頁面無瀏覽器剪貼簿 API，未冒充實際貼上"})
+                                                  "reason": "瀏覽器剪貼簿 API 與 execCommand('copy') 皆不可用，未冒充實際貼上"})
                         continue
                 else:
                     after = ctx.setting.fill_raw(i, col, value)
-                item = {"play": name, "play_id": play, "field": field, "input": value,
+                item = {"play": name, "play_id": play, "field": field, "row": i, "input": value,
                         "condition": note, "mode": mode, "after_focus": after, "original": original}
                 item["validation_scope"] = "single_field" if len(active_targets) == 1 else "batch"
-                if not after:
-                    # 空字串不能自行推定會送成 0；保留行為並清除本批未保存輸入。
-                    result["blocked"].append({**item, "reason": "失焦仍空白，無確定送出值；未猜測空值語意"})
-                    break
-                try:
-                    written = dec(after)
-                except Exception:
-                    result["blocked"].append({**item, "reason": "失焦仍非數字，無確定送出值"})
+                if rejecting:
+                    item["baseline_hints"] = baseline
+                    item["inline_hints"] = [h for h in read_row_hints(ctx, i) if h not in baseline]
+                written = shown_number(after)
+                if written is None and expected != EXPECT_BLOCK:
+                    # 沒有確定的送出值：不保存、不猜測；本批已輸入未保存的值由下一輪重新開啟頁面清除。
+                    if expected == EXPECT_POSITIVE:
+                        result["blocked"].append({**item, "reason": "失焦後欄位不是數字，無確定送出值"})
+                    else:
+                        want = None if expected == OVERDRAW_EXPECTED else expected
+                        result["legal"].append({**item, "expected": want, "read_back": None, "ok": False,
+                                                "failure": f"[{name}／{field}] 輸入 {value!r}（{note}）：失焦後欄位為 {after!r}，"
+                                                           f"不是數字，期望存成 {want}"})
                     break
                 item["written"] = written
-                transaction["expected"][(play, field)] = written
+                if written is not None:
+                    transaction["expected"][(play, field)] = written
                 items.append(item)
             else:
                 if items:
                     assert gap_values(ctx.api_rows(game_id)) == gap_values(rows), "保存前發現他人异動"
                     transaction["attempted"] = True
-                    saved = ctx.setting.save(allow_no_request=expected is None)
+                    saved = ctx.setting.save(allow_no_request=rejecting)
+                    status = saved["status"]
                     messages = ctx.setting.messages()
-                    if expected is not None:
-                        assert saved["status"] in (200, 204), f"合法輸入保存 HTTP {saved['status']}"
-                    elif saved["status"] not in (None, 200, 204, 400, 422):
-                        raise AssertionError(f"非法輸入出現非驗證拒絕回應 HTTP {saved['status']}")
+                    if status not in (None, 200, 204, 400, 422):
+                        raise AssertionError(f"非法輸入出現非驗證拒絕回應 HTTP {status}" if rejecting
+                                             else f"合法輸入保存 HTTP {status}")
+                    # 提示可能在點「保存」後才出現；保存被擋下時，先前沒讀到提示的列補讀一次（重新整理後就沒了）。
+                    if expected == EXPECT_BLOCK and status in (None, 400, 422):
+                        for item in items:
+                            item["hints_after_save"] = [] if item["inline_hints"] else [
+                                h for h in read_row_hints(ctx, item["row"]) if h not in item["baseline_hints"]]
                     ctx.setting.reload_tab(game_id)
                     actual = gap_values(ctx.api_rows(game_id))
-                    isolated_retry = expected is None and len(items) > 1 and saved["status"] in (None, 400, 422)
+                    # 沒有預先確定送出值的格若實際被改動，讀回後補登記，讓守衛能依實際值還原。
+                    for item in items:
+                        cell = (item["play_id"], item["field"])
+                        if cell not in transaction["expected"] and actual[cell] != item["original"]:
+                            transaction["expected"][cell] = actual[cell]
+                    isolated_retry = rejecting and len(items) > 1 and status in (None, 400, 422)
                     if isolated_retry:
                         rounds.extend((raw, expected, note, mode, [target]) for target in active_targets)
                     for item in items:
                         value = actual[(item["play_id"], item["field"])]
-                        item.update(save_status=saved["status"], read_back=value, messages=messages)
-                        if expected is not None:
-                            target = item["written"] if expected == OVERDRAW_EXPECTED else expected
-                            result["legal"].append({**item, "expected": target, "ok": value == target})
-                        else:
-                            result["batch_observations" if isolated_retry else "undefined"].append(item)
-                            if raw == "1" and value > 0:
+                        item.update(save_status=status, read_back=value, messages=messages)
+                        label = f"[{item['play']}／{item['field']}] 輸入 {item['input']!r}（{note}）"
+                        if expected == EXPECT_BLOCK:
+                            hints = (item["inline_hints"] + item.get("hints_after_save", [])
+                                     + [m for m in messages if SUCCESS_NOTICE_WORD not in m])
+                            verdict = judge_must_block(status, item["original"], value, hints)
+                            record = {**item, **verdict, "hints": hints,
+                                      "failure": f"{label}：{'；'.join(verdict['reasons'])}"}
+                            result["batch_observations" if isolated_retry else "must_block"].append(record)
+                        elif expected == EXPECT_POSITIVE:
+                            result["batch_observations" if isolated_retry else "positive"].append(item)
+                            if value > 0:
                                 result["positive_persisted"] = True
+                        else:
+                            target = item["written"] if expected == OVERDRAW_EXPECTED else expected
+                            saved_ok = status in (200, 204)
+                            ok = saved_ok and value == target
+                            failure = None if ok else (
+                                f"{label}：合法輸入保存 HTTP {status}" if not saved_ok
+                                else f"{label}：合法輸入保存不符，讀回 {value}，期望 {target}")
+                            result["legal"].append({**item, "expected": target, "ok": ok, "failure": failure})
         ctx.run.dump(key, result)
         ctx.run.log({"phase": "boundary_condition", "game": game_id, "condition": note,
                      "input": raw, "fields": len(items), "write_attempted": transaction["attempted"],
                      "restored": transaction["restored"] if transaction["attempted"] else "未寫入"})
     attach(f"{GAMES[game_id]}｜{ctx.account} 邊界逐欄結果",
            json.dumps(result, ensure_ascii=False, default=str, indent=2))
-    assert all(x["ok"] for x in result["legal"]), "合法輸入保存不符"
-    assert not result["positive_persisted"], "正數被保存為有效正差分"
-    if result["undefined"] or result["blocked"]:
-        pytest.skip("BLOCKED（部分）：明確條件已檢查；未定義輸入處理及無法執行條件詳见逐欄附件")
+    block_failures = [x["failure"] for x in result["must_block"] if not x["ok"]]
+    problems = [x["failure"] for x in result["legal"] if not x["ok"]] + block_failures
+    if result["positive_persisted"]:
+        problems.append("正數被保存為有效正差分")
+    if problems:
+        note = ("\n（「應阻擋」項目不符對應已知缺陷 Snotra-032：非數字、清空存成 0，含逗號被拿掉逗號；"
+                "修復前預期 FAIL）" if block_failures else "")
+        raise AssertionError(f"B91 輸入邊界不符規格 {len(problems)} 項：\n" + "\n".join(problems) + note)
+    if result["blocked"]:
+        pytest.skip("BLOCKED（部分）：其餘條件已逐項判定；無法執行的條件（缺欄位、無剪貼簿等）詳見逐欄附件")
     return result
