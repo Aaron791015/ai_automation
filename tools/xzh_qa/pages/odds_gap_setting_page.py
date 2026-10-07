@@ -2,7 +2,7 @@
 """「用户管理 → 编辑 → 赔率差分」設定頁的 Page Object。
 
 用途：B88～B92、B101 的設定端操作——開啟目標帳號、切彩種、定位玩法主副欄、
-      輸入／Tab／加減、保存、重載、讀回、授權開關。
+      輸入／Tab、確認沒有加減按鈕、保存、重載、讀回、授權開關。
 
 使用方式：
     gap = OddsGapSettingPage(company_page)
@@ -26,7 +26,7 @@ from __future__ import annotations
 import re
 from decimal import Decimal
 
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from xzh_qa.config_loader import chain_accounts
@@ -39,6 +39,10 @@ from xzh_qa.pages.dashboard_page import AgentHierarchyPage
 #: ⚠️ 模組載入時就決定，須在 python／pytest 行程啟動前設好環境變數。
 CHAIN_ACCOUNTS = chain_accounts()
 
+
+# 2026-10-07 前端把賠率差分輸入框從 input[type=number] 改成 input[type=text]（role=spinbutton、
+# inputmode=decimal），兩種寫法都要能定位，否則切彩種會在等第一個輸入框時逾時。
+GAP_INPUT_SELECTOR = "input[type=number], input[role=spinbutton]"
 
 class OddsGapTabMissing(AssertionError):
     """目標帳號的編輯頁沒有「赔率差分」分頁（Snotra-005）。
@@ -91,7 +95,7 @@ class OddsGapSettingPage:
         """切換彩種（`markSix`／`ukLucky7`／`bingo6`），並等第一個輸入框出現。"""
         self.page.locator(".game-nav:visible").get_by_role(
             "button", name=GAMES[game_id], exact=True).click()
-        self.page.locator("tr:visible input[type=number]").first.wait_for(state="visible")
+        self.page.locator("tr:visible").locator(GAP_INPUT_SELECTOR).first.wait_for(state="visible")
 
     def reload_tab(self, game_id: str) -> None:
         """重新整理整頁後回到賠率差分分頁與指定彩種——用於「保存後重載是否保留」的核對。
@@ -127,7 +131,7 @@ class OddsGapSettingPage:
 
     def _rows(self):
         return self.page.locator("tr:visible").filter(
-            has=self.page.locator("input[type=number]"))
+            has=self.page.locator(GAP_INPUT_SELECTOR))
 
     def read_rows(self) -> list[dict]:
         """一次讀回畫面上所有設定列：`{name, inputs: [...], remaining: [...]}`。
@@ -240,9 +244,14 @@ class OddsGapSettingPage:
         self.page.keyboard.press("Tab")
         return box.input_value()
 
-    def step_down(self, row: int, column: int = 0) -> Decimal:
-        """點該欄的「−」一次（實測步進 0.0001）。"""
-        return self._step(row, column, "decrease")
+    def step_button_count(self, row: int, column: int = 0) -> int:
+        """該欄「−」「＋」加減按鈕的數量。
+
+        2026-10-07 Aaron 裁定設定頁差分輸入框沒有加減按鈕（`el-input-number is-without-controls`），應為 0；
+        9/14～10/01 舊畫面每欄各有一組、步進 0.0001，舊的 `step_down`／`step_up` 已隨之移除。
+        """
+        cell = self._rows().nth(row).locator(".el-input-number").nth(column)
+        return cell.locator(".el-input-number__decrease, .el-input-number__increase").count()
 
     def paste_raw(self, row: int, column: int, text: str) -> str | None:
         """可用瀏覽器剪貼簿時實際 Ctrl+V；不能操作時回 None，不冒充貼上。"""
@@ -259,18 +268,6 @@ class OddsGapSettingPage:
             return box.input_value()
         finally:
             self.page.evaluate("s => navigator.clipboard.writeText(s)", original)
-
-    def step_up(self, row: int, column: int = 0) -> Decimal:
-        """點該欄的「＋」一次。"""
-        return self._step(row, column, "increase")
-
-    def _step(self, row: int, column: int, kind: str) -> Decimal:
-        cell = self._rows().nth(row).locator(".el-input-number").nth(column)
-        box = self.input_box(row, column)
-        before = box.input_value()
-        cell.locator(f".el-input-number__{kind}").click()
-        expect(box).not_to_have_value(before, timeout=2000)
-        return self.value_of(row, column)
 
     # ---------------- 保存 ----------------
 

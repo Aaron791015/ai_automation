@@ -6,6 +6,8 @@
          圖形不符／列不唯一／鈕數不對時報錯且不點任何一顆（交接 T97）；
       2. `LiveTradingPage.find_odds_for_option`：「序号→球號→賠率」版面讀到賠率而不是球號，
          連肖等「選項→賠率」版面與改版前的純文字版面不受影響（交接 T100）。
+      3. `OddsGapSettingPage.step_button_count`（用户管理→编辑→赔率差分設定頁）：2026-10-07 起差分輸入框
+         沒有「−」「＋」（`is-without-controls`，Aaron 同日裁定為規格），新版每欄數到 0、舊版數到 2（交接 T114）。
 使用方式：`.venv\\Scripts\\python.exe -m pytest tests/tooling/test_xzh_board_locators.py -q`
 前置條件：Playwright chromium（沿用 pytest-playwright 的 `page` fixture）；不需要任何站台帳號。
 """
@@ -15,6 +17,7 @@ pw = pytest.importorskip("playwright.sync_api")
 
 from xzh_qa.odds_gap_chain_winner import _click_member, pick_offset_button  # noqa: E402
 from xzh_qa.pages.live_trading_page import LiveTradingPage  # noqa: E402
+from xzh_qa.pages.odds_gap_setting_page import OddsGapSettingPage  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -269,3 +272,29 @@ def test_reader_odds_for_option_times_out_clearly(page):
     page.set_content(_bonus_board([(1, "46.893")]))
     with pytest.raises(AssertionError, match="找不到選項"):
         LiveTradingPage(page).odds_for_option("9", timeout_ms=600)
+
+
+def _gap_cell(controls: bool) -> str:
+    """一個差分輸入欄；結構照 2026-10-07 17:58 唯讀 DOM（aaa111 宾果）。controls=True 為 10/01 以前的舊版。"""
+    buttons = ('<span class="el-input-number__decrease" role="button">−</span>'
+               '<span class="el-input-number__increase" role="button">＋</span>') if controls else ''
+    cls = "el-input-number is-center" if controls else "el-input-number is-without-controls is-center"
+    return (f'<div class="{cls}">{buttons}<div class="el-input"><div class="el-input__wrapper">'
+            '<input class="el-input__inner" type="text" inputmode="decimal" role="spinbutton" step="0.0001" value="0">'
+            '</div></div></div>')
+
+
+def _gap_table(controls: bool) -> str:
+    """特码A（單欄）＋二中特／中二（主副雙欄）兩列。"""
+    single = f'<tr><td>特码A</td><td><div class="diff-cell">{_gap_cell(controls)}</div></td><td>9.3786</td></tr>'
+    dual = (f'<tr><td>二中特 / 中二</td><td><div class="diff-cell">{_gap_cell(controls)}<span class="sep">/</span>'
+            f'{_gap_cell(controls)}</div></td><td>16.2750 / 6.5100</td></tr>')
+    return f'<table><tbody>{single}{dual}</tbody></table>'
+
+
+@pytest.mark.parametrize("controls,expected", [(False, 0), (True, 2)])
+def test_gap_setting_step_button_count_matches_dom(page, controls, expected):
+    """10/07 新版每欄 0 個加減按鈕（規格）；10/01 以前的舊版每欄 2 個，B90 依此判出現按鈕即不符。"""
+    page.set_content(_gap_table(controls))
+    gap = OddsGapSettingPage(page)
+    assert [gap.step_button_count(0, 0), gap.step_button_count(1, 0), gap.step_button_count(1, 1)] == [expected] * 3

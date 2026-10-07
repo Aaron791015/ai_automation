@@ -40,7 +40,7 @@ class AuthorizationGuard:
                 self.settings.open_target(AgentHierarchyPage.LEVELS[index], account)
                 if len(GUARD_GAMES) == 1:
                     self.settings.select_game(next(iter(GUARD_GAMES)))
-                self.page.wait_for_function('() => document.querySelectorAll("tr input[type=number]").length > 0')
+                self.page.wait_for_function('() => document.querySelectorAll("tr input[type=number], tr input[role=spinbutton]").length > 0')  # 2026-10-07 輸入框改版，兩種都接受
                 self.page.wait_for_timeout(300)
                 assert len(self.observed['target_user_ids']) > count, f'{account}缺少UI目標識別證據'
                 self.target_ids[account] = self.observed['target_user_ids'][-1]

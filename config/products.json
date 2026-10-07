@@ -33,6 +33,7 @@
         "tests/tooling/test_xzh_gap_regression.py",
         "tests/tooling/test_xzh_gap_row_alignment.py",
         "tests/tooling/test_xzh_odds_gap_audit.py",
+        "tests/tooling/test_xzh_odds_gap_chain_lower.py",
         "tests/tooling/test_xzh_odds_gap_chain_winner.py",
         "tests/tooling/test_xzh_odds_gap_oplog.py",
         "tests/tooling/test_xzh_odds_gap_oracle.py",

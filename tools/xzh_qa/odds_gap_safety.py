@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import uuid4
 import os
 import json
+import time
 from pathlib import Path
 
 from xzh_qa.odds_gap_client import gap_values, ReadOnlyApiError
@@ -15,6 +16,11 @@ from xzh_qa.odds_gap_run_state import RestoreConflict
 # 還原核對與全表基準比對才視 NULL→0 為相符；其他任何差異（含未登記的 NULL→0、0→NULL）照舊報。
 NULL_TO_ZERO_REGISTRY = (Path(__file__).resolve().parents[2]
                          / "reports" / "odds_gap_regression" / "_baselines" / "null-to-zero-registry.json")
+# 兩條帳號鏈會同時登記（2026-10-07 16:24 一方讀到另一方寫到一半的空檔，觸發停止標記）：
+# 登記時以鎖檔排隊，寫暫存檔後整檔換上；讀遇到空檔或 Windows 換檔瞬間的共用違規時短暫重試。
+REGISTRY_LOCK_TIMEOUT = 30.0
+_IO_RETRIES = 20
+_IO_WAIT = 0.1
 
 
 def ensure_writes_clear(ctx):
@@ -44,27 +50,85 @@ def is_null_to_zero(field, before, after):
     return field == "subOddsGap" and before is None and after is not None and dec(after) == 0
 
 
+def _read_registry(registry: Path) -> dict:
+    """讀登記檔；空檔（舊版寫到一半）或共用違規時重試，重試完仍失敗就照原錯誤拋出，不當成沒有登記。"""
+    for attempt in range(_IO_RETRIES):
+        try:
+            if not registry.exists():
+                return {"cells": []}
+            return json.loads(registry.read_text(encoding="utf-8"))
+        except (PermissionError, json.JSONDecodeError):
+            if attempt == _IO_RETRIES - 1:
+                raise
+            time.sleep(_IO_WAIT)
+
+
+def _write_registry(registry: Path, data: dict) -> None:
+    """寫同目錄暫存檔再整檔換上，讀的一方只會看到換檔前或換檔後的完整內容。"""
+    temp = registry.with_name(f".{registry.name}.{uuid4().hex}.tmp")
+    temp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    try:
+        for attempt in range(_IO_RETRIES):
+            try:
+                os.replace(temp, registry)
+                return
+            except PermissionError:      # Windows：另一方正好開著舊檔
+                if attempt == _IO_RETRIES - 1:
+                    raise
+                time.sleep(_IO_WAIT)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+@contextmanager
+def _registry_lock(registry: Path):
+    """以 O_EXCL 建鎖檔排隊；逾時不搶鎖、不刪別人的鎖，直接報錯並附鎖檔內容供人判斷。"""
+    lock = registry.with_name(registry.name + ".lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + REGISTRY_LOCK_TIMEOUT
+    while True:
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                try:
+                    holder = lock.read_text(encoding="utf-8")
+                except OSError:
+                    holder = "（讀不到）"
+                raise TimeoutError(f"NULL→0 登記檔被鎖住超過 {REGISTRY_LOCK_TIMEOUT:g} 秒：{lock}（{holder}）；"
+                                   "確認沒有批次正在登記後再手動刪除鎖檔") from None
+            time.sleep(_IO_WAIT)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps({"pid": os.getpid(), "at": datetime.now().astimezone().isoformat(timespec="seconds")}))
+    try:
+        yield
+    finally:
+        lock.unlink(missing_ok=True)
+
+
 def registered_null_to_zero(path=None) -> set:
     """已登記的 (account, game, play, field)。"""
     registry = Path(path or NULL_TO_ZERO_REGISTRY)
-    if not registry.exists():
-        return set()
-    cells = json.loads(registry.read_text(encoding="utf-8"))["cells"]
+    cells = _read_registry(registry)["cells"]
     return {(c["account"], c["game"], c["play"], c["field"]) for c in cells}
 
 
 def register_null_to_zero(account, game_id, keys, source, path=None):
-    """登記本批保存造成的 NULL→0；已登記的不重寫。keys 為 strict_gap_values 的 (play, field)。"""
+    """登記本批保存造成的 NULL→0；已登記的不重寫。keys 為 strict_gap_values 的 (play, field)。
+
+    讀、加、寫整段持鎖，兩條鏈同時登記不會互相蓋掉。
+    """
     registry = Path(path or NULL_TO_ZERO_REGISTRY)
-    data = json.loads(registry.read_text(encoding="utf-8")) if registry.exists() else {"cells": []}
-    known = {(c["account"], c["game"], c["play"], c["field"]) for c in data["cells"]}
-    at = datetime.now().astimezone().isoformat(timespec="seconds")
-    added = [{"account": account, "game": game_id, "play": play, "field": field, "at": at, "source": source}
-             for play, field in sorted(keys) if (account, game_id, play, field) not in known]
-    if added:
-        data["cells"].extend(added)
-        registry.parent.mkdir(parents=True, exist_ok=True)
-        registry.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    with _registry_lock(registry):
+        data = _read_registry(registry)
+        known = {(c["account"], c["game"], c["play"], c["field"]) for c in data["cells"]}
+        at = datetime.now().astimezone().isoformat(timespec="seconds")
+        added = [{"account": account, "game": game_id, "play": play, "field": field, "at": at, "source": source}
+                 for play, field in sorted(keys) if (account, game_id, play, field) not in known]
+        if added:
+            data["cells"].extend(added)
+            _write_registry(registry, data)
     return added
 
 

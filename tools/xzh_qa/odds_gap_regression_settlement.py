@@ -11,6 +11,22 @@ from xzh_qa.odds_gap_regression import read_bets, select_unique, reports, frozen
 # 明確傳 rounding=None 才回到「取位未定、派彩不判」的舊行為。
 PAYOUT_ROUNDING = 'half_up_2'
 
+# 報表「赔率差金额」群組合計＝各注收益「加總後」才四捨五入到 4 位（逐注不先取位）。
+# 2026-10-07 Aaron 指示改寫，見《新綜合_賠率差公式》「結算公式」取位條②；Snotra-035 因此撤銷。
+REVENUE_QUANTUM = dec('.0001')
+
+
+def revenue_matches(expected_raw, actual_increment, had_prior_bets):
+    """群組收益比對。
+
+    群組原本沒有本批以外的注單：報表增量必須等於「本批各注未取位收益加總後四捨五入到 4 位」。
+    群組原本就有舊注：報表前、後兩個值各自取過 4 位，增量與本批未取位加總最多差 0.0001，
+    只能以此上限判定（無法得知舊注的未取位值）。
+    """
+    if not had_prior_bets:
+        return actual_increment == expected_raw.quantize(REVENUE_QUANTUM, rounding=ROUND_HALF_UP)
+    return abs(actual_increment - expected_raw) <= REVENUE_QUANTUM
+
 
 def expected_settlement(attempt, record, rounding=PAYOUT_ROUNDING):
     source = attempt['source']
@@ -82,7 +98,12 @@ def check_settlement(client, evidence, rounding=PAYOUT_ROUNDING):
         values = {'count': actual['betCount'] - before.get('betCount', 0),
                   'amount': dec(actual['betAmount']) - dec(before.get('betAmount', 0)),
                   'money': dec(actual['oddsGapAmount']) - dec(before.get('oddsGapAmount', 0))}
-        revenues.append({'level': level, 'play': play, 'selection': selection, 'expected': expected, 'actual': values, 'ok': values == expected})
+        had_prior = before.get('betCount', 0) > 0
+        ok = (values['count'] == expected['count'] and values['amount'] == expected['amount']
+              and revenue_matches(expected['money'], values['money'], had_prior))
+        revenues.append({'level': level, 'play': play, 'selection': selection, 'expected': expected, 'actual': values,
+                         'expected_report_money': str(expected['money'].quantize(REVENUE_QUANTUM, rounding=ROUND_HALF_UP)),
+                         'money_rule': 'increment_within_0.0001' if had_prior else 'sum_then_round4', 'ok': ok})
     return {'pending': [], 'checked': checks, 'frozen': frozen, 'revenues': revenues, 'after_reports': after,
             'missing_winners': sorted({a['option'] for a, c in zip(attempts, checks) if c['outcome'] != 'won'}),
             'rounding_pending': any(c['payout_ok'] is None for c in checks)}

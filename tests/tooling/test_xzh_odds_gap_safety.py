@@ -154,19 +154,23 @@ _Q4 = Decimal('0.0001')
 class _FakeBoundaryUI:
     """離線假前端：把「輸入→失焦後畫面值」「保存送不送出」「提示」做成可替換規則，驗 B91 的判定與還原。
 
-    預設為規格行為（2026-10-06）：超位小數四捨五入到 4 位、`-.5`／`-1.`／`-0`／`0.0000`／`-01.1` 照規格存成；
-    非數字（`abc`、`--1`）、清空、含逗號、正數都不保存並顯示提示。
-    `current_qat=True` 重現 2026-10-05 的實測現況：非數字與清空失焦變 0.0000、含逗號被拿掉逗號，
-    皆照存且沒有任何提示（Snotra-032）；正數仍被擋下。
+    預設為規格行為（2026-10-07：text 輸入框＋鍵盤過濾）：字母、逗號、第二個負號、小數第 5 位起都打不進去；
+    整段打不進去（`abc`）時欄位空白、不送出、不提示、按保存仍跳「更新成功」，重載後保留原值；
+    清空則行內紅字「不能为空」、不送出；`-.5`／`-1.`／`-0`／`0.0000`／`-01.1` 照規格存成；正數紅字不送出。
+    貼上（10/07 16:58 暫定規格）：整段能原樣打進去才收；前後帶空格、字母、逗號等貼上後欄位變空白並提示「不能为空」，
+    不送出——鍵入 ` -1.1 ` 仍存成 −1.1（10/07 探針實測），兩者不同。
+    `rounding` 不為 None 時改為「不過濾小數位、失焦後依該規則取 4 位」（10/06 舊規格的四捨五入）。
+    `current_qat=True` 重現 2026-10-05 的舊行為（type=number）：非數字與清空失焦變 0.0000、含逗號被拿掉逗號，
+    皆照存且沒有任何提示；超位小數四捨五入；正數仍被擋下；貼上同手動輸入（前後空格去掉）。
     """
 
-    def __init__(self, ctx, monkeypatch, *, current_qat=False, rounding=ROUND_HALF_UP, clipboard=False,
+    def __init__(self, ctx, monkeypatch, *, current_qat=False, rounding=None, clipboard=False,
                  hint_mode='inline', shows_raw_abc=False, status_by_input=None, block_inputs=(), permanent=()):
         from xzh_qa import odds_gap_flows
         self.current_qat = current_qat
         self.rounding = rounding
         self.hint_mode = hint_mode            # inline：失焦即出現；late：點保存後才出現；toast：右下角通知
-        self.shows_raw_abc = shows_raw_abc    # 現況下 abc 失焦後欄位仍顯示 abc（非數字），但保存的是 0
+        self.shows_raw_abc = shows_raw_abc    # 舊行為下 abc 失焦後欄位仍顯示 abc（非數字），但保存的是 0
         self.status_by_input = status_by_input or {}
         self.block_inputs = set(block_inputs)
         self.raw = None
@@ -182,7 +186,7 @@ class _FakeBoundaryUI:
         ctx.setting.fill_raw = self.fill_raw
         # clipboard：'api'（True）＝瀏覽器剪貼簿 API 可用；'fallback'＝只有 execCommand('copy')（QAT 是 http）；其餘＝皆不可用
         self.clip = None
-        ctx.setting.paste_raw = self.fill_raw if clipboard in (True, 'api') else (lambda *args: None)
+        ctx.setting.paste_raw = self.paste if clipboard in (True, 'api') else (lambda *args: None)
         ctx.page = SimpleNamespace(evaluate=self.set_clip if clipboard == 'fallback' else (lambda js, text: False),
                                    keyboard=SimpleNamespace(press=lambda key: None))
         ctx.setting.input_box = lambda i, col: _FakeBox(self, i, col)
@@ -198,22 +202,49 @@ class _FakeBoundaryUI:
         self.clip = text
         return True
 
+    def keyfilter(self, text):
+        """10/07 鍵盤過濾：只收數字、開頭一個負號、一個小數點；`rounding` 為 None 時小數第 5 位起打不進去。"""
+        out, dot, decimals = [], False, 0
+        for ch in text:
+            if ch == '-' and not out:
+                out.append(ch)
+            elif ch == '.' and not dot:
+                dot = True
+                out.append(ch)
+            elif ch.isdigit():
+                if dot:
+                    if self.rounding is None and decimals >= 4:
+                        continue
+                    decimals += 1
+                out.append(ch)
+        return ''.join(out)
+
     def blur(self, raw):
         """回傳（失焦後畫面值, 保存時實際送出的值或 None＝不送出, 提示清單）。"""
         text = raw.strip()
         if text in self.block_inputs:
             return text, None, []
-        if text in ('', 'abc', '--1') or ',' in text:
-            if not self.current_qat:
-                return text, None, ['请输入正确的赔率']
-            if ',' in text:
-                value = Decimal(text.replace(',', ''))
-                return str(value.quantize(_Q4)), value, []
-            return ('abc' if self.shows_raw_abc and text == 'abc' else '0.0000'), Decimal(0), []
-        value = Decimal(text)
+        if self.current_qat:
+            if text in ('', 'abc', '--1') or ',' in text:
+                if ',' in text:
+                    value = Decimal(text.replace(',', ''))
+                    return str(value.quantize(_Q4)), value, []
+                return ('abc' if self.shows_raw_abc and text == 'abc' else '0.0000'), Decimal(0), []
+            value = Decimal(text)
+            if value > 0:
+                return str(value.quantize(_Q4)), None, ['只允许输入最大值 0']
+            value = value.quantize(_Q4, rounding=ROUND_HALF_UP)
+            return str(value), value, []
+        if text == '':
+            return '', None, ['不能为空']
+        typed = self.keyfilter(text)
+        if typed in ('', '-', '.', '-.'):
+            return '', None, []          # 整段打不進去：不送出、不提示，重載後保留原值
+        value = Decimal(typed)
         if value > 0:
-            return str(value.quantize(_Q4)), None, ['只允许输入最大值 0']
-        value = value.quantize(_Q4, rounding=self.rounding)
+            return str(value), None, ['只允许输入最大值 0']
+        if self.rounding is not None:
+            value = value.quantize(_Q4, rounding=self.rounding)
         return str(value), value, []
 
     def fill_raw(self, i, col, raw):
@@ -223,6 +254,14 @@ class _FakeBoundaryUI:
         if persist is not None:
             self.ctx.setting.set_value(i, col, persist)
         return shown
+
+    def paste(self, i, col, raw):
+        """貼上：10/07 規格下整段不能原樣打進去（前後空格、字母、逗號…）就變空白、提示「不能为空」、不送出。"""
+        if self.current_qat or self.keyfilter(raw) == raw:
+            return self.fill_raw(i, col, raw)
+        self.raw, self.persist, self.hints, self.armed = raw, None, ['不能为空'], True
+        self.hints_visible = self.hint_mode == 'inline'
+        return ''
 
     def save(self, allow_no_request=False):
         armed, self.armed = self.armed, False
@@ -234,7 +273,8 @@ class _FakeBoundaryUI:
             if self.persist is None:
                 if self.hint_mode == 'late':
                     self.hints_visible = True
-                self.toast = list(self.hints) if self.hint_mode == 'toast' else []
+                # 有提示時依模式顯示；整段打不進去（沒有提示）時，10/07 實測按保存仍跳「更新成功」
+                self.toast = (list(self.hints) if self.hint_mode == 'toast' else []) if self.hints else ['更新成功']
                 return {'status': None}
         result = self.original_save()
         self.toast = ['更新成功'] if armed else []
@@ -252,7 +292,7 @@ class _FakeBox:
 
     def press(self, key):
         assert key == 'Control+V' and self.ui.clip is not None
-        self.shown = self.ui.fill_raw(self.row, self.col, self.ui.clip)
+        self.shown = self.ui.paste(self.row, self.col, self.ui.clip)
 
     def input_value(self):
         return self.shown
@@ -277,27 +317,32 @@ def _boundary_result(ctx):
 
 @pytest.mark.parametrize('clipboard', ['api', 'fallback'])
 def test_boundary_spec_conforming_ui_passes_every_condition_and_restores(ctx, monkeypatch, clipboard):
-    """2026-10-06 規格：照存／存成的值讀回相符，應阻擋的輸入三條件齊備，正數不被保存；每筆寫入都還原。
+    """2026-10-07 規格：照存／存成的值讀回相符，打不進去的輸入保留原值，清空三條件齊備，正數不被保存；每筆寫入都還原。
 
-    貼上兩條路徑都要能執行：瀏覽器剪貼簿 API（https）與 execCommand('copy')（QAT 是 http，API 不存在）。
+    原值設 -0.01，讓「保留原值」與「被存成 0」可區分。貼上兩條路徑都要能執行：
+    瀏覽器剪貼簿 API（https）與 execCommand('copy')（QAT 是 http，API 不存在）。
     """
-    from xzh_qa.odds_gap_flows import check_boundary_inputs, LEGAL_INPUTS, MUST_BLOCK_INPUTS
-    _prepare_boundary(ctx, monkeypatch)
+    from xzh_qa.odds_gap_flows import check_boundary_inputs, KEEP_INPUTS, LEGAL_INPUTS, MUST_BLOCK_INPUTS
+    _prepare_boundary(ctx, monkeypatch, original=Decimal('-0.01'))
     ui = _FakeBoundaryUI(ctx, monkeypatch, clipboard=clipboard)
     result = check_boundary_inputs(ctx, 'markSix', {})
     assert gap_values(ctx.current) == gap_values(ctx.rows)
     assert result['undefined'] == [] and result['blocked'] == []
-    assert len(result['legal']) == len(LEGAL_INPUTS) + 1 + 1, '照存條件＝表列＋貼上含空格＋超扣'
+    assert len(result['legal']) == len(LEGAL_INPUTS) + len(KEEP_INPUTS) + 2 + 1, '照存＋保留原值＋貼上兩條＋超扣'
     assert all(x['ok'] for x in result['legal'])
     by_input = {x['input']: x for x in result['legal'] if x['mode'] == 'type'}
-    for raw, expected in (('-0.12346', '-0.1235'), ('-0.00019', '-0.0002'), ('-0.00001', '0'), ('-.5', '-0.5'),
-                          ('-1.', '-1'), ('-0', '0'), ('0.0000', '0'), ('-01.1', '-1.1'), ('-1000', '-1000')):
+    for raw, expected in (('-0.12346', '-0.1234'), ('-0.00019', '-0.0001'), ('-0.00001', '0'), ('-.5', '-0.5'),
+                          ('-1.', '-1'), ('-0', '0'), ('0.0000', '0'), ('-01.1', '-1.1'), ('-1000', '-1000'),
+                          ('--1', '-1'), ('-1,000', '-1000')):
         assert by_input[raw]['read_back'] == Decimal(expected) and by_input[raw]['save_status'] == 204, raw
-    paste_store = next(x for x in result['legal'] if x['mode'] == 'paste')
-    assert paste_store['input'] == ' -1.1 ' and paste_store['read_back'] == Decimal('-1.1')
+    assert by_input['abc']['read_back'] == Decimal('-0.01') and by_input['abc']['save_status'] is None
+    pasted = {x['input']: x for x in result['legal'] if x['mode'] == 'paste'}
+    blank = pasted[' -1.1 ']
+    assert blank['ok'] and blank['after_focus'] == '' and blank['read_back'] is None and 'save_status' not in blank
+    assert pasted['abc']['read_back'] == Decimal('-0.01')
     overdraw = next(x for x in result['legal'] if x['mode'] == 'overdraw')
-    assert overdraw['input'] == '-5.0001' and overdraw['expected'] == Decimal('-5.0001')
-    assert len(result['must_block']) == len(MUST_BLOCK_INPUTS) + 1, '應阻擋＝表列＋貼上非數字'
+    assert overdraw['input'] == '-5.0101' and overdraw['expected'] == Decimal('-5.0101')
+    assert [x['input'] for x in result['must_block']] == [raw for raw, _ in MUST_BLOCK_INPUTS] == ['']
     for x in result['must_block']:
         assert x['ok'] and x['save_status'] is None and x['read_back'] == x['original'] and x['hints'], x['input']
     assert len(result['positive']) == 1 and not result['positive_persisted']
@@ -312,15 +357,19 @@ def test_boundary_without_clipboard_skips_only_the_paste_conditions(ctx, monkeyp
     with pytest.raises(pytest.skip.Exception, match='BLOCKED（部分）'):
         check_boundary_inputs(ctx, 'markSix', {})
     result = _boundary_result(ctx)
-    assert [x['condition'] for x in result['blocked']] == ['貼上非數字文字', '貼上前後有空格的 -1.1，空格自動去掉']
+    assert [x['condition'] for x in result['blocked']] == ['貼上非數字文字：整段貼不進去，保留原值',
+                                                           '貼上前後有空格的 -1.1：失焦後欄位變空白（10/07 暫定規格，不保存）']
     assert all("execCommand('copy') 皆不可用" in x['reason'] for x in result['blocked'])
     assert all(x['ok'] for x in result['legal'] + result['must_block'])
     assert gap_values(ctx.current) == gap_values(ctx.rows)
 
 
 @pytest.mark.parametrize('shows_raw_abc', [False, True])
-def test_boundary_current_qat_behavior_fails_with_snotra_032(ctx, monkeypatch, shows_raw_abc):
-    """2026-10-05 現況：非數字、清空存成 0，含逗號被拿掉逗號，皆無提示 → 四種輸入（含貼上）都判 FAIL；其餘條件仍 PASS。
+def test_boundary_legacy_1005_behavior_fails_where_spec_changed(ctx, monkeypatch, shows_raw_abc):
+    """2026-10-05 舊行為（type=number）在 10/07 規格下要判 FAIL 的項目：abc 與貼上 abc 被存成 0（應保留原值）、
+    清空被存成 0（應擋下並提示）、`--1` 存成 0（應 -1）、超位小數四捨五入（應截在第 4 位）；
+    貼上 ` -1.1 ` 被去掉空格存成 -1.1（10/07 16:58 暫定規格：失焦後應變空白）；
+    `-1,000` 存成 -1000、`-0.00001` 存成 0 剛好符合新規格。其餘條件仍 PASS，且每筆寫入都還原。
 
     shows_raw_abc=True：abc 失焦後欄位仍是文字（沒有確定送出值）但實際保存 0，
     守衛必須依讀回的實際值還原，否則測試資料留在被改過的狀態。
@@ -328,46 +377,45 @@ def test_boundary_current_qat_behavior_fails_with_snotra_032(ctx, monkeypatch, s
     from xzh_qa.odds_gap_flows import check_boundary_inputs
     _prepare_boundary(ctx, monkeypatch, original=Decimal('-0.01'))
     _FakeBoundaryUI(ctx, monkeypatch, current_qat=True, clipboard=True, shows_raw_abc=shows_raw_abc)
-    with pytest.raises(AssertionError, match='Snotra-032') as caught:
+    with pytest.raises(AssertionError, match='B91 輸入邊界不符規格 7 項') as caught:
         check_boundary_inputs(ctx, 'markSix', {})
     message = str(caught.value)
-    assert '不符規格 5 項' in message and '合法輸入' not in message
+    assert '應保留原值 -0.01，重新整理後讀回 0' in message and '回歸' in message
     assert gap_values(ctx.current) == gap_values(ctx.rows), '每一筆寫入都要還原'
     result = _boundary_result(ctx)
-    assert all(x['ok'] for x in result['legal']) and not result['positive_persisted']
-    failed = {(x['mode'], x['input']): x for x in result['must_block']}
-    assert set(failed) == {('type', 'abc'), ('type', '--1'), ('type', ''), ('type', '-1,000'), ('paste', 'abc')}
-    assert not any(x['ok'] for x in failed.values())
-    for x in failed.values():
-        assert x['save_status'] == 204 and not x['save_refused'] and not x['unchanged'] and not x['hint_seen']
-        assert x['hints'] == [], '右下角「更新成功」不算提示'
-    assert Decimal(failed[('type', 'abc')]['read_back']) == 0
-    assert Decimal(failed[('type', '-1,000')]['read_back']) == Decimal('-1000')
-    assert any('保存成功（HTTP 204）' in r for r in failed[('type', '')]['reasons'])
+    failed = {(x['mode'], x['input']) for x in result['legal'] if not x['ok']}
+    assert failed == {('type', 'abc'), ('paste', 'abc'), ('paste', ' -1.1 '), ('type', '--1'), ('type', '-0.12346'),
+                      ('type', '-0.00019')}
+    assert "失焦後欄位為 '-1.1000'，應變空白" in message
+    by_input = {x['input']: x for x in result['legal'] if x['mode'] == 'type'}
+    assert by_input['-1,000']['ok'] and by_input['-0.00001']['ok']
+    [blank] = result['must_block']
+    assert blank['input'] == '' and not blank['ok'] and blank['save_status'] == 204 and blank['hints'] == []
+    assert not result['positive_persisted']
 
 
 @pytest.mark.parametrize('hint_mode', ['inline', 'late', 'toast'])
 def test_boundary_must_block_accepts_hint_in_row_after_save_or_in_toast(ctx, monkeypatch, hint_mode):
-    """提示的位置不限：列內行內紅字（失焦即出現或點保存後才出現）、右下角通知皆算；用字不比對。"""
+    """清空的提示位置不限：列內行內紅字（失焦即出現或點保存後才出現）、右下角通知皆算；用字不比對。"""
     from xzh_qa.odds_gap_flows import check_boundary_inputs
-    _prepare_boundary(ctx, monkeypatch, inputs=['abc', ''], original=Decimal('-0.01'))
+    _prepare_boundary(ctx, monkeypatch, inputs=[''], original=Decimal('-0.01'))
     _FakeBoundaryUI(ctx, monkeypatch, hint_mode=hint_mode)
     result = check_boundary_inputs(ctx, 'markSix', {})
-    assert [x['input'] for x in result['must_block']] == ['abc', '']
+    assert [x['input'] for x in result['must_block']] == ['']
     assert all(x['ok'] and x['hint_seen'] for x in result['must_block'])
     where = {'inline': 'inline_hints', 'late': 'hints_after_save'}.get(hint_mode)
     if where:
         assert all(x[where] for x in result['must_block'])
     else:
-        assert all(x['inline_hints'] == [] and x['messages'] == ['请输入正确的赔率'] for x in result['must_block'])
+        assert all(x['inline_hints'] == [] and x['messages'] == ['不能为空'] for x in result['must_block'])
     assert gap_values(ctx.current) == gap_values(ctx.rows)
 
 
 @pytest.mark.parametrize('permanent', [(), ('剩余差分 0.0000',)])
 def test_boundary_must_block_fails_when_no_hint_even_if_save_refused(ctx, monkeypatch, permanent):
-    """擋下保存但沒有新出現的提示要判失敗；列內原本就有的錯誤類節點文字不能冒充提示。"""
+    """清空時擋下保存但沒有新出現的提示要判失敗；列內原本就有的錯誤類節點文字不能冒充提示。"""
     from xzh_qa.odds_gap_flows import check_boundary_inputs
-    _prepare_boundary(ctx, monkeypatch, inputs=['abc'], original=Decimal('-0.01'))
+    _prepare_boundary(ctx, monkeypatch, inputs=[''], original=Decimal('-0.01'))
     ui = _FakeBoundaryUI(ctx, monkeypatch, permanent=permanent)
     ui.blur = lambda raw: (raw, None, [])   # 擋下保存但沒有任何提示
     with pytest.raises(AssertionError, match=r"畫面沒有任何提示") as caught:
@@ -395,23 +443,24 @@ def test_must_block_requires_all_three_points(status, original, read_back, hints
         assert part in reason
 
 
-@pytest.mark.parametrize('rounding', [ROUND_DOWN, ROUND_HALF_UP])
-def test_precision_rounds_half_up_passes_and_truncation_fails(ctx, monkeypatch, rounding):
-    """2026-10-06 規格：超位小數前端四捨五入到 4 位才符合；向零截斷（-0.1234、-0.0001）判 FAIL，仍還原。"""
+@pytest.mark.parametrize('rounding', [None, ROUND_HALF_UP])
+def test_precision_truncates_at_4_decimals_and_rounding_fails(ctx, monkeypatch, rounding):
+    """2026-10-07 規格：小數第 5 位起打不進去（-0.12346→-0.1234、-0.00019→-0.0001）才符合；
+    10/06 舊規格的四捨五入（-0.1235、-0.0002）判 FAIL，仍還原。"""
     from xzh_qa.odds_gap_flows import check_boundary_inputs
     _prepare_boundary(ctx, monkeypatch, inputs=['-0.12346', '-0.00019'])
     _FakeBoundaryUI(ctx, monkeypatch, rounding=rounding)
-    if rounding == ROUND_HALF_UP:
+    if rounding is None:
         result = check_boundary_inputs(ctx, 'markSix', {})
         assert [(x['input'], x['read_back']) for x in result['legal']] == [
-            ('-0.12346', Decimal('-0.1235')), ('-0.00019', Decimal('-0.0002'))]
+            ('-0.12346', Decimal('-0.1234')), ('-0.00019', Decimal('-0.0001'))]
         assert all(x['ok'] for x in result['legal'])
     else:
         with pytest.raises(AssertionError) as caught:
             check_boundary_inputs(ctx, 'markSix', {})
         message = str(caught.value)
-        assert '輸入 \'-0.12346\'' in message and '讀回 -0.1234，期望 -0.1235' in message
-        assert '讀回 -0.0001，期望 -0.0002' in message and 'Snotra-032' not in message
+        assert "輸入 '-0.12346'" in message and '讀回 -0.1235，期望 -0.1234' in message
+        assert '讀回 -0.0002，期望 -0.0001' in message and '回歸' not in message
         assert not any(x['ok'] for x in _boundary_result(ctx)['legal'])
     assert gap_values(ctx.current) == gap_values(ctx.rows)
 
@@ -462,10 +511,11 @@ def test_boundary_store_requires_successful_save_even_when_value_equals_original
 
 def test_boundary_input_filter_accepts_new_conditions_and_rejects_unknown(ctx, monkeypatch):
     from xzh_qa.odds_gap_flows import check_boundary_inputs
-    _prepare_boundary(ctx, monkeypatch, inputs=['', '-1,000'], original=Decimal('-0.01'))
+    _prepare_boundary(ctx, monkeypatch, inputs=['', '-1,000', 'abc'], original=Decimal('-0.01'))
     _FakeBoundaryUI(ctx, monkeypatch)
     result = check_boundary_inputs(ctx, 'markSix', {})
-    assert [x['input'] for x in result['must_block']] == ['', '-1,000'] and result['legal'] == []
+    assert [x['input'] for x in result['must_block']] == ['']
+    assert [(x['input'], x['ok']) for x in result['legal']] == [('-1,000', True), ('abc', True)]
     _prepare_boundary(ctx, monkeypatch, inputs=['nope'])
     with pytest.raises(AssertionError, match='指定了未知邊界輸入'):
         check_boundary_inputs(ctx, 'markSix', {})
@@ -592,3 +642,67 @@ def test_originally_disabled_authorization_cycles_and_restores_disabled(ctx, mon
     from pathlib import Path
     result=json.loads((Path(ctx.run.dir)/'b88-pairs.json').read_text(encoding='utf-8'))[0]
     assert result['restored'] and result['original_authorized'] is False
+
+# ── NULL→0 登記檔的併發（2026-10-07 16:24 兩條鏈同秒登記，一方讀到空檔觸發停止標記；交接 T115）──
+def test_null_to_zero_registry_concurrent_registration_keeps_every_cell(tmp_path):
+    """兩條鏈同時登記：持鎖排隊、整檔換上，讀的一方不會讀到空檔，兩邊的登記也不會互相蓋掉。"""
+    import threading
+    from xzh_qa.odds_gap_safety import register_null_to_zero, registered_null_to_zero
+    path = tmp_path / 'registry.json'
+    errors = []
+
+    def worker(account):
+        try:
+            for i in range(15):
+                register_null_to_zero(account, 'bingo6', [(f'p{i}', 'subOddsGap')], 'offline', path=path)
+                registered_null_to_zero(path)
+        except Exception as exc:      # 收集起來由主執行緒判定
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(account,)) for account in ('aaa111', 'bbb111')]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == []
+    assert len(registered_null_to_zero(path)) == 30
+    assert [x.name for x in tmp_path.iterdir()] == ['registry.json'], '暫存檔與鎖檔都要清掉'
+
+
+def test_null_to_zero_registry_read_waits_out_a_half_written_file(tmp_path):
+    """舊版程式寫到一半留下空檔時，讀取短暫重試，等到完整內容再判斷，不當成「沒有登記」。"""
+    import threading
+    from xzh_qa.odds_gap_safety import registered_null_to_zero
+    path = tmp_path / 'registry.json'
+    path.write_text('', encoding='utf-8')
+    full = json.dumps({'cells': [{'account': 'aaa111', 'game': 'markSix', 'play': 'a', 'field': 'subOddsGap'}]})
+    timer = threading.Timer(0.3, lambda: path.write_text(full, encoding='utf-8'))
+    timer.start()
+    try:
+        assert registered_null_to_zero(path) == {('aaa111', 'markSix', 'a', 'subOddsGap')}
+    finally:
+        timer.cancel()
+
+
+def test_null_to_zero_registry_stays_empty_is_an_error_not_no_cells(tmp_path, monkeypatch):
+    """重試完仍是空檔就照原錯誤拋出——當成沒有登記，會把已登記的 NULL→0 誤報成差異或漏報真差異。"""
+    from xzh_qa import odds_gap_safety
+    monkeypatch.setattr(odds_gap_safety, '_IO_RETRIES', 2)
+    path = tmp_path / 'registry.json'
+    path.write_text('', encoding='utf-8')
+    with pytest.raises(json.JSONDecodeError):
+        odds_gap_safety.registered_null_to_zero(path)
+
+
+def test_null_to_zero_registry_lock_timeout_reports_holder_and_writes_nothing(tmp_path, monkeypatch):
+    """鎖被佔住超過時限：報錯並附鎖檔內容，不寫入、不刪別人的鎖。"""
+    from xzh_qa import odds_gap_safety
+    monkeypatch.setattr(odds_gap_safety, 'REGISTRY_LOCK_TIMEOUT', 0.3)
+    path = tmp_path / 'registry.json'
+    path.write_text(json.dumps({'cells': []}), encoding='utf-8')
+    lock = tmp_path / 'registry.json.lock'
+    lock.write_text('{"pid": 4242}', encoding='utf-8')
+    with pytest.raises(TimeoutError, match='4242'):
+        odds_gap_safety.register_null_to_zero('aaa111', 'markSix', [('a', 'subOddsGap')], 'offline', path=path)
+    assert json.loads(path.read_text(encoding='utf-8')) == {'cells': []}
+    assert lock.exists()

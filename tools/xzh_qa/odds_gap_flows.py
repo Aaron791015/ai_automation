@@ -301,8 +301,11 @@ def run_save_flow(ctx: GapContext, game_id: str, manifest: dict, *,
                   verify_remaining_formula: bool = False) -> dict:
     """B90（保存流程）與 B92（剩餘差分公式）的共用主流程。
 
-    流程：讀原值快照 → 規劃每欄輸入 → 逐欄輸入／Tab／−／＋ → UI 保存（攔 PUT）→
+    流程：讀原值快照 → 規劃每欄輸入 → 逐欄輸入／Tab（並確認該欄沒有加減按鈕）→ UI 保存（攔 PUT）→
           重載重讀 → 逐欄比對（保存值、未操作欄、剩餘公式）→ 受控還原。
+
+    `verify_step_buttons`：2026-10-07 Aaron 裁定設定頁差分輸入框**沒有**「−」「＋」（Snotra-036 撤銷），
+    改為逐欄確認加減按鈕數為 0，結果沿用 `step_ok` 欄位；舊版的「按 −／＋ 核對步進 0.0001」已移除。
 
     回傳結構化結果；⛔ 本函式**不**吞任何失敗：保存非 2xx、跳登入、欄位不符都原樣回報。
     """
@@ -333,11 +336,8 @@ def run_save_flow(ctx: GapContext, game_id: str, manifest: dict, *,
         actual = ctx.setting.set_value(item["row"], item["col"], item["input"])
         item["after_input"] = actual
         if verify_step_buttons:
-            after_down = ctx.setting.step_down(item["row"], item["col"])
-            after_up = ctx.setting.step_up(item["row"], item["col"])
-            item["after_step_down"] = after_down
-            item["after_step_up"] = after_up
-            step_checks.append(after_down == item["input"] - STEP and after_up == item["input"])
+            item["step_buttons"] = ctx.setting.step_button_count(item["row"], item["col"])
+            step_checks.append(item["step_buttons"] == 0)
     ctx.run.log({"phase": "input", "key": key, "fields": len(fields)})
 
     # 保存前確認期間沒有他人異動（本框架的鎖擋不住人工）
@@ -346,9 +346,7 @@ def run_save_flow(ctx: GapContext, game_id: str, manifest: dict, *,
 
     with guarded_gaps(ctx, game_id, api_rows) as transaction:
         # 還原比對的是實際送出前 UI 值；產品若把期望輸入改掉，仍須能收尾並保留測試失敗。
-        transaction["expected"] = {(f["play_id"], f["field"]):
-                                   f["after_step_up"] if verify_step_buttons else f["after_input"]
-                                   for f in fields}
+        transaction["expected"] = {(f["play_id"], f["field"]): f["after_input"] for f in fields}
         # ---- UI 保存 ----
         transaction["attempted"] = True
         saved = ctx.setting.save()
@@ -420,7 +418,7 @@ def run_save_flow(ctx: GapContext, game_id: str, manifest: dict, *,
 
     _attach_save_flow(ctx, game_id, result, verify_remaining_formula)
     assert result["saved_all_ok"] and result["delta_all_ok"] and not result["untouched_changed"], "保存／剩餘變化／未操作欄位核對失敗，詳見附件"
-    assert result["step_ok"] is not False, "加減步進與輸入值不符，詳見附件"
+    assert result["step_ok"] is not False, "差分輸入框出現「−」「＋」加減按鈕（2026-10-07 規格：應沒有），詳見附件"
     if blocked:
         pytest.skip(f"BLOCKED（部分）：有 {len(blocked)} 欄額度或基準資料不足，詳見逐欄附件")
     return result
@@ -434,7 +432,10 @@ def _attach_save_flow(ctx: GapContext, game_id: str, result: dict,
              f"目標：{ctx.account}（{ctx.level_name}）｜彩種：{GAMES[game_id]}",
              f"保存回應：HTTP {result['save_status']}；還原：{'已還原' if result['restored'] else '未完成'}",
              f"可測欄位 {len(checks)} 欄；受阻 {len(result['blocked'])} 欄；"
-             f"加減按鈕核對：{'全部符合' if result['step_ok'] else result['step_ok']}",
+             f"沒有加減按鈕（10/07 規格）：{'全部符合' if result['step_ok'] else result['step_ok']}"
+             + ("" if result["step_ok"] is not False else "；有按鈕的欄："
+                + "、".join(f"{c['play']}／{c['field']}（{c['step_buttons']} 個）"
+                           for c in result["fields"] if c.get("step_buttons"))),
              f"未操作欄位遭誤改：{result['untouched_changed'] or '無'}",
              f"上限比例：{result['cap_rate']}"
              f"（{'獨立取得' if result['cap_rate_independent'] else '⚠️ 取不到平台設定，依文件預設值假設'}）",
@@ -473,39 +474,52 @@ def _attach_save_flow(ctx: GapContext, game_id: str, result: dict,
 # --------------------------------------------------------------------------
 # B91：輸入邊界與異常
 # --------------------------------------------------------------------------
-# 判準依據：《新綜合_賠率差分設定頁規格.md》「輸入判準」（Aaron 2026-10-06 裁定；正數條為 10/02 裁定）。
-# 每一種輸入只會落在下列四類之一，沒有「規格未定」的類別：
-#   ① 照存／存成（LEGAL_INPUTS、貼上、超扣）：保存成功（HTTP 200／204），重新整理後讀回等於期望值。
-#   ② 應阻擋（MUST_BLOCK_INPUTS）：三者**同時**成立才 PASS ——
+# 判準依據：《新綜合_賠率差分設定頁規格.md》「輸入判準」（Aaron 2026-10-06 裁定，2026-10-07 兩次改為現行行為：
+# 約 12:05 `abc`／`--1`／`-1,000`，約 13:40 超位小數；正數條為 10/02 裁定）。10/07 起輸入框為 text＋鍵盤過濾，
+# 打不進去的字元不會出現在欄位裡（`fill_raw` 逐字鍵入，與人工操作相同）。每一種輸入只會落在下列六類之一：
+#   ① 照存／存成（LEGAL_INPUTS、超扣）：保存成功（HTTP 200／204），重新整理後讀回等於期望值。
+#   ② 保留原值（KEEP_INPUTS、貼上 abc）：整段打不進去或貼不進去；重新整理後讀回仍為原值即 PASS，
+#      不要求提示，也不論是否送出請求（10/07 實測按保存仍可能跳「更新成功」）。
+#   ③ 應阻擋（MUST_BLOCK_INPUTS，只剩清空）：三者**同時**成立才 PASS ——
 #      無法保存成功（沒送出請求，或回 400／422）、重新整理後仍為原值、畫面看得到提示（只判有無，不比文字）。
-#      現況（2026-10-05 實測）會被存成別的值，判 FAIL，失敗訊息註明已知缺陷 Snotra-032。
-#   ③ 正數：10/02 定案，現行判定維持「不得成為有效正差分」。
-#   ④ 超扣：2026-09-29 新版文件，儲存時不檢查超扣，可保存且讀回等於輸入值。
+#   ④ 正數：10/02 定案，現行判定維持「不得成為有效正差分」。
+#   ⑤ 超扣：2026-09-29 新版文件，儲存時不檢查超扣，可保存且讀回等於輸入值。
+#   ⑥ 失焦後變空白（貼上前後帶空格的值，2026-10-07 16:58 Aaron 暫定規格）：只判失焦後欄位為空白；
+#      變空白後按保存的結果規格未定，不保存、不判。
 #: 應阻擋的預期標記（與 Decimal 期望值並列於條件表）。
 EXPECT_BLOCK = "block"
+#: 保留原值的預期標記：打不進去／貼不進去，讀回須等於該格原值。
+EXPECT_KEEP = "keep"
 #: 正數的預期標記：10/02 定案，判定維持「不得被保存成有效正差分」。
 EXPECT_POSITIVE = "positive"
+#: 失焦後變空白的預期標記：只看失焦後欄位是否為空白，不保存。
+EXPECT_BLANK = "blank"
 #: 超扣（輸入超過剩餘差分）：預期保存成功且讀回等於畫面輸入值。超扣值取至四位小數（往負向取）。
 OVERDRAW_EXPECTED = "entered"
 
-#: 「照存／存成」：（輸入、讀回期望值、說明）。期望值取自規格表，或套用「超過 4 位小數前端四捨五入到 4 位」推得
-#: （`-0.00001` 為依該規則推得、未經 10/02 實測；`-0.00019` 與 `-0.12346` 為 10/02 實測值）。
+#: 「照存／存成」：（輸入、讀回期望值、說明）。期望值取自規格表；超位小數依 10/07 規格「第 5 位起打不進去」，
+#: `-0.12346`→−0.1234 為 10/07 實測值，`-0.00019`→−0.0001、`-0.00001`→0 依同一規則推得、未實測。
 LEGAL_INPUTS = [("0", Decimal("0"), "允許 0"),
                 ("-0.0001", Decimal("-0.0001"), "允許四位負小數"),
-                ("-0.12346", Decimal("-0.1235"), "超過 4 位小數：前端四捨五入到 4 位"),
-                ("-0.00019", Decimal("-0.0002"), "超過 4 位小數：前端四捨五入到 4 位"),
-                ("-0.00001", Decimal("0"), "超過 4 位小數：四捨五入到 4 位後為 0"),
+                ("-0.12346", Decimal("-0.1234"), "超過 4 位小數：第 5 位起打不進去（10/07 規格）"),
+                ("-0.00019", Decimal("-0.0001"), "超過 4 位小數：第 5 位起打不進去（10/07 規格）"),
+                ("-0.00001", Decimal("0"), "超過 4 位小數：第 5 位起打不進去，剩 -0.0000 存成 0"),
                 ("-.5", Decimal("-0.5"), "省略整數，存成 -0.5"),
                 ("-1.", Decimal("-1"), "小數點後沒有數字，存成 -1"),
                 ("-0", Decimal("0"), "負零，存成 0"),
                 ("0.0000", Decimal("0"), "0.0000，存成 0"),
                 ("-01.1", Decimal("-1.1"), "前導零，存成 -1.1"),
-                ("-1000", Decimal("-1000"), "負值不設下限，只限總位數")]
-#: 「應阻擋」：（輸入、說明）。「--1」與「abc」在畫面上打得進去的部分依實際鍵入，不預設會被瀏覽器擋掉。
-MUST_BLOCK_INPUTS = [("abc", "非數字文字"), ("--1", "兩個負號"), ("", "清空欄位"), ("-1,000", "含逗號")]
-#: 貼上與手動輸入同一套規則；前後空格自動去掉。（輸入、預期、說明）
-PASTE_INPUTS = [("abc", EXPECT_BLOCK, "貼上非數字文字"),
-                (" -1.1 ", Decimal("-1.1"), "貼上前後有空格的 -1.1，空格自動去掉")]
+                ("-1000", Decimal("-1000"), "負值不設下限，只限總位數"),
+                ("--1", Decimal("-1"), "兩個負號：第二個打不進去，存成 -1（10/07 規格）"),
+                ("-1,000", Decimal("-1000"), "含逗號：逗號打不進去，存成 -1000（10/07 規格）")]
+#: 「保留原值」：（輸入、說明）。
+KEEP_INPUTS = [("abc", "非數字文字：字母打不進去，保留原值、不需提示（10/07 規格）")]
+#: 「應阻擋」：（輸入、說明）。
+MUST_BLOCK_INPUTS = [("", "清空欄位：紅字「不能为空」、不送出、保留原值")]
+#: 貼上：`abc` 與手動輸入同一套規則；前後帶空格的值失焦後欄位變空白（2026-10-07 16:58 Aaron 暫定規格，
+#: 取代 10/06「空格自動去掉、存成 −1.1」；鍵入 ` -1.1 ` 仍存成 −1.1，兩者不同）。（輸入、預期、說明）
+PASTE_INPUTS = [("abc", EXPECT_KEEP, "貼上非數字文字：整段貼不進去，保留原值"),
+                (" -1.1 ", EXPECT_BLANK, "貼上前後有空格的 -1.1：失焦後欄位變空白（10/07 暫定規格，不保存）")]
 #: 提示文字用字未定（規格：只判有沒有出現）。畫面右下角的成功通知不算提示。
 SUCCESS_NOTICE_WORD = "成功"
 #: 把文字放進系統剪貼簿：QAT 是 http，`navigator.clipboard` 不存在，只能走 `execCommand('copy')`（2026-10-02／10/05 對照實測可行）。
@@ -591,6 +605,7 @@ def check_boundary_inputs(ctx: GapContext, game_id: str, manifest: dict) -> dict
         pytest.skip('BLOCKED：所選規格欄位皆缺失')
     conditions = [(raw, expected, note, "type") for raw, expected, note in LEGAL_INPUTS]
     conditions += [("1", EXPECT_POSITIVE, "正數不得成為有效正差分", "type")]
+    conditions += [(raw, EXPECT_KEEP, f"保留原值：{why}", "type") for raw, why in KEEP_INPUTS]
     conditions += [(raw, EXPECT_BLOCK, f"應阻擋：{why}", "type") for raw, why in MUST_BLOCK_INPUTS]
     conditions += [(raw, expected, note, "paste") for raw, expected, note in PASTE_INPUTS]
     conditions += [(None, OVERDRAW_EXPECTED, "超扣可保存", "overdraw")]
@@ -629,11 +644,17 @@ def check_boundary_inputs(ctx: GapContext, game_id: str, manifest: dict) -> dict
                 item = {"play": name, "play_id": play, "field": field, "row": i, "input": value,
                         "condition": note, "mode": mode, "after_focus": after, "original": original}
                 item["validation_scope"] = "single_field" if len(active_targets) == 1 else "batch"
+                if expected == EXPECT_BLANK:
+                    # 只判失焦後欄位為空白；不保存，未保存的值由下一輪重新開啟頁面清除。每一欄都判，不在第一欄結束。
+                    ok = after == ""
+                    result["legal"].append({**item, "expected": "", "read_back": None, "ok": ok, "failure": None if ok else
+                                            f"[{name}／{field}] 貼上 {value!r}（{note}）：失焦後欄位為 {after!r}，應變空白"})
+                    continue
                 if rejecting:
                     item["baseline_hints"] = baseline
                     item["inline_hints"] = [h for h in read_row_hints(ctx, i) if h not in baseline]
                 written = shown_number(after)
-                if written is None and expected != EXPECT_BLOCK:
+                if written is None and expected not in (EXPECT_BLOCK, EXPECT_KEEP):
                     # 沒有確定的送出值：不保存、不猜測；本批已輸入未保存的值由下一輪重新開啟頁面清除。
                     if expected == EXPECT_POSITIVE:
                         result["blocked"].append({**item, "reason": "失焦後欄位不是數字，無確定送出值"})
@@ -651,7 +672,7 @@ def check_boundary_inputs(ctx: GapContext, game_id: str, manifest: dict) -> dict
                 if items:
                     assert gap_values(ctx.api_rows(game_id)) == gap_values(rows), "保存前發現他人异動"
                     transaction["attempted"] = True
-                    saved = ctx.setting.save(allow_no_request=rejecting)
+                    saved = ctx.setting.save(allow_no_request=rejecting or expected == EXPECT_KEEP)
                     status = saved["status"]
                     messages = ctx.setting.messages()
                     if status not in (None, 200, 204, 400, 422):
@@ -683,6 +704,10 @@ def check_boundary_inputs(ctx: GapContext, game_id: str, manifest: dict) -> dict
                             record = {**item, **verdict, "hints": hints,
                                       "failure": f"{label}：{'；'.join(verdict['reasons'])}"}
                             result["batch_observations" if isolated_retry else "must_block"].append(record)
+                        elif expected == EXPECT_KEEP:
+                            ok = value == item["original"]
+                            result["legal"].append({**item, "expected": item["original"], "ok": ok, "failure": None if ok else
+                                                    f"{label}：應保留原值 {item['original']}，重新整理後讀回 {value}"})
                         elif expected == EXPECT_POSITIVE:
                             result["batch_observations" if isolated_retry else "positive"].append(item)
                             if value > 0:
@@ -706,8 +731,8 @@ def check_boundary_inputs(ctx: GapContext, game_id: str, manifest: dict) -> dict
     if result["positive_persisted"]:
         problems.append("正數被保存為有效正差分")
     if problems:
-        note = ("\n（「應阻擋」項目不符對應已知缺陷 Snotra-032：非數字、清空存成 0，含逗號被拿掉逗號；"
-                "修復前預期 FAIL）" if block_failures else "")
+        note = ("\n（「應阻擋」只剩清空：應紅字「不能为空」、不送出、保留原值。Snotra-032 已於 2026-10-07 關單，"
+                "若再出現屬回歸）" if block_failures else "")
         raise AssertionError(f"B91 輸入邊界不符規格 {len(problems)} 項：\n" + "\n".join(problems) + note)
     if result["blocked"]:
         pytest.skip("BLOCKED（部分）：其餘條件已逐項判定；無法執行的條件（缺欄位、無剪貼簿等）詳見逐欄附件")

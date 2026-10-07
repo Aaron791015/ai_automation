@@ -10,7 +10,7 @@ import pytest
 from xzh_qa.odds_gap_regression import (BatchLedger, validate_plan, price_request,
                                       read_bets, select_unique, frozen_checks, client_quote_matches,
                                       already_won)
-from xzh_qa.odds_gap_regression_settlement import expected_settlement, check_settlement
+from xzh_qa.odds_gap_regression_settlement import expected_settlement, check_settlement, revenue_matches
 
 
 def plan(kind='minimum'):
@@ -243,6 +243,19 @@ def test_settlement_compares_nine_levels_and_detects_unrelated_bets(extra_count)
     assert len(result['revenues']) == 9
     assert all(r['ok'] is (extra_count == 0) for r in result['revenues'])
     assert result['rounding_pending'] is False
+
+
+@pytest.mark.parametrize('raw,report,prior,ok', [
+    ('0.00196', '0.0020', False, True),    # Snotra-035 實例：兩注 0.00084＋0.00112，加總後才取 4 位
+    ('0.00196', '0.0019', False, False),   # 逐注先取位再加總（0.0008＋0.0011）不是現行規格
+    ('0.02106', '0.0211', False, True),    # 單注收益 5 位小數：未取位值直接等值比較會誤判
+    ('0.00196', '0.0019', True, True),     # 群組原有舊注：前後值各自取位，增量差 0.0001 以內
+    ('0.00196', '0.0022', True, False),
+])
+def test_revenue_group_total_is_rounded_after_sum(raw, report, prior, ok):
+    """2026-10-07 Aaron 指示：報表群組合計＝各注收益加總後才四捨五入到 4 位（《賠率差公式》取位條②）。"""
+    from decimal import Decimal
+    assert revenue_matches(Decimal(raw), Decimal(report), prior) is ok
 
 
 def test_frozen_record_change_detected_after_restore():
