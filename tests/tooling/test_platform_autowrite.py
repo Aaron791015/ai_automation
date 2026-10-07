@@ -133,9 +133,24 @@ def test_bug不走自動落檔():
 
 # ── 批次落檔：能自動的寫掉、要人按的原樣留著 ────────────────
 def test_批次落檔會跳過要人按的那一筆(tmp_path, monkeypatch):
+    """⛔ 交接檔附加一定要寫在暫存的假交接檔上。
+
+    2026-10-07 這裡原本直接附加到 registry 第一個產品的**真交接檔**，收尾再刪含「甲、乙、丙以直線隔開」的列；
+    但實際寫進去的是「| Tnnn | 甲 | 乙；丙 |」（後兩格併成一格），對不上就殘留下來，還佔掉一個 T 編號，
+    並以 LF 重寫整檔——新綜合交接檔因此多出 6 列假待辦（見新綜合交接 T116、共通交接 T4）。
+    """
     m = _dd()
     p = _a_product()
     monkeypatch.setattr(m.paths, "SESSIONS_DIR", str(tmp_path))
+    real_handover = m._handover_path(p)
+    real_before = (io.open(real_handover, "rb").read()
+                   if real_handover and os.path.isfile(real_handover) else None)
+    fake_handover = tmp_path / "假交接.md"
+    fake_handover.write_text("\n".join([
+        "# 交接", "", "## 2. ★ 待辦總覽", "", "### 2.1 可立即動手", "",
+        "| # | 事項 | 說明 | 優先 |", "| --- | --- | --- | --- |", "| T1 | 既有的 | 不可以被動到 | 中 |", "",
+        "## 3. 別的節", ""]), encoding="utf-8")
+    monkeypatch.setattr(m, "_handover_path", lambda pid: str(fake_handover))
     src = {"kind": "session", "id": "auto1"}
     probe = os.path.join(m._docs_dir(p), "_zz_auto_probe3.md")
     io.open(probe, "w", encoding="utf-8").write("# 原本的\n\n內容\n")
@@ -156,13 +171,12 @@ def test_批次落檔會跳過要人按的那一筆(tmp_path, monkeypatch):
         # 自動寫的要留痕
         kept = [d for d in m.read(src)["drafts"] if d["signature"] == "s2"][0]
         assert kept.get("auto_written") is True
+        # 附加的那一列落在假交接檔的 §2.1，既有列不動
+        fake = fake_handover.read_text(encoding="utf-8")
+        assert "甲" in fake and "| T1 | 既有的 | 不可以被動到 | 中 |" in fake
     finally:
         if os.path.exists(probe):
             os.remove(probe)
-        # 把剛才附加到交接檔的那一列清掉
-        hp = m._handover_path(p)
-        if hp and os.path.isfile(hp):
-            txt = io.open(hp, encoding="utf-8").read()
-            io.open(hp, "w", encoding="utf-8", newline="\n").write(
-                "\n".join(ln for ln in txt.split("\n")
-                          if "甲 | 乙 | 丙" not in ln))
+    # 真交接檔一個位元組都不能變
+    if real_before is not None:
+        assert io.open(real_handover, "rb").read() == real_before, "測試寫進了真的產品交接檔"

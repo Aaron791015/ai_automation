@@ -133,7 +133,17 @@ description: UI 自動化測試開發標準流程 — 探索（Playwright MCP）
   不要每個案例各寫一份——`lint_cases.py` 的檢查會**往下追一層同檔 helper**，
   helper 補好，呼叫它的所有案例會一起過關（見 `tests/xzh/test_user_management.py` 的
   `_check()`：一次補好，十個層級的 `*_count_matches` 全部一起滿足）。
-- **執行**：`python scripts\lint_cases.py --product <目錄名>`；`--all` 連已豁免的也列出來。
+  **共用模組也追（2026-10-07 起）**：案例（或它的同檔 helper）呼叫的函式若是從 `tools/` 底下的專案模組
+  import 進來的（`from xzh_qa.x import y`、`import xzh_qa.x as m` 等，函式內的 import 也算），
+  會再追進該模組的函式本體與它在同模組呼叫的 helper 一層；step／attach 寫在那裡不會被判成漏寫
+  （例：新綜合連肖賠率差案例的 `run_chain_winner()`）。只追 `tools/` 內的本機模組，不追標準庫與第三方，
+  共用模組再 import 別的共用模組也不再往下追。⚠️ 這只是 lint 的判定範圍；test_platform 的靜態案例瀏覽器
+  仍只追同檔 helper，要在平台案例詳情看到步驟，仍須把步驟寫進案例的「平台案例：…步驟」說明
+  （見 `docs/新綜合/新綜合_測試案例撰寫規則.md`）。
+- **執行**：`python scripts\lint_cases.py --product <產品>`——`<產品>` 可以是產品 id／中文名／別名／
+  tests 目錄名（對照 `config/products.json`，例：`新綜合` 與 `xzh` 同一個）；解析不到或目錄不存在會**報錯並回傳非零**
+  （不會回「待修 0 項」）；摘要最後一行的「檢查範圍：N 個案例檔、M 條案例」要看一眼，N 為 0 代表沒檢查到東西。
+  `--all` 連已豁免的也列出來。
   規範上路前就存在的案例可建一份 `tests/<產品>/case_steps_baseline.json` 豁免（**只減不增**，
   補好一條就從名單刪一條），細節見該腳本檔頭。
 - ⚠️ **這是靜態解析，不是執行結果**：`allure.step`／`allure.attach` 本來是執行期才記錄的東西，
